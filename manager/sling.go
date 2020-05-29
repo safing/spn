@@ -5,9 +5,9 @@ import (
 	"net"
 	"sync"
 
-	"github.com/Safing/safing-core/log"
-	"github.com/Safing/safing-core/port17/identity"
-	"github.com/Safing/safing-core/utils"
+	"github.com/safing/portbase/log"
+	"github.com/safing/spn/identity"
+	"github.com/safing/portbase/utils"
 )
 
 type Flingable uint8

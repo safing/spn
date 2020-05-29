@@ -1,11 +1,11 @@
-package port17
+package core
 
 import (
 	"fmt"
 	"sync/atomic"
 	"time"
 
-	"github.com/Safing/safing-core/container"
+	"github.com/safing/portbase/container"
 	"github.com/tevino/abool"
 )
 

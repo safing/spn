@@ -5,13 +5,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Safing/safing-core/log"
-	"github.com/Safing/safing-core/modules"
-	"github.com/Safing/safing-core/port17"
-	"github.com/Safing/safing-core/port17/bottle"
-	"github.com/Safing/safing-core/port17/identity"
-	"github.com/Safing/safing-core/port17/mode"
-	"github.com/Safing/safing-core/port17/ships"
+	"github.com/safing/portbase/log"
+	"github.com/safing/portbase/modules"
+	"github.com/safing/spn/bottle"
+	"github.com/safing/spn/core"
+	"github.com/safing/spn/identity"
+	"github.com/safing/spn/ships"
 	"golang.org/x/net/ipv4"
 	"golang.org/x/net/ipv6"
 )
@@ -24,24 +23,6 @@ var (
 	port17Module *modules.Module
 	myBottle     *bottle.Bottle
 )
-
-func init() {
-	port17Module = modules.Register("Port17", 127)
-	go start()
-}
-
-func start() {
-	time.Sleep(time.Second)
-	if mode.Node() {
-		go handleRequests("tcp", ":17")
-		go handleRequests("udp", ":17")
-	}
-	// port17Module.StartComplete()
-
-	// TODO: stop mocking
-	defer port17Module.StopComplete()
-	<-port17Module.Stop
-}
 
 func handleRequests(network, address string) {
 	if strings.HasPrefix(network, "udp") {
@@ -148,7 +129,7 @@ func welcomeAndDockStreamShip(conn net.Conn) {
 	// reset deadline
 	conn.SetReadDeadline(time.Time{})
 
-	crane, err := port17.NewCrane(ship, identity.Get())
+	crane, err := core.NewCrane(ship, identity.Get())
 	if err != nil {
 		log.Warningf("port17: failed to create Crane for %s from %s: %s", ship.String(), conn.RemoteAddr().String(), err)
 		return
@@ -181,7 +162,7 @@ func welcomeAndDockPacketShip(conn net.PacketConn, raddr net.Addr, firstPacket [
 		return
 	}
 
-	crane, err := port17.NewCrane(ship, identity.Get())
+	crane, err := core.NewCrane(ship, identity.Get())
 	if err != nil {
 		log.Warningf("port17: failed to create Crane for %s from %s: %s", ship.String(), raddr.String(), err)
 		return

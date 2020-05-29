@@ -5,17 +5,15 @@ import (
 	"net"
 	"time"
 
-	"github.com/Safing/safing-core/log"
-	"github.com/Safing/safing-core/meta"
-	"github.com/Safing/safing-core/network/environment"
-	"github.com/Safing/safing-core/port17"
-	"github.com/Safing/safing-core/port17/api"
-	"github.com/Safing/safing-core/port17/bottle"
-	"github.com/Safing/safing-core/port17/bottlerack"
-	"github.com/Safing/safing-core/port17/identity"
-	"github.com/Safing/safing-core/port17/mode"
-	"github.com/Safing/safing-core/port17/navigator"
-	"github.com/Safing/safing-core/port17/ships"
+	"github.com/safing/portbase/log"
+	"github.com/safing/portmaster/netenv"
+	"github.com/safing/spn/api"
+	"github.com/safing/spn/bottle"
+	"github.com/safing/spn/core"
+	"github.com/safing/spn/identity"
+	"github.com/safing/spn/mode"
+	"github.com/safing/spn/navigator"
+	"github.com/safing/spn/ships"
 )
 
 func init() {
@@ -42,18 +40,18 @@ func primaryPortManager() {
 		if primaryPort == nil || !primaryPort.HasActiveRoute() {
 
 			// find approximate network location
-			ip, err := environment.GetApproximateInternetLocation()
+			ip, err := netenv.GetApproximateInternetLocation()
 			if err != nil {
-				log.Warningf("port17/manager: unable to get own location: %s", err)
+				log.Warningf("spn/manager: unable to get own location: %s", err)
 				continue
 			}
 
 			col, err := navigator.FindNearestPorts([]net.IP{ip})
 			if err != nil {
-				log.Warningf("port17/manager: unable to find nearest port for primary port: %s", err)
+				log.Warningf("spn/manager: unable to find nearest port for primary port: %s", err)
 				col = nil
 			} else if col.Len() == 0 {
-				log.Warning("port17/manager: no near ports could be found: will bootstrap.")
+				log.Warning("spn/manager: no near ports could be found: will bootstrap.")
 				col = nil
 			}
 
@@ -63,31 +61,31 @@ func primaryPortManager() {
 			} else {
 				port, err = Bootstrap()
 				if err != nil {
-					log.Warningf("port17/manager: failed to bootstrap: %s", err)
+					log.Warningf("spn/manager: failed to bootstrap: %s", err)
 					continue
 				}
-				log.Infof("port17/manager: bootstrap complete, will connect to %s: %s", port.Name(), port.Bottle)
+				log.Infof("spn/manager: bootstrap complete, will connect to %s: %s", port.Name(), port.Bottle)
 			}
 
 			// TODO: revamp start
 			ship, err := ships.SetSail("TCP", fmt.Sprintf("%s:17", port.Bottle.IPv4))
 			if err != nil {
-				log.Warningf("port17/manager: could not set sail to %s:17: %s", port.Bottle.IPv4, err)
+				log.Warningf("spn/manager: could not set sail to %s:17: %s", port.Bottle.IPv4, err)
 				continue
 			}
 
-			crane, err := port17.NewCrane(ship, port.Bottle)
+			crane, err := core.NewCrane(ship, port.Bottle)
 			if err != nil {
-				log.Warningf("port17/manager: could not set up crane: %s", err)
+				log.Warningf("spn/manager: could not set up crane: %s", err)
 				continue
 			}
 			crane.Initialize()
-			port17.AssignCrane(port.Name(), crane)
+			core.AssignCrane(port.Name(), crane)
 			// TODO: revamp end
 
-			client, err := port17.NewClient(port17.NewInitializer(), port.Bottle)
+			client, err := core.NewClient(core.NewInitializer(), port.Bottle)
 			if err != nil {
-				log.Warningf("port17/manager: unable to connect to primary port (%s): %s", port.Name(), err)
+				log.Warningf("spn/manager: unable to connect to primary port (%s): %s", port.Name(), err)
 				continue
 			}
 
@@ -97,7 +95,7 @@ func primaryPortManager() {
 
 			// set primary port in navigator
 			navigator.SetPrimaryPort(port)
-			log.Infof("port17/manager: set new primary port: %s", port.Name())
+			log.Infof("spn/manager: set new primary port: %s", port.Name())
 
 			// get bottles
 			feeder(client)
@@ -106,7 +104,7 @@ func primaryPortManager() {
 	}
 }
 
-func feeder(client *port17.API) {
+func feeder(client *core.API) {
 	call := client.BottleFeed()
 	for {
 		msg := <-call.Msgs
@@ -116,7 +114,7 @@ func feeder(client *port17.API) {
 			if err != nil {
 				log.Warningf("failed to parse bottle from feed: %s", err)
 			} else {
-				bottlerack.SavePublicBottle(b)
+				b.Save()
 				navigator.UpdatePublicBottle(b)
 			}
 		case api.API_END, api.API_ACK:
@@ -135,21 +133,21 @@ func networkOptimizer() {
 		if myID != nil {
 			newTarget, err := navigator.Optimize(myID.PortName)
 			if err != nil {
-				if err == navigator.ErrIAmLonely && meta.BootstrapNode() != "" {
-					log.Warning("port17/manager: no known nodes, bootstrapping...")
+				if err == navigator.ErrIAmLonely && bootstrapNode != "" {
+					log.Warning("spn/manager: no known nodes, bootstrapping...")
 					bsPort, err := Bootstrap()
 					if err != nil {
-						log.Warningf("port17/manager: failed to bootstrap: %s", err)
+						log.Warningf("spn/manager: failed to bootstrap: %s", err)
 						continue
 					}
 					newTarget = bsPort.Bottle
 				} else {
-					log.Warningf("port17/manager: unable to optimize network: %s", err)
+					log.Warningf("spn/manager: unable to optimize network: %s", err)
 					continue
 				}
 			}
 			if newTarget != nil {
-				port17.EstablishRoute(newTarget)
+				core.EstablishRoute(newTarget)
 			}
 		}
 	}
@@ -162,7 +160,7 @@ func identityCleaner() {
 			time.Sleep(1 * time.Second)
 			continue
 		}
-		active := port17.GetAllControllers()
+		active := core.GetAllControllers()
 
 		// remove
 		var remove []string
@@ -201,10 +199,10 @@ func identityCleaner() {
 		if len(remove) > 0 || added > 0 {
 			identity.UpdateIdentity(me)
 			if len(remove) > 0 {
-				log.Warningf("port17/manager: removed %d inactive routes from own bottle", len(remove))
+				log.Warningf("spn/manager: removed %d inactive routes from own bottle", len(remove))
 			}
 			if added > 0 {
-				log.Warningf("port17/manager: added %d missing routes to own bottle", added)
+				log.Warningf("spn/manager: added %d missing routes to own bottle", added)
 			}
 		}
 

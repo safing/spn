@@ -7,12 +7,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Safing/safing-core/crypto/random"
-	"github.com/Safing/safing-core/log"
-	"github.com/Safing/safing-core/meta"
-	"github.com/Safing/safing-core/port17/bottle"
-	"github.com/Safing/safing-core/port17/bottlerack"
-	"github.com/Safing/safing-core/port17/mode"
+	"github.com/safing/portbase/rng"
+
+	"github.com/safing/portbase/log"
+	"github.com/safing/spn/bottle"
+	"github.com/safing/spn/mode"
 )
 
 var (
@@ -21,48 +20,35 @@ var (
 	exportIdentity []byte
 	identityLock   sync.Mutex
 
-	dbNamespace = bottlerack.DatabaseNamespace.ChildString("Mine")
+	identityKey = "core:spn/identity"
 )
 
-func init() {
-	go func() {
-		time.Sleep(1 * time.Second)
-		if mode.Node() {
-			defer func() {
-				go manager()
-			}()
+func initIdentity() {
+	if mode.Node() {
 
-			var err error
-			identity, err = bottlerack.LoadBottle(dbNamespace.ChildString("nodeIdentity"))
-			if err == nil {
-				log.Infof("port17/identity: loaded identity: %s", identity)
-				_, changed := maintainIdentity()
-				if !changed {
-					// also publish if not changed
-					publishIdentity()
-				}
-				return
+		var err error
+		identity, err = bottle.Get(identityKey)
+		if err == nil {
+			log.Infof("port17/identity: loaded identity: %s", identity)
+			_, changed := maintainIdentity()
+			if !changed {
+				// also publish if not changed
+				publishIdentity()
 			}
-
-			log.Warningf("port17/identity: failed to load identity: %s", err)
-			log.Info("port17/identity: generating new identity...")
-
-			new, err := NewIdentity()
-			if err != nil {
-				log.Warningf("port17/identity: failed to generate new identity: %s", err)
-				return
-			}
-			UpdateIdentity(new)
-
+			return
 		}
-	}()
 
-	// go func() {
-	// 	time.Sleep(5 * time.Second)
-	// 	fmt.Println("===== TAKING TOO LONG FOR SHUTDOWN - PRINTING STACK TRACES =====")
-	// 	pprof.Lookup("goroutine").WriteTo(os.Stdout, 1)
-	// 	os.Exit(1)
-	// }()
+		log.Warningf("port17/identity: failed to load identity: %s", err)
+		log.Info("port17/identity: generating new identity...")
+
+		new, err := NewIdentity()
+		if err != nil {
+			log.Warningf("port17/identity: failed to generate new identity: %s", err)
+			return
+		}
+		UpdateIdentity(new)
+
+	}
 }
 
 // UpdateIdentity updates an identity and saves it to the database.
@@ -76,7 +62,10 @@ func UpdateIdentity(newIdentity *bottle.Bottle) {
 	publicIdentity = nil
 	exportIdentity = nil
 	log.Infof("port17/identity: updated ID: %s", newIdentity)
-	bottlerack.SaveBottle(dbNamespace.ChildString("nodeIdentity"), newIdentity)
+	err := identity.Save()
+	if err != nil {
+		log.Warningf("spn/identity: failed to save identity: %s", err)
+	}
 	go publishIdentity()
 }
 
@@ -121,7 +110,7 @@ func NewIdentity() (*bottle.Bottle, error) {
 
 	// Name
 	// Specified?
-	portName := meta.NodeName()
+	portName := nodeName
 	// Hostname?
 	if portName == "" {
 		var err error
@@ -133,7 +122,7 @@ func NewIdentity() (*bottle.Bottle, error) {
 	}
 	// Then random
 	if portName == "" {
-		id, err := random.Bytes(3)
+		id, err := rng.Bytes(3)
 		if err != nil {
 			log.Warningf("port17/identity: could not get hostname")
 			portName = ""
@@ -151,5 +140,6 @@ func NewIdentity() (*bottle.Bottle, error) {
 	checkEphermalKeys(new, time.Now())
 	checkAddresses(new)
 
+	new.SetKey(identityKey)
 	return new, nil
 }

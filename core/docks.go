@@ -1,9 +1,9 @@
-package port17
+package core
 
 import (
 	"sync"
 
-	"github.com/Safing/safing-core/port17/identity"
+	"github.com/safing/spn/identity"
 )
 
 var (

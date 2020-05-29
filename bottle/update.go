@@ -1,4 +1,4 @@
-package bottlerack
+package bottle
 
 import (
 	"bytes"
@@ -6,16 +6,15 @@ import (
 
 	ds "github.com/ipfs/go-datastore"
 
-	"github.com/Safing/safing-core/log"
-	"github.com/Safing/safing-core/port17/bottle"
+	"github.com/safing/portbase/log"
 )
 
 // ComparePublicBottle compares a public bottle in the bottlerack and returns if it should be handled further.
-func ComparePublicBottle(newBottle *bottle.Bottle) (okAndContinue bool, storedBottle *bottle.Bottle) {
+func ComparePublicBottle(newBottle *Bottle) (okAndContinue bool, storedBottle *Bottle) {
 
 	// log.Tracef("bottlerack: comparing public bottle %s", newBottle.PortName)
 
-	storedBottle, err := loadPublicBottle(newBottle.PortName)
+	storedBottle, err := GetPublicBottle(newBottle.PortName)
 	if err != nil {
 		// save if not found -> new
 		if err == ds.ErrNotFound {
@@ -29,7 +28,7 @@ func ComparePublicBottle(newBottle *bottle.Bottle) (okAndContinue bool, storedBo
 	}
 
 	if !bytes.Equal(storedBottle.PortID, newBottle.PortID) {
-		log.Warningf("port17/bottlerack: bottle with ID \"%x\" tried to snatch name \"%f\"", newBottle.PortID, newBottle.PortName)
+		log.Warningf("port17/bottlerack: bottle with ID \"%x\" tried to snatch name \"%s\"", newBottle.PortID, newBottle.PortName)
 		return false, nil
 	}
 
@@ -44,7 +43,7 @@ func ComparePublicBottle(newBottle *bottle.Bottle) (okAndContinue bool, storedBo
 }
 
 // UpdateLocalBottle updates a local bottle in the bottlerack and returns if it should be handled further.
-func UpdateLocalBottle(newBottle *bottle.Bottle) (okAndContinue bool) {
+func UpdateLocalBottle(newBottle *Bottle) (okAndContinue bool) {
 	log.Tracef("bottlerack: updating local bottle %s (not yet)", newBottle.PortName)
 	return false
 }

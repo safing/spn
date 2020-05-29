@@ -6,10 +6,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Safing/safing-core/log"
-	"github.com/Safing/safing-core/network/geoip"
-	"github.com/Safing/safing-core/port17"
-	"github.com/Safing/safing-core/port17/bottle"
+	"github.com/safing/portbase/log"
+	"github.com/safing/portmaster/intel/geoip"
+	"github.com/safing/spn/bottle"
+	"github.com/safing/spn/core"
 )
 
 // Port represents a node in the Port17 network.
@@ -22,10 +22,10 @@ type Port struct {
 	Location4      *geoip.Location
 	Location6      *geoip.Location
 	Routes         []*Route
-	ActiveAPI      *port17.API // Api to active Port
-	ActiveRoute    []*Port     // list of Ports this connection runs through
-	DependingPorts []*Port     // list of Ports that use this Port for a connection
-	Load           int         // estimated in microseconds this port adds to latency
+	ActiveAPI      *core.API // Api to active Port
+	ActiveRoute    []*Port   // list of Ports this connection runs through
+	DependingPorts []*Port   // list of Ports that use this Port for a connection
+	Load           int       // estimated in microseconds this port adds to latency
 }
 
 func NewPort(newBottle *bottle.Bottle) *Port {

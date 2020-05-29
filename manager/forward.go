@@ -1,9 +1,9 @@
 package manager
 
 import (
-	"github.com/Safing/safing-core/log"
-	"github.com/Safing/safing-core/port17"
-	"github.com/Safing/safing-core/port17/bottle"
+	"github.com/safing/portbase/log"
+	"github.com/safing/spn/bottle"
+	"github.com/safing/spn/core"
 )
 
 func ForwardLocalBottle(new *bottle.Bottle) {
@@ -25,7 +25,7 @@ func ForwardLocalBottle(new *bottle.Bottle) {
 
 func ForwardPublicBottle(exportedBottle []byte, receivedByCrane string) {
 	// forward via public cranes
-	for _, craneController := range port17.GetAllControllers() {
+	for _, craneController := range core.GetAllControllers() {
 		if craneController.Crane.ID != receivedByCrane {
 			craneController.UpdateBottle(exportedBottle)
 		}

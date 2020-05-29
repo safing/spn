@@ -5,8 +5,8 @@ import (
 	"net"
 	"sync"
 
-	"github.com/Safing/safing-core/log"
-	"github.com/Safing/safing-core/network/geoip"
+	"github.com/safing/portbase/log"
+	"github.com/safing/portmaster/intel/geoip"
 )
 
 // Dijkstra "#AI"

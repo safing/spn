@@ -1,10 +1,10 @@
-package port17
+package core
 
 import (
 	"fmt"
 	"testing"
 
-	"github.com/Safing/safing-core/port17/ships"
+	"github.com/safing/spn/ships"
 )
 
 func TestPort17Api(t *testing.T) {

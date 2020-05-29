@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Safing/safing-core/tinker"
+	"github.com/safing/tinker"
 )
 
 type BottleKey struct {

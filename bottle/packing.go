@@ -4,7 +4,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/Safing/safing-core/formats/dsd"
+	"github.com/safing/portbase/formats/dsd"
 )
 
 // Pack packs a bottle.

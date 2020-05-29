@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Safing/safing-core/network/geoip"
+	"github.com/safing/portmaster/network/geoip"
 )
 
 func TestMap(t *testing.T) {

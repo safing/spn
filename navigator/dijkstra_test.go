@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Safing/safing-core/port17"
+	"github.com/safing/spn/core"
 )
 
 func TestDijkstra(t *testing.T) {

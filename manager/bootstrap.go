@@ -2,19 +2,27 @@ package manager
 
 import (
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"net"
 	"time"
 
-	"github.com/Safing/safing-core/meta"
-	"github.com/Safing/safing-core/port17/bottle"
-	"github.com/Safing/safing-core/port17/navigator"
+	"github.com/safing/spn/bottle"
+	"github.com/safing/spn/navigator"
 )
+
+var (
+	bootstrapNode string
+)
+
+func init() {
+	flag.StringVar(&bootstrapNode, "bootstrap-node", "", "address of bootstrap node (TOFU!)")
+}
 
 func Bootstrap() (*navigator.Port, error) {
 
-	address := meta.BootstrapNode()
+	address := bootstrapNode
 	if address != "" {
 		ip := net.ParseIP(address)
 		if ip == nil {

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/Safing/safing-core/port17/bottle"
+	"github.com/safing/spn/bottle"
 )
 
 // This is the test network:

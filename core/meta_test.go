@@ -1,8 +1,8 @@
-package port17
+package core
 
 import (
-	"github.com/Safing/safing-core/port17/bottle"
-	"github.com/Safing/safing-core/tinker"
+	"github.com/safing/spn/bottle"
+	"github.com/safing/tinker"
 )
 
 func newPortIdentity(name string) (*bottle.Bottle, error) {

@@ -1,11 +1,11 @@
-package port17
+package core
 
 import (
 	"fmt"
 
-	"github.com/Safing/safing-core/log"
-	"github.com/Safing/safing-core/port17/bottle"
-	"github.com/Safing/safing-core/port17/ships"
+	"github.com/safing/portbase/log"
+	"github.com/safing/spn/bottle"
+	"github.com/safing/spn/ships"
 )
 
 func EstablishRoute(target *bottle.Bottle) {

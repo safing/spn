@@ -1,12 +1,11 @@
-package port17
+package core
 
 import (
-	"errors"
+	"fmt"
 
-	"github.com/Safing/safing-core/container"
-	"github.com/Safing/safing-core/port17/bottle"
-	"github.com/Safing/safing-core/port17/bottlerack"
-	"github.com/Safing/safing-core/tinker"
+	"github.com/safing/portbase/container"
+	"github.com/safing/spn/bottle"
+	"github.com/safing/tinker"
 )
 
 type TinkerConveyor struct {
@@ -24,9 +23,9 @@ func NewTinkerConveyor(server bool, init *Initializer, serverBottle *bottle.Bott
 
 	var err error
 	if serverBottle == nil {
-		serverBottle = bottlerack.Get(init.DestPortName)
-		if serverBottle == nil {
-			return nil, errors.New("port17: cannot find server bottle for tinker")
+		serverBottle, err = bottle.GetPublicBottle(init.DestPortName)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get server bottle for tinker: %s", err)
 		}
 	}
 

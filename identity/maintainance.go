@@ -3,11 +3,11 @@ package identity
 import (
 	"time"
 
-	"github.com/Safing/safing-core/log"
-	"github.com/Safing/safing-core/network/environment"
-	"github.com/Safing/safing-core/port17/bottle"
-	"github.com/Safing/safing-core/tinker"
-	"github.com/Safing/safing-core/utils"
+	"github.com/safing/portbase/log"
+	"github.com/safing/portbase/utils"
+	"github.com/safing/portmaster/netenv"
+	"github.com/safing/spn/bottle"
+	"github.com/safing/tinker"
 )
 
 func manager() {
@@ -103,7 +103,7 @@ func checkEphermalKeys(identity *bottle.Bottle, now time.Time) (changed bool) {
 		case ephKey.Expires < burnThreshhold:
 			ephKey.Key = nil
 		case ephKey.Expires < renewThreshhold:
-			if utils.StringInSlice(ephKey.Key.Algorithm, provideKeyTypes) {
+			if utils.StringInSlice(provideKeyTypes, ephKey.Key.Algorithm) {
 				// generate new key
 				newKey, err := tinker.GenerateEphermalKey(ephKey.Key.Algorithm, provideKeyStrength)
 				if err != nil {
@@ -145,7 +145,7 @@ func checkAddresses(identity *bottle.Bottle) (changed bool) {
 
 	// then try to autoconfigure
 	// TODO: disable this via config
-	v4IPs, v6IPs, err := environment.GetAssignedGlobalAddresses()
+	v4IPs, v6IPs, err := netenv.GetAssignedGlobalAddresses()
 	if err != nil {
 		log.Warningf("port17/identity: failed to get addresses, aborting node IP autoconfig: %s", err)
 		return

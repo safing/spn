@@ -1,4 +1,4 @@
-package port17
+package core
 
 import (
 	"encoding/hex"
@@ -8,14 +8,14 @@ import (
 
 	"github.com/tevino/abool"
 
-	"github.com/Safing/safing-core/container"
-	"github.com/Safing/safing-core/crypto/random"
-	"github.com/Safing/safing-core/formats/varint"
-	"github.com/Safing/safing-core/log"
-	"github.com/Safing/safing-core/port17/bottle"
-	"github.com/Safing/safing-core/port17/identity"
-	"github.com/Safing/safing-core/port17/ships"
-	"github.com/Safing/safing-core/tinker"
+	"github.com/safing/portbase/container"
+	"github.com/safing/portbase/formats/varint"
+	"github.com/safing/portbase/log"
+	"github.com/safing/portbase/rng"
+	"github.com/safing/spn/bottle"
+	"github.com/safing/spn/identity"
+	"github.com/safing/spn/ships"
+	"github.com/safing/tinker"
 )
 
 // Crane Status Options
@@ -61,13 +61,13 @@ func NewCrane(ship ships.Ship, serverBottle *bottle.Bottle) (*Crane, error) {
 		return nil, errors.New("tried to create crane without serverBottle")
 	}
 
-	random, err := random.Bytes(3)
+	randomID, err := rng.Bytes(3)
 	if err != nil {
 		return nil, err
 	}
 
 	new := &Crane{
-		ID:           hex.EncodeToString(random),
+		ID:           hex.EncodeToString(randomID),
 		serverBottle: serverBottle,
 		stopped:      abool.NewBool(false),
 		stop:         make(chan struct{}),

@@ -6,8 +6,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/Safing/safing-core/log"
-	"github.com/Safing/safing-core/network/packet"
+	"github.com/safing/portbase/log"
+	"github.com/safing/portmaster/network/packet"
 )
 
 type TunnelInfo struct {
@@ -31,13 +31,13 @@ func CreateTunnel(pkt packet.Packet, domain string, destIPs []net.IP) {
 
 	tunnelInfo := &TunnelInfo{
 		Domain:   domain,
-		LocalIP:  pkt.GetIPHeader().Src,
+		LocalIP:  pkt.Info().Src,
 		DestIPs:  destIPs,
-		Protocol: pkt.GetIPHeader().Protocol,
-		Port:     pkt.GetTCPUDPHeader().DstPort,
+		Protocol: pkt.Info().Protocol,
+		Port:     pkt.Info().DstPort,
 	}
 
-	tunnelID := fmt.Sprintf("%s-%s:%d", strings.ToLower(pkt.GetIPHeader().Protocol.String()), pkt.GetIPHeader().Src, pkt.GetTCPUDPHeader().SrcPort)
+	tunnelID := fmt.Sprintf("%s-%s:%d", strings.ToLower(pkt.Info().Protocol.String()), pkt.Info().Src, pkt.Info().SrcPort)
 	log.Infof("port17/manager: incoming tunnel: %s", tunnelID)
 
 	tunnelInfos[tunnelID] = tunnelInfo

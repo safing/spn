@@ -3,7 +3,7 @@ package api
 import (
 	"strings"
 
-	"github.com/Safing/safing-core/container"
+	"github.com/safing/portbase/container"
 )
 
 type ApiError struct {

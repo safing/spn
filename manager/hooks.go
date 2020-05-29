@@ -1,31 +1,31 @@
 package manager
 
 import (
-	"github.com/Safing/safing-core/log"
-	"github.com/Safing/safing-core/port17"
-	"github.com/Safing/safing-core/port17/bottle"
-	"github.com/Safing/safing-core/port17/identity"
-	"github.com/Safing/safing-core/port17/navigator"
+	"github.com/safing/portbase/log"
+	"github.com/safing/spn/bottle"
+	"github.com/safing/spn/core"
+	"github.com/safing/spn/identity"
+	"github.com/safing/spn/navigator"
 )
 
 func init() {
-	port17.RegisterCraneHooks(updateBottleHook, distrustBottleHook, publishChanHook)
+	core.RegisterCraneHooks(updateBottleHook, distrustBottleHook, publishChanHook)
 	identity.RegisterPublishHook(publishIdentity)
 }
 
-func updateBottleHook(controller *port17.CraneController, newBottle *bottle.Bottle, exportedBottle []byte) error {
+func updateBottleHook(controller *core.CraneController, newBottle *bottle.Bottle, exportedBottle []byte) error {
 	handleBottle(newBottle, exportedBottle, controller.Crane.ID)
 	return nil
 }
 
-func distrustBottleHook(controller *port17.CraneController, newBottle *bottle.Bottle, exportedBottle []byte) error {
+func distrustBottleHook(controller *core.CraneController, newBottle *bottle.Bottle, exportedBottle []byte) error {
 	// TODO
 	return nil
 }
 
-func publishChanHook(controller *port17.CraneController, newBottle *bottle.Bottle, exportedBottle []byte) error {
+func publishChanHook(controller *core.CraneController, newBottle *bottle.Bottle, exportedBottle []byte) error {
 	// AddPublicCrane(controller, newBottle.PortName)
-	port17.AssignCrane(newBottle.PortName, controller.Crane)
+	core.AssignCrane(newBottle.PortName, controller.Crane)
 	myID := identity.Get()
 	myID.AddConnection(newBottle, 0)
 	identity.UpdateIdentity(myID)

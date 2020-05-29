@@ -3,7 +3,7 @@ package api
 import (
 	"testing"
 
-	"github.com/Safing/safing-core/container"
+	"github.com/safing/portbase/container"
 )
 
 func TestError(t *testing.T) {

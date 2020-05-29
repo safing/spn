@@ -9,13 +9,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Safing/safing-core/container"
-	"github.com/Safing/safing-core/log"
-	"github.com/Safing/safing-core/port17"
-	"github.com/Safing/safing-core/port17/api"
-	"github.com/Safing/safing-core/port17/entry"
-	"github.com/Safing/safing-core/port17/mode"
-	"github.com/Safing/safing-core/port17/navigator"
+	"github.com/safing/portbase/container"
+	"github.com/safing/portbase/log"
+	"github.com/safing/spn/api"
+	"github.com/safing/spn/core"
+	"github.com/safing/spn/entry"
+	"github.com/safing/spn/mode"
+	"github.com/safing/spn/navigator"
 )
 
 func init() {
@@ -278,7 +278,7 @@ func buildTunnel(network, address string) (*api.Call, error) {
 	// build path
 	currentPort := ports[0]
 	for i := 1; i < len(ports); i++ {
-		init, err := port17.NewInitializerFromBottle(ports[i].Bottle)
+		init, err := core.NewInitializerFromBottle(ports[i].Bottle)
 		if err != nil {
 			return nil, fmt.Errorf("could not create init from bottle: %s", err)
 		}

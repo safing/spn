@@ -1,6 +1,6 @@
 package api
 
-import "github.com/Safing/safing-core/container"
+import "github.com/safing/portbase/container"
 
 const (
 	API_CALL uint8 = iota // initiate

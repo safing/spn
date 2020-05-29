@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Safing/safing-core/container"
-	"github.com/Safing/safing-core/formats/varint"
+	"github.com/safing/portbase/container"
+	"github.com/safing/portbase/formats/varint"
 )
 
 func HandleTestCall(call *Call, c *container.Container) {

@@ -1,16 +1,14 @@
-package port17
+package core
 
 import (
-	"errors"
 	"fmt"
 
-	"github.com/Safing/safing-core/container"
-	"github.com/Safing/safing-core/formats/dsd"
-	"github.com/Safing/safing-core/log"
-	"github.com/Safing/safing-core/meta"
-	"github.com/Safing/safing-core/port17/api"
-	"github.com/Safing/safing-core/port17/bottle"
-	"github.com/Safing/safing-core/port17/bottlerack"
+	"github.com/safing/portbase/container"
+	"github.com/safing/portbase/formats/dsd"
+	"github.com/safing/portbase/info"
+	"github.com/safing/portbase/log"
+	"github.com/safing/spn/api"
+	"github.com/safing/spn/bottle"
 )
 
 // API provides the interface that nodes communicate with
@@ -63,15 +61,15 @@ func NewAPI(server, initiator bool) *API {
 }
 
 // Info calls and returns node information of the connected node.
-func (portAPI *API) Info() (*meta.Info, error) {
+func (portAPI *API) Info() (*info.Info, error) {
 	call := portAPI.Call(MsgTypeInfo, container.New())
 	msg := <-call.Msgs
 	switch msg.MsgType {
 	case api.API_DATA:
-		info := &meta.Info{}
+		info := &info.Info{}
 		_, err := dsd.Load(msg.Container.CompileData(), info)
 		if err != nil {
-			return nil, fmt.Errorf("could not parse bottle: %s", err)
+			return nil, fmt.Errorf("could not parse data: %s", err)
 		}
 		return info, nil
 	case api.API_ERR:
@@ -81,10 +79,10 @@ func (portAPI *API) Info() (*meta.Info, error) {
 }
 
 func (portAPI *API) handleInfo(call *api.Call, none *container.Container) {
-	info := meta.GetInfo()
+	info := info.GetInfo()
 	data, err := dsd.Dump(info, dsd.JSON)
 	if err != nil {
-		log.Warningf("port17: failed to pack info: %s", err)
+		log.Warningf("spn/api: failed to pack info: %s", err)
 		call.SendError("could not pack info")
 	} else {
 		call.SendData(container.NewContainer(data))
@@ -216,9 +214,9 @@ func NewClient(init *Initializer, targetBottle *bottle.Bottle) (*API, error) {
 	var err error
 
 	if targetBottle == nil {
-		targetBottle = bottlerack.Get(init.DestPortName)
-		if targetBottle == nil {
-			return nil, errors.New("port17: cannot find destination bottle")
+		targetBottle, err = bottle.Get(init.DestPortName)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get destination bottle: %w", err)
 		}
 	}
 	init.DestPortName = ""

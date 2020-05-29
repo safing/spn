@@ -1,15 +1,15 @@
-package port17
+package core
 
 import (
 	"bytes"
 	"errors"
+	"fmt"
 
-	"github.com/Safing/safing-core/container"
-	"github.com/Safing/safing-core/crypto/random"
-	"github.com/Safing/safing-core/log"
-	"github.com/Safing/safing-core/port17/bottle"
-	"github.com/Safing/safing-core/port17/bottlerack"
-	"github.com/Safing/safing-core/port17/identity"
+	"github.com/safing/portbase/container"
+	"github.com/safing/portbase/log"
+	"github.com/safing/portbase/rng"
+	"github.com/safing/spn/bottle"
+	"github.com/safing/spn/identity"
 
 	"github.com/tevino/abool"
 )
@@ -110,7 +110,7 @@ func (cControl *CraneController) handlePublishChannel(c *container.Container) er
 		}
 
 		// return challenge
-		challenge, err := random.Bytes(32)
+		challenge, err := rng.Bytes(32)
 		if err != nil {
 			return err
 		}
@@ -153,9 +153,9 @@ func (cControl *CraneController) handlePublishChannel(c *container.Container) er
 		}
 
 		// get bottle
-		clientBottle := bottlerack.Get(string(clientPortName))
-		if clientBottle == nil {
-			return errors.New("could not get client bottle to verify channel-publish")
+		clientBottle, err := bottle.GetPublicBottle(string(clientPortName))
+		if err != nil {
+			return fmt.Errorf("failed to get client bottle to verify channel-publish: %w", err)
 		}
 
 		// TODO: verify signature

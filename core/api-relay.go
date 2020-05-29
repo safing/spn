@@ -1,8 +1,8 @@
-package port17
+package core
 
 import (
-	"github.com/Safing/safing-core/log"
-	"github.com/Safing/safing-core/port17/api"
+	"github.com/safing/portbase/log"
+	"github.com/safing/spn/api"
 )
 
 type PortRelay struct {

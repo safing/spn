@@ -5,8 +5,8 @@ import (
 	"net"
 	"sync"
 
-	"github.com/Safing/safing-core/log"
-	"github.com/Safing/safing-core/port17/bottle"
+	"github.com/safing/portbase/log"
+	"github.com/safing/spn/bottle"
 )
 
 var (

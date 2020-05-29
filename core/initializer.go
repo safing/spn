@@ -1,12 +1,12 @@
-package port17
+package core
 
 import (
 	"fmt"
 
-	"github.com/Safing/safing-core/formats/dsd"
-	"github.com/Safing/safing-core/formats/varint"
-	"github.com/Safing/safing-core/port17/bottle"
-	"github.com/Safing/safing-core/tinker"
+	"github.com/safing/portbase/formats/dsd"
+	"github.com/safing/portbase/formats/varint"
+	"github.com/safing/spn/bottle"
+	"github.com/safing/tinker"
 )
 
 // Initializer holds information for initializing different parts of the Port17 protocol.

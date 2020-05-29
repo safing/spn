@@ -3,20 +3,24 @@ package manager
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"net"
 	"sync"
 	"time"
 
-	"github.com/Safing/safing-core/log"
-	"github.com/Safing/safing-core/port17/bottle"
-	"github.com/Safing/safing-core/port17/bottlerack"
-	"github.com/Safing/safing-core/port17/identity"
-	"github.com/Safing/safing-core/port17/mode"
-	"github.com/Safing/safing-core/port17/navigator"
+	"github.com/safing/portbase/database"
+	"github.com/safing/portbase/database/query"
+	"github.com/safing/portbase/log"
+	"github.com/safing/spn/bottle"
+	"github.com/safing/spn/identity"
+	"github.com/safing/spn/mode"
+	"github.com/safing/spn/navigator"
 )
 
 var (
 	handlingNewBottle sync.Mutex
+
+	db = database.NewInterface(nil)
 )
 
 func init() {
@@ -129,27 +133,27 @@ func handleBottle(newBottle *bottle.Bottle, exportedBottle []byte, receivedByCra
 	}
 
 	if newBottle.Local != nil {
-		if bottlerack.UpdateLocalBottle(newBottle) {
+		if bottle.UpdateLocalBottle(newBottle) {
 			ForwardLocalBottle(newBottle)
 		}
 	} else {
-		okAndContinue, storedBottle := bottlerack.ComparePublicBottle(newBottle)
+		okAndContinue, storedBottle := bottle.ComparePublicBottle(newBottle)
 		if okAndContinue {
 			if storedBottle == nil || !storedBottle.IPv4.Equal(newBottle.IPv4) {
 				if !verifyIPAddress(newBottle, 4) {
-					bottlerack.DiscardPublicBottle(newBottle.PortName)
+					bottle.DeletePublicBottle(newBottle.PortName)
 					return
 				}
 			}
 			if storedBottle == nil || !storedBottle.IPv6.Equal(newBottle.IPv6) {
 				if !verifyIPAddress(newBottle, 6) {
-					bottlerack.DiscardPublicBottle(newBottle.PortName)
+					bottle.DeletePublicBottle(newBottle.PortName)
 					return
 				}
 			}
 
 			// save changes
-			bottlerack.SavePublicBottle(newBottle)
+			newBottle.Save()
 			// forward
 			ForwardPublicBottle(exportedBottle, receivedByCrane)
 			// update navigator
@@ -169,11 +173,6 @@ func verifyIPAddress(b *bottle.Bottle, ipVersion uint8) (ok bool) {
 
 // FeedTheNavigator loads all public bottles and feeds them to the navigator
 func FeedTheNavigator() error {
-	// get feed
-	feed, err := bottlerack.PublicBottleFeed()
-	if err != nil {
-		return err
-	}
 
 	// get own ID
 	var me *bottle.Bottle
@@ -185,20 +184,32 @@ func FeedTheNavigator() error {
 		}
 	}
 
+	iter, err := db.Query(query.New(bottle.PublicBottles))
+	if err != nil {
+		return fmt.Errorf("failed to initialized feed: %s", err)
+	}
+
 	// update navigator
 	var bottleCount int
 	log.Trace("port17/manager: start feed")
 	navigator.StartPublicReset()
+	defer navigator.FinishPublicReset()
 	if nodeMode {
 		navigator.FeedPublicBottle(me)
 	}
-	for b := range feed {
-		log.Trace("port17/manager: feeding...")
+	for r := range iter.Next {
+		b, err := bottle.EnsureBottle(r)
+		if err != nil {
+			log.Warningf("spn/navigator: could not parse bottle while feeding: %s", err)
+			continue
+		}
+
 		bottleCount += 1
 		navigator.FeedPublicBottle(b)
 	}
-	navigator.FinishPublicReset()
-	log.Trace("port17/manager: end feed")
+	if iter.Err() != nil {
+		return fmt.Errorf("failed to feed all bottles: %s", iter.Err())
+	}
 
 	if bottleCount == 0 {
 		return errors.New("PublicBottleFeed did not return any bottles")

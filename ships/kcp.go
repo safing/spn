@@ -5,7 +5,7 @@ import (
 	"net"
 	"strings"
 
-	"github.com/Safing/safing-core/log"
+	"github.com/safing/portbase/log"
 	"github.com/xtaci/kcp-go"
 )
 

@@ -1,4 +1,4 @@
-package port17
+package core
 
 import (
 	"fmt"
@@ -6,11 +6,11 @@ import (
 	"net"
 	"strings"
 
-	"github.com/Safing/safing-core/container"
-	"github.com/Safing/safing-core/formats/dsd"
-	"github.com/Safing/safing-core/log"
-	"github.com/Safing/safing-core/network/packet"
-	"github.com/Safing/safing-core/port17/api"
+	"github.com/safing/portbase/container"
+	"github.com/safing/portbase/formats/dsd"
+	"github.com/safing/portbase/log"
+	"github.com/safing/portmaster/network/packet"
+	"github.com/safing/spn/api"
 )
 
 type TunnelRequest struct {

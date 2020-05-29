@@ -1,6 +1,6 @@
 package api
 
-import "github.com/Safing/safing-core/container"
+import "github.com/safing/portbase/container"
 
 type ApiMsg struct {
 	MsgType   uint8

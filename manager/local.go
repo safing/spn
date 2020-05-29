@@ -2,8 +2,6 @@ package manager
 
 import (
 	"time"
-
-	"github.com/Safing/safing-core/network/environment"
 )
 
 func init() {
@@ -15,7 +13,7 @@ func slingMaster() {
 	LetSeagullFly()
 	for {
 		select {
-		case <-environment.NetworkChanged():
+		case <-time.After(1 * time.Minute): // FIXME: on network change
 			LetSeagullFly()
 		case <-time.After(10 * time.Minute):
 			FlingMyBottle()

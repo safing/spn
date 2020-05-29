@@ -1,7 +1,7 @@
-package port17
+package core
 
 import (
-	"github.com/Safing/safing-core/container"
+	"github.com/safing/portbase/container"
 )
 
 type SimpleConveyorLine struct {

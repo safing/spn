@@ -1,11 +1,11 @@
-package port17
+package core
 
 import (
 	"fmt"
 
-	"github.com/Safing/safing-core/container"
-	"github.com/Safing/safing-core/formats/varint"
-	"github.com/Safing/safing-core/log"
+	"github.com/safing/portbase/container"
+	"github.com/safing/portbase/formats/varint"
+	"github.com/safing/portbase/log"
 )
 
 type CraneController struct {

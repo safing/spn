@@ -7,18 +7,27 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Safing/safing-core/log"
-	"github.com/Safing/safing-core/tinker"
+	"github.com/safing/portbase/database"
+
+	"github.com/safing/portbase/database/record"
+
+	"github.com/safing/portbase/log"
+	"github.com/safing/tinker"
 )
 
 var (
-	rack            = make(map[string]*Bottle)
-	rackLock        sync.RWMutex
 	myBottle        *Bottle
 	lastBottleCheck time.Time
+
+	AllBottles    = "cache:spn/bottles/"
+	PublicBottles = AllBottles + "public/"
+	LocalBottles  = AllBottles + "local/"
+
+	db = database.NewInterface(nil)
 )
 
 type Bottle struct {
+	record.Base
 	sync.Mutex
 
 	PortID    []byte            `json:"i" bson:"i"` // public key
@@ -44,6 +53,59 @@ type Bottle struct {
 
 	FirstSeen  int64 `json:",omitempty" bson:",omitempty"`
 	LastUpdate int64 `json:",omitempty" bson:",omitempty"`
+}
+
+func GetPublicBottle(name string) (*Bottle, error) {
+	return Get(PublicBottles + name)
+}
+
+func GetLocalBottle(name string) (*Bottle, error) {
+	return Get(LocalBottles + name)
+}
+
+func EnsureBottle(r record.Record) (*Bottle, error) {
+	// unwrap
+	if r.IsWrapped() {
+		// only allocate a new struct, if we need it
+		new := &Bottle{}
+		err := record.Unwrap(r, new)
+		if err != nil {
+			return nil, err
+		}
+		return new, nil
+	}
+
+	// or adjust type
+	new, ok := r.(*Bottle)
+	if !ok {
+		return nil, fmt.Errorf("record not of type *Bottle, but %T", r)
+	}
+	return new, nil
+}
+
+func Get(key string) (*Bottle, error) {
+	r, err := db.Get(key)
+	if err != nil {
+		if err == database.ErrNotFound {
+			return nil, err
+		}
+		return nil, fmt.Errorf("failed to get bottle from database: %s", err)
+	}
+
+	return EnsureBottle(r)
+}
+
+func DeletePublicBottle(name string) error {
+	return db.Delete(PublicBottles + name)
+}
+
+func (b *Bottle) Save() error {
+	if !b.KeyIsSet() {
+		// FIXME: local bottles?
+		b.SetKey(PublicBottles + b.PortName)
+	}
+
+	return db.Put(b)
 }
 
 func (b *Bottle) String() string {

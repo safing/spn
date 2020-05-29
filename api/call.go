@@ -3,7 +3,7 @@ package api
 import (
 	"github.com/tevino/abool"
 
-	"github.com/Safing/safing-core/container"
+	"github.com/safing/portbase/container"
 )
 
 type Call struct {
