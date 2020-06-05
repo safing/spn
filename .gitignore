@@ -1,0 +1,49 @@
+# Compiled binaries
+spn
+spn.exe
+main
+main.exe
+
+# Dist dir
+dist
+
+# vendor dir
+vendor
+
+# testing data
+
+testing/simple/data
+
+# Compiled Object files, Static and Dynamic libs (Shared Objects)
+*.o
+*.a
+*.so
+
+# Folders
+_obj
+_test
+
+# Architecture specific extensions/prefixes
+*.[568vq]
+[568vq].out
+
+*.cgo1.go
+*.cgo2.c
+_cgo_defun.c
+_cgo_gotypes.go
+_cgo_export.*
+
+_testmain.go
+
+*.exe
+*.test
+*.prof
+
+# Output of the go coverage tool, specifically when used with LiteIDE
+*.out
+
+# OS specifics
+.DS_Store
+
+# Custom dev scripts
+win_dev_*
