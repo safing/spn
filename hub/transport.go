@@ -1,0 +1,94 @@
+package hub
+
+import (
+	"errors"
+	"fmt"
+	"net/url"
+	"strconv"
+	"strings"
+)
+
+// Examples:
+// "spn:17",
+// "smtp:25",
+// "smtp:587",
+// "imap:143",
+// "http:80",
+// "http://example.com:80/example", // HTTP (based): use full path for request
+// "https:443",
+// "ws:80",
+// "wss://example.com:443/spn",
+
+// Transport represents a "endpoint" that others can connect to. This allows for use of different protocols, ports and infrastructure integration.
+type Transport struct {
+	Protocol string
+	Domain   string
+	Port     uint16
+	Path     string
+}
+
+// ParseTransport parses a transport definition.
+func ParseTransport(definition string) (*Transport, error) {
+	u, err := url.Parse(definition)
+	if err != nil {
+		return nil, err
+	}
+
+	// check for invalid parts
+	if u.User != nil {
+		return nil, errors.New("user/pass is not allowed")
+	}
+	if u.Fragment != "" {
+		return nil, errors.New("fragment is not allowed")
+	}
+
+	// put into transport
+	t := &Transport{
+		Protocol: u.Scheme,
+		Domain:   u.Hostname(),
+		Path:     u.RequestURI(),
+	}
+
+	// parse port
+	portData := u.Port()
+	if portData == "" {
+		// no port available - it might be in u.Opaque
+		// u.Opaque holds both the port and possibly a path
+		portData = strings.SplitN(u.Opaque, "/", 2)[0] // get port
+		t.Path = strings.TrimPrefix(t.Path, portData)  // trim port from path
+		// check again for port
+		if portData == "" {
+			return nil, errors.New("missing port")
+		}
+	}
+	port, err := strconv.ParseUint(portData, 10, 16)
+	if err != nil {
+		return nil, errors.New("invalid port")
+	}
+	t.Port = uint16(port)
+
+	// check port
+	if t.Port == 0 {
+		return nil, errors.New("invalid port")
+	}
+
+	// remove root paths
+	if t.Path == "/" {
+		t.Path = ""
+	}
+
+	// check for protocol
+	if t.Protocol == "" {
+		return nil, errors.New("missing scheme/protocol")
+	}
+
+	return t, nil
+}
+
+// String returns the definition form of the transport.
+func (t *Transport) String() string {
+	if t.Domain != "" {
+		return fmt.Sprintf("%s://%s:%d%s", t.Protocol, t.Domain, t.Port, t.Path)
+	}
+	return fmt.Sprintf("%s:%d%s", t.Protocol, t.Port, t.Path)
+}
