@@ -1,54 +1,65 @@
 package ships
 
 import (
-	"bytes"
+	"context"
 	"net"
-	"strings"
 
-	"github.com/safing/portbase/log"
-	"github.com/xtaci/kcp-go"
+	"github.com/safing/spn/hub"
+	kcp "github.com/xtaci/kcp-go"
 )
 
-type KCPShipFactory struct{}
+// KCPShip is a ship that uses KCP.
+type KCPShip struct {
+	ShipBase
+}
 
-var (
-	KCPShipIdentifier = []byte("Port17 KCP")
-)
+// KCPPier is a pier that uses KCP.
+type KCPPier struct {
+	PierBase
+}
 
 func init() {
-	RegisterPacketShipFactory("KCP", &KCPShipFactory{})
+	Register("kcp", &Builder{
+		LaunchShip:    launchKCPShip,
+		EstablishPier: establishKCPPier,
+	})
 }
 
-func (factory *KCPShipFactory) SetSail(address string) (Ship, error) {
-	addr, err := net.ResolveUDPAddr("udp", address)
-	if err != nil {
-		return nil, err
-	}
-	conn, err := net.DialUDP("udp", nil, addr)
+func launchKCPShip(ctx context.Context, transport *hub.Transport, ip net.IP) (Ship, error) {
+	conn, err := kcp.Dial(net.JoinHostPort(ip.String(), portToA(transport.Port)))
 	if err != nil {
 		return nil, err
 	}
 
-	_, err = conn.Write(KCPShipIdentifier)
-	if err != nil {
-		return nil, err
-	}
-
-	log.Infof("port17: new ship (KCP) to %s docked.", address)
-	return NewKCPShip(conn, address, true)
+	ship := &KCPShip{}
+	ship.initBase(ctx, transport, true, conn)
+	return ship, nil
 }
 
-func (factory *KCPShipFactory) IdentifyShip(network string, firstPacket []byte, conn net.PacketConn, raddr net.Addr) (Ship, error) {
-	if strings.HasPrefix(network, "udp") && bytes.HasPrefix(firstPacket, KCPShipIdentifier) {
-		return NewKCPShip(conn, raddr.String(), false)
-	}
-	return nil, nil
-}
-
-func NewKCPShip(conn net.PacketConn, raddr string, mine bool) (Ship, error) {
-	kcpSession, err := kcp.NewConn(raddr, nil, 16, 16, conn)
+func establishKCPPier(ctx context.Context, transport *hub.Transport, dockingRequests chan *DockingRequest) (Pier, error) {
+	listener, err := kcp.Listen(net.JoinHostPort("", portToA(transport.Port)))
 	if err != nil {
 		return nil, err
 	}
-	return NewGenericShip("KCP", kcpSession, mine), nil
+
+	pier := &KCPPier{}
+	pier.initBase(
+		ctx,
+		transport,
+		listener,
+		pier.dockShip,
+		dockingRequests,
+	)
+	return pier, nil
+}
+
+func (pier *KCPPier) dockShip() (Ship, error) {
+	conn, err := pier.listener.Accept()
+	if err != nil {
+		return nil, err
+	}
+
+	ship := &KCPShip{}
+	ship.initBase(pier.ctx, pier.transport, false, conn)
+	return ship, nil
 }

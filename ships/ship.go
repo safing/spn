@@ -1,98 +1,184 @@
 package ships
 
 import (
+	"context"
 	"fmt"
 	"net"
-	"sync"
+	"time"
 
-	"github.com/safing/portbase/log"
+	"github.com/safing/spn/hub"
+	"github.com/tevino/abool"
 )
 
-var (
-	streamShipRegistry     = make(map[string]StreamShipFactory)
-	streamShipRegistryLock sync.RWMutex
-	packetShipRegistry     = make(map[string]PacketShipFactory)
-	packetShipRegistryLock sync.RWMutex
+const (
+	defaultBufSize = 4096
 )
 
+// Ship represents a network layer connection.
 type Ship interface {
-	Load(data []byte) (ok bool, err error)
-	UnloadTo(buf []byte) (n int, ok bool, err error)
-	IsMine() bool
+	// String returns a human readable informational summary about the ship.
 	String() string
+
+	// Transport returns the transport used for this ship.
+	Transport() *hub.Transport
+
+	// IsMine returns whether the ship was launched from here.
+	IsMine() bool
+
+	// Load loads data into the ship - ie. sends the data via the connection. It returns the amount of data written, a boolean if everything is ok and an optional error if something is not okay and needs to be reported. If ok is false, stop using the ship.
+	Load(data []byte) (ok bool, err error)
+
+	// UnloadTo unloads data from the ship - ie. receives data from the connection - puts it into the buf. It returns the amount of data written, a boolean if everything is ok and an optional error if something is not okay and needs to be reported. If ok is false, stop using the ship.
+	UnloadTo(buf []byte) (n int, ok bool, err error)
+
+	// LocalAddr returns the underlying local net.Addr of the connection.
+	LocalAddr() net.Addr
+
+	// RemoteAddr returns the underlying remote net.Addr of the connection.
+	RemoteAddr() net.Addr
+
+	// Sink closes the underlying connection and cleans up any related resources.
 	Sink()
 }
 
-type StreamShipFactory interface {
-	SetSail(address string) (Ship, error)
-	IdentifyShip(network string, firstPacket []byte, conn net.Conn) (Ship, error)
+// ShipBase implements common functions to comply with the Ship interface.
+type ShipBase struct {
+	ctx          context.Context
+	transport    *hub.Transport
+	mine         bool
+	conn         net.Conn
+	bufSize      int
+	sinking      *abool.AtomicBool
+	initial      []byte
+	unloadErrCnt int
+	loadErrCnt   int
 }
 
-type PacketShipFactory interface {
-	SetSail(address string) (Ship, error)
-	IdentifyShip(network string, firstPacket []byte, conn net.PacketConn, raddr net.Addr) (Ship, error)
+func (ship *ShipBase) initBase(
+	ctx context.Context,
+	transport *hub.Transport,
+	mine bool,
+	conn net.Conn,
+) {
+	// populate
+	ship.ctx = ctx
+	ship.transport = transport
+	ship.mine = mine
+	ship.conn = conn
+
+	// init
+	ship.sinking = abool.New()
+
+	// check buf size
+	if ship.bufSize == 0 {
+		ship.bufSize = defaultBufSize
+	}
 }
 
-func RegisterStreamShipFactory(name string, factory StreamShipFactory) {
-	streamShipRegistryLock.Lock()
-	streamShipRegistry[name] = factory
-	streamShipRegistryLock.Unlock()
+// String returns a human readable informational summary about the ship.
+func (ship *ShipBase) String() string {
+	if ship.mine {
+		return fmt.Sprintf("<Ship to %s using %s>", ship.RemoteAddr(), ship.transport)
+	}
+	return fmt.Sprintf("<Ship from %s using %s>", ship.RemoteAddr(), ship.transport)
 }
 
-func RegisterPacketShipFactory(name string, factory PacketShipFactory) {
-	packetShipRegistryLock.Lock()
-	packetShipRegistry[name] = factory
-	packetShipRegistryLock.Unlock()
+// Transport returns the transport used for this ship.
+func (ship *ShipBase) Transport() *hub.Transport {
+	return ship.transport
 }
 
-func IdentifyStreamShip(network string, firstPacket []byte, conn net.Conn) Ship {
-	streamShipRegistryLock.RLock()
-	defer streamShipRegistryLock.RUnlock()
-	for name, factory := range streamShipRegistry {
-		ship, err := factory.IdentifyShip(network, firstPacket, conn)
+// IsMine returns whether the ship was launched from here.
+func (ship *ShipBase) IsMine() bool {
+	return ship.mine
+}
+
+// Load loads data into the ship - ie. sends the data via the connection. It returns the amount of data written, a boolean if everything is ok and an optional error if something is not okay and needs to be reported. If ok is false, stop using the ship.
+func (ship *ShipBase) Load(data []byte) (ok bool, err error) {
+	// log.Debugf("ship: loading %s", string(data))
+	// quit
+	if len(data) == 0 {
+		if ship.sinking.SetToIf(false, true) {
+			ship.conn.Close()
+		}
+		return false, nil
+	}
+	// send all data
+	for len(data) != 0 {
+		n, err := ship.conn.Write(data)
 		if err != nil {
-			log.Warningf("port17: failed to dock %s-Ship from %s: %s", name, conn.RemoteAddr().String(), err)
-			return nil
+			if ship.sinking.IsSet() {
+				return false, nil
+			}
+			if nerr, ok := err.(net.Error); ok && (nerr.Temporary()) {
+				time.Sleep(time.Millisecond)
+				ship.loadErrCnt += 1
+				if ship.loadErrCnt > 1000 {
+					// fail if temporary error persists
+					return false, err
+				}
+				continue
+			}
+			if ship.sinking.SetToIf(false, true) {
+				ship.conn.Close()
+			}
+			return false, err
 		}
-		if ship != nil {
-			log.Infof("port17: new %s docked.", ship)
-			return ship
-		}
+		data = data[n:]
 	}
-	return nil
+	return true, nil
 }
 
-func IdentifyPacketShip(network string, firstPacket []byte, conn net.PacketConn, raddr net.Addr) Ship {
-	packetShipRegistryLock.RLock()
-	defer packetShipRegistryLock.RUnlock()
-	for name, factory := range packetShipRegistry {
-		ship, err := factory.IdentifyShip(network, firstPacket, conn, raddr)
-		if err != nil {
-			log.Warningf("port17: failed to dock %s from %s: %s", name, raddr.String(), err)
-			return nil
+// UnloadTo unloads data from the ship - ie. receives data from the connection - puts it into the buf. It returns the amount of data written, a boolean if everything is ok and an optional error if something is not okay and needs to be reported. If ok is false, stop using the ship.
+func (ship *ShipBase) UnloadTo(buf []byte) (n int, ok bool, err error) {
+	if ship.initial != nil {
+		// log.Debugf("ship: unloading initial %s", string(ship.initial))
+		copy(buf, ship.initial)
+		if len(buf) < len(ship.initial) {
+			ship.initial = ship.initial[len(buf):]
+			return len(buf), true, nil
 		}
-		if ship != nil {
-			log.Infof("port17: new ship (%s) from %s docked.", name, raddr.String())
-			return ship
-		}
+		defer func() {
+			ship.initial = nil
+		}()
+		return len(ship.initial), true, nil
 	}
-	return nil
+	n, err = ship.conn.Read(buf)
+	// log.Debugf("ship: unloading %v", string(buf[:n]))
+	if err != nil {
+		if ship.sinking.IsSet() {
+			return 0, false, nil
+		}
+		if nerr, ok := err.(net.Error); ok && (nerr.Temporary()) {
+			time.Sleep(time.Millisecond)
+			ship.unloadErrCnt += 1
+			if ship.unloadErrCnt > 1000 {
+				// fail if temporary error persists
+				return 0, false, err
+			}
+			return 0, true, nil
+		}
+		if ship.sinking.SetToIf(false, true) {
+			ship.conn.Close()
+		}
+		return 0, false, err
+	}
+	return n, true, nil
 }
 
-func SetSail(shipName, address string) (Ship, error) {
-	streamShipRegistryLock.RLock()
-	defer streamShipRegistryLock.RUnlock()
-	streamFactory, ok := streamShipRegistry[shipName]
-	if ok {
-		return streamFactory.SetSail(address)
-	}
+// LocalAddr returns the underlying local net.Addr of the connection.
+func (ship *ShipBase) LocalAddr() net.Addr {
+	return ship.conn.LocalAddr()
+}
 
-	packetShipRegistryLock.RLock()
-	defer packetShipRegistryLock.RUnlock()
-	packetFactory, ok := packetShipRegistry[shipName]
-	if ok {
-		return packetFactory.SetSail(address)
-	}
+// RemoteAddr returns the underlying remote net.Addr of the connection.
+func (ship *ShipBase) RemoteAddr() net.Addr {
+	return ship.conn.RemoteAddr()
+}
 
-	return nil, fmt.Errorf("port17/ships: could not set sail: unknown ship type %s", shipName)
+// Sink closes the underlying connection and cleans up any related resources.
+func (ship *ShipBase) Sink() {
+	if ship.sinking.SetToIf(false, true) {
+		_ = ship.conn.Close()
+	}
 }
