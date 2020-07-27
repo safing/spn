@@ -21,14 +21,12 @@ import (
 var (
 	updateLock sync.Mutex
 
-	// hubMsgRequirements defines which security attributes message need to have
-	// Removing RecipientAuthentication and Confidentiality leaves us with SenderAuthentication and Integrity.
+	// hubMsgRequirements defines which security attributes message need to have.
 	hubMsgRequirements = jess.NewRequirements().
-				Remove(jess.RecipientAuthentication).
-				Remove(jess.Confidentiality).
-				Remove(jess.Integrity)
-		// TODO: SenderAuthentication signs the whole thing, so Integrity is actually there
-		// Investigate how to make this clearer.
+				Remove(jess.RecipientAuthentication). // Recipient don't need a private key.
+				Remove(jess.Confidentiality).         // Message contents are out in the open.
+				Remove(jess.Integrity)                // Only applies to decryption.
+	// SenderAuthentication provides pre-decryption integrity. That is all we need.
 
 	validateHubIP func(hub *Hub, ip net.IP) error
 
@@ -87,7 +85,7 @@ func SignHubMsg(msg []byte, env *jess.Envelope, enableTofu bool) ([]byte, error)
 }
 
 // OpenHubMsg opens a signed hub msg and verifies the signature using the local database. If TOFU is enabled, the signature is always accepted, if valid.
-func OpenHubMsg(data []byte, scope uint8, tofu bool) (msg []byte, sendingHub *Hub, err error) {
+func OpenHubMsg(data []byte, scope Scope, tofu bool) (msg []byte, sendingHub *Hub, err error) {
 	letter, err := jess.LetterFromDSD(data)
 	if err != nil {
 		return nil, nil, fmt.Errorf("malformed letter: %s", err)
@@ -192,7 +190,7 @@ func (ha *HubAnnouncement) Export(env *jess.Envelope) ([]byte, error) {
 }
 
 // ImportAnnouncement imports an announcement if it passes all the checks.
-func ImportAnnouncement(data []byte, scope uint8) error {
+func ImportAnnouncement(data []byte, scope Scope) error {
 	updateLock.Lock()
 	defer updateLock.Unlock()
 
@@ -291,8 +289,8 @@ func ImportAnnouncement(data []byte, scope uint8) error {
 		return errors.New("no valid transports present")
 	}
 
-	// validate IP ownership if hub
-	if conf.HubMode() {
+	// validate IP ownership if public hub
+	if conf.PublicHub() {
 		if validateHubIP == nil {
 			return errors.New("IP address validation not configured")
 		}
@@ -315,8 +313,8 @@ func ImportAnnouncement(data []byte, scope uint8) error {
 	hub.Lock()
 	hub.Info = announcement
 
-	if hub.FirstSeen == 0 {
-		hub.FirstSeen = time.Now().Unix()
+	if hub.FirstSeen.IsZero() {
+		hub.FirstSeen = time.Now().UTC()
 	}
 	hub.Unlock()
 
@@ -335,7 +333,7 @@ func (hs *HubStatus) Export(env *jess.Envelope) ([]byte, error) {
 }
 
 // ImportStatus imports a status update if it passes all the checks.
-func ImportStatus(data []byte, scope uint8) error {
+func ImportStatus(data []byte, scope Scope) error {
 	updateLock.Lock()
 	defer updateLock.Unlock()
 
@@ -391,30 +389,31 @@ func ImportStatus(data []byte, scope uint8) error {
 }
 
 // CreateHubSignet creates a signet with the correct ID for usage as a Hub Identity.
-func CreateHubSignet(toolID string, securityLevel int) (*jess.Signet, error) {
-	private, err := jess.GenerateSignet(toolID, securityLevel)
+func CreateHubSignet(toolID string, securityLevel int) (private, public *jess.Signet, err error) {
+	private, err = jess.GenerateSignet(toolID, securityLevel)
 	if err != nil {
-		return nil, fmt.Errorf("failed to generate key: %s", err)
+		return nil, nil, fmt.Errorf("failed to generate key: %s", err)
 	}
 	err = private.StoreKey()
 	if err != nil {
-		return nil, fmt.Errorf("failed to store private key: %s", err)
+		return nil, nil, fmt.Errorf("failed to store private key: %s", err)
 	}
 
 	// get public key for creating the Hub ID
-	public, err := private.AsRecipient()
+	public, err = private.AsRecipient()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get public key: %s", err)
+		return nil, nil, fmt.Errorf("failed to get public key: %s", err)
 	}
 	err = public.StoreKey()
 	if err != nil {
-		return nil, fmt.Errorf("failed to store public key: %s", err)
+		return nil, nil, fmt.Errorf("failed to store public key: %s", err)
 	}
 
-	// assign ID
+	// assign IDs
 	private.ID = createHubID(public.Scheme, public.Key)
+	public.ID = private.ID
 
-	return private, nil
+	return private, public, nil
 }
 
 func createHubID(scheme string, pubkey []byte) string {

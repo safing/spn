@@ -3,17 +3,24 @@ package hub
 import (
 	"net"
 	"sync"
+	"time"
 
 	"github.com/safing/jess"
 	"github.com/safing/portbase/database/record"
 )
 
+// Scope is the network scope a Hub can be in.
+type Scope uint8
+
 const (
+	// ScopeInvalid defines an invalid scope
+	ScopeInvalid Scope = 0
+
 	// ScopeLocal identifies local Hubs
-	ScopeLocal = 1
+	ScopeLocal Scope = 1
 
 	// ScopePublic identifies public Hubs
-	ScopePublic = 2
+	ScopePublic Scope = 2
 )
 
 // Hub represents a network node in the SPN.
@@ -24,13 +31,13 @@ type Hub struct {
 	ID        string
 	PublicKey *jess.Signet
 
-	Scope  uint8
+	Scope  Scope
 	Info   *HubAnnouncement
 	Status *HubStatus
 
 	// activeRoute
 
-	FirstSeen int64
+	FirstSeen time.Time
 }
 
 // HubAnnouncement is the main message type to publish Hub Information. This only changes if updated manually.
@@ -44,7 +51,7 @@ type HubAnnouncement struct {
 	// PublicKey *jess.Signet
 	// PublicKey // if not part of signature
 	// Signature *jess.Letter
-	Timestamp int64
+	Timestamp int64 // Unix timestamp in seconds
 
 	// Node Information
 	Name           string // name of the node
@@ -85,4 +92,50 @@ type HubAnnouncement struct {
 // String returns a human-readable representation of a Hub.
 func (h *Hub) String() string {
 	return "<Hub " + h.ID + ">"
+}
+
+// Equal returns whether the given Announcements are equal.
+func (a *HubAnnouncement) Equal(b *HubAnnouncement) bool {
+	switch {
+	case a.ID != b.ID:
+		return false
+	case a.Timestamp != b.Timestamp:
+		return false
+	case a.Name != b.Name:
+		return false
+	case a.ContactAddress != b.ContactAddress:
+		return false
+	case a.ContactService != b.ContactService:
+		return false
+	case !equalStringSlice(a.Hosters, b.Hosters):
+		return false
+	case a.Datacenter != b.Datacenter:
+		return false
+	case !a.IPv4.Equal(b.IPv4):
+		return false
+	case !a.IPv6.Equal(b.IPv6):
+		return false
+	case !equalStringSlice(a.Transports, b.Transports):
+		return false
+	case !equalStringSlice(a.Entry, b.Entry):
+		return false
+	case !equalStringSlice(a.Exit, b.Exit):
+		return false
+	default:
+		return true
+	}
+}
+
+func equalStringSlice(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+
+	for i := 0; i < len(a); i++ {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+
+	return true
 }

@@ -22,9 +22,9 @@ type HubStatus struct {
 
 // HubKey represents a semi-ephemeral public key used for 0-RTT connection establishment.
 type HubKey struct {
-	Scheme     string
-	Key        []byte
-	ValidUntil int64
+	Scheme  string
+	Key     []byte
+	Expires int64
 }
 
 // HubConnection represents a link to another Hub.
@@ -94,4 +94,32 @@ func (h *Hub) RemoveConnection(hubID string) error {
 	}
 
 	return nil
+}
+
+// Equal returns whether the HubConnection is equal to the given one.
+func (c *HubConnection) Equal(other *HubConnection) bool {
+	switch {
+	case c.ID != other.ID:
+		return false
+	case c.Capacity != other.Capacity:
+		return false
+	case c.Latency != other.Latency:
+		return false
+	}
+	return true
+}
+
+// ConnectionsEqual returns whether the given []*HubConnection are equal.
+func ConnectionsEqual(a, b []*HubConnection) bool {
+	if len(a) != len(b) {
+		return false
+	}
+
+	for i, c := range a {
+		if !c.Equal(b[i]) {
+			return false
+		}
+	}
+
+	return true
 }

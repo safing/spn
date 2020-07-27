@@ -5,13 +5,13 @@ import (
 )
 
 var (
-	enableHub = abool.New()
+	publicHub = abool.New()
 )
 
-func HubMode() bool {
-	return enableHub.IsSet()
+func PublicHub() bool {
+	return publicHub.IsSet()
 }
 
-func EnableHubMode(enable bool) {
-	enableHub.SetTo(enable)
+func EnablePublicHub(enable bool) {
+	publicHub.SetTo(enable)
 }

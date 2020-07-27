@@ -32,7 +32,7 @@ func SetNavigatorAccess(fn func(id string) *Hub) {
 }
 
 // GetHub get a Hub from the database - or the navigator, if configured.
-func GetHub(scope uint8, id string) (*Hub, error) {
+func GetHub(scope Scope, id string) (*Hub, error) {
 	if getFromNavigator != nil {
 		hub := getFromNavigator(id)
 		if hub != nil {
@@ -93,7 +93,7 @@ func (hub *Hub) Save() error {
 }
 
 // RemoveHub deletes a Hub from the database.
-func RemoveHub(scope uint8, id string) error {
+func RemoveHub(scope Scope, id string) error {
 	key, ok := makeHubDBKey(scope, id)
 	if !ok {
 		return errors.New("invalid scope")
@@ -101,7 +101,7 @@ func RemoveHub(scope uint8, id string) error {
 	return db.Delete(key)
 }
 
-func makeHubDBKey(scope uint8, id string) (key string, ok bool) {
+func makeHubDBKey(scope Scope, id string) (key string, ok bool) {
 	switch scope {
 	case ScopeLocal:
 		return LocalHubs + id, true
