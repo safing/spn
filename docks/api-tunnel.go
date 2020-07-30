@@ -1,4 +1,4 @@
-package core
+package docks
 
 import (
 	"fmt"
@@ -14,10 +14,10 @@ import (
 )
 
 type TunnelRequest struct {
-	Domain   string            `json:"d,omitempty", bson:"d,omitempty"`
-	IP       net.IP            `json:"ip,omitempty", bson:"ip,omitempty"`
-	Protocol packet.IPProtocol `json:"pr,omitempty", bson:"pr,omitempty"`
-	Port     uint16            `json:"po,omitempty", bson:"po,omitempty"`
+	Domain   string
+	IP       net.IP
+	Protocol packet.IPProtocol
+	Port     uint16
 }
 
 func (request *TunnelRequest) Network() string {

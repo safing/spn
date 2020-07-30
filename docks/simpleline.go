@@ -1,4 +1,4 @@
-package core
+package docks
 
 import (
 	"github.com/safing/portbase/container"
@@ -35,8 +35,8 @@ func (line *SimpleConveyorLine) AddConveyor(conveyor Conveyor) {
 	if line.nextToShore == nil {
 		return
 	}
-	newToShore := make(chan *container.Container, 0)
-	newFromShore := make(chan *container.Container, 0)
+	newToShore := make(chan *container.Container)
+	newFromShore := make(chan *container.Container)
 	conveyor.AttachConveyorBelts(line.ID, line.nextToShore, line.nextFromShore, newFromShore, newToShore)
 	line.nextToShore = newToShore
 	line.nextFromShore = newFromShore

@@ -21,6 +21,9 @@ const (
 
 	// ScopePublic identifies public Hubs
 	ScopePublic Scope = 2
+
+	// ScopeTest identifies Hubs for testing
+	ScopeTest Scope = 0xFF
 )
 
 // Hub represents a network node in the SPN.
@@ -123,6 +126,22 @@ func (a *HubAnnouncement) Equal(b *HubAnnouncement) bool {
 		return false
 	default:
 		return true
+	}
+}
+
+// String returns the string representation of the scope.
+func (s Scope) String() string {
+	switch s {
+	case ScopeInvalid:
+		return "invalid"
+	case ScopeLocal:
+		return "local"
+	case ScopePublic:
+		return "public"
+	case ScopeTest:
+		return "test"
+	default:
+		return "unknown"
 	}
 }
 

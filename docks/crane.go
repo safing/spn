@@ -1,21 +1,23 @@
-package core
+package docks
 
 import (
+	"context"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 
 	"github.com/tevino/abool"
 
+	"github.com/safing/jess"
 	"github.com/safing/portbase/container"
 	"github.com/safing/portbase/formats/varint"
 	"github.com/safing/portbase/log"
 	"github.com/safing/portbase/rng"
-	"github.com/safing/spn/bottle"
-	"github.com/safing/spn/identity"
+	"github.com/safing/spn/cabin"
+	"github.com/safing/spn/hub"
 	"github.com/safing/spn/ships"
-	"github.com/safing/tinker"
 )
 
 // Crane Status Options
@@ -32,21 +34,28 @@ type Crane struct {
 	ID      string
 	status  int8
 
-	tinker       *tinker.Tinker
-	tinkerLock   sync.Mutex
-	clientBottle *bottle.Bottle
-	serverBottle *bottle.Bottle
-	stopped      *abool.AtomicBool
-	stop         chan struct{}
+	// involved Hubs
+	identity     *cabin.Identity
+	connectedHub *hub.Hub
 
+	// link encryption
+	session     *jess.Session
+	sessionLock sync.Mutex
+
+	// controller
+	Controller     *CraneController
+	fromController chan *container.Container
+
+	// lifecycle management
+	stopped *abool.AtomicBool
+	stop    chan struct{}
+
+	// data lanes
 	ship      ships.Ship
 	fromShip  chan *container.Container
 	toShip    chan *container.Container
 	fromShore chan *container.Container
 	toShore   chan *container.Container
-
-	Controller     *CraneController
-	fromController chan *container.Container
 
 	lines      map[uint32]*ConveyorLine
 	linesLock  sync.RWMutex
@@ -55,22 +64,22 @@ type Crane struct {
 	maxContainerSize int
 }
 
-func NewCrane(ship ships.Ship, serverBottle *bottle.Bottle) (*Crane, error) {
-
-	if serverBottle == nil {
-		return nil, errors.New("tried to create crane without serverBottle")
-	}
-
+func NewCrane(ship ships.Ship, id *cabin.Identity, connectedHub *hub.Hub) (*Crane, error) {
 	randomID, err := rng.Bytes(3)
 	if err != nil {
 		return nil, err
 	}
 
 	new := &Crane{
-		ID:           hex.EncodeToString(randomID),
-		serverBottle: serverBottle,
-		stopped:      abool.NewBool(false),
-		stop:         make(chan struct{}),
+		version: 1,
+		ID:      hex.EncodeToString(randomID),
+
+		identity:     id,
+		connectedHub: connectedHub,
+
+		fromController: make(chan *container.Container),
+		stopped:        abool.NewBool(false),
+		stop:           make(chan struct{}),
 
 		ship:      ship,
 		fromShip:  make(chan *container.Container, 100),
@@ -78,24 +87,17 @@ func NewCrane(ship ships.Ship, serverBottle *bottle.Bottle) (*Crane, error) {
 		fromShore: make(chan *container.Container, 100),
 		toShore:   make(chan *container.Container, 100),
 
-		fromController: make(chan *container.Container, 0),
-
 		lines: make(map[uint32]*ConveyorLine),
 
 		maxContainerSize: 5000,
 	}
 	new.Controller = NewCraneController(new, new.fromController)
 
-	if ship.IsMine() {
-		if hooksActive.IsSet() {
-			new.clientBottle = identity.Get()
-		}
-	} else {
+	if !ship.IsMine() {
 		new.nextLineID = 1
 	}
 
 	return new, nil
-
 }
 
 func (crane *Crane) getNextLineID() uint32 {
@@ -113,7 +115,7 @@ func (crane *Crane) getNextLineID() uint32 {
 	}
 }
 
-func (crane *Crane) unloader() {
+func (crane *Crane) unloader(ctx context.Context) error {
 
 	lenBufLen := 5
 	buf := make([]byte, 0, 5)
@@ -127,10 +129,12 @@ func (crane *Crane) unloader() {
 		n, ok, err := crane.ship.UnloadTo(buf[len(buf):cap(buf)])
 		if !ok {
 			if err != nil {
-				log.Warningf("crane %s: failed to unload ship: %s", crane.ID, err)
-				crane.Stop()
+				if !crane.stopped.IsSet() {
+					log.Warningf("crane %s: failed to unload ship: %s", crane.ID, err)
+					crane.Stop()
+				}
 			}
-			return
+			return nil
 		}
 		// set correct used buf length
 		buf = buf[:len(buf)+n]
@@ -146,18 +150,22 @@ func (crane *Crane) unloader() {
 			// unpack uvarint
 			uMsgLen, n, err := varint.Unpack32(buf)
 			if err != nil {
-				log.Warningf("crane %s: failed to read msg length: %s", crane.ID, err)
-				crane.Stop()
-				return
+				if !crane.stopped.IsSet() {
+					log.Warningf("crane %s: failed to read msg length: %s", crane.ID, err)
+					crane.Stop()
+				}
+				return nil
 			}
 			msgLen = int(uMsgLen)
 			// log.Debugf("crane %s: next msg length is %d", crane.ID, msgLen)
 
 			// check sanity
 			if msgLen > maxMsgLen {
-				log.Warningf("crane %s: invalid msg length greater than %d received: %d", crane.ID, maxMsgLen, msgLen)
-				crane.Stop()
-				return
+				if !crane.stopped.IsSet() {
+					log.Warningf("crane %s: invalid msg length greater than %d received: %d", crane.ID, maxMsgLen, msgLen)
+					crane.Stop()
+				}
+				return nil
 			}
 
 			// copy leftovers to new msg buf
@@ -178,90 +186,139 @@ func (crane *Crane) unloader() {
 	}
 }
 
-func (crane *Crane) Initialize() {
-	log.Infof("port17: starting to set up crane %s for %s", crane.ID, crane.ship)
+func (crane *Crane) Start() error {
+	log.Infof("spn/docks: starting crane %s for %s", crane.ID, crane.ship)
 
-	go crane.unloader()
-
-	// setup
-	var tk *tinker.Tinker
+	module.StartWorker("crane unloader", crane.unloader)
+	module.StartWorker("crane loader", crane.loader)
 
 	if crane.ship.IsMine() {
-		// setup tinker
-		tk = tinker.NewTinker(tinker.RecommendedNetwork).CommClient().NoSelfAuth()
-
-		// TODO: randomly select a correct key
-		keyID, validKey := crane.serverBottle.GetValidKey()
-		if validKey == nil {
-			log.Warningf("crane %s: failed to initialize: server bottle does not have any valid keys", crane.ID)
-			crane.Stop()
-			return
+		if crane.connectedHub == nil {
+			return errors.New("cannot start outgoing crane without connected Hub")
 		}
-		tk.SupplyAuthenticatedServerExchKey(validKey.Key)
 
-		_, err := tk.Init()
+		// select a public key of connected hub
+		s, err := crane.connectedHub.SelectSignet()
 		if err != nil {
-			log.Warningf("crane %s: failed to create tinker: %s", crane.ID, err)
-			crane.Stop()
-			return
+			return fmt.Errorf("failed to select signet: %w", err)
 		}
 
-		// send Initializer
-		init := NewInitializer()
-		init.TinkerTools = tinker.RecommendedNetwork
-		init.KeyexIDs = []int{keyID}
-		packedInit, err := init.Pack()
+		// check for status request
+		// TODO: find a better way
+		// data := c.CompileData()
+		// if len(data) >= 1 && data[0] = 0x7F {
+		// 	// 0x7F is the highest single-byte varint
+		// 	statusData, err := crane.identity.ExportStatus()
+		// 	if err != nil {
+		// 		return err
+		// 	}
+		// 	crane.toShip <- container.New(statusData)
+
+		// 	// receive next message
+		// 	c = <-crane.fromShip
+		// 	data = c.CompileData()
+		// }
+
+		// create envelope
+		env := jess.NewUnconfiguredEnvelope()
+		env.SuiteID = jess.SuiteWireV1
+		env.Recipients = []*jess.Signet{s}
+
+		// do not encrypt directly, rather get session for future use, then encrypt
+		crane.session, err = env.WireCorrespondence(nil)
 		if err != nil {
-			log.Warningf("crane %s: failed to pack initializer: %s", crane.ID, err)
-			crane.Stop()
-			return
+			return fmt.Errorf("failed to create session: %w", err)
 		}
-		ok, err := crane.ship.Load(varint.PrependLength(packedInit))
+
+		// get setup package from controller
+		data := crane.Controller.getDockingRequest()
+
+		// encrypt
+		letter, err := crane.session.Close(data)
+		if err != nil {
+			return fmt.Errorf("failed to encrypt initial packet: %w", err)
+		}
+
+		fmt.Printf("out: version=%d\n", letter.Version)
+
+		// serialize
+		c, err := letter.ToWire()
+		if err != nil {
+			return fmt.Errorf("failed to pack initial packet: %w", err)
+		}
+
+		fmt.Printf("out: wireData=%v\n", c.CompileData())
+
+		// manually send docking request
+		c.PrependLength()
+		ok, err := crane.ship.Load(c.CompileData())
+		if err != nil {
+			return fmt.Errorf("ship sank: %w", err)
+		}
 		if !ok {
-			if err != nil {
-				log.Warningf("crane %s: failed to load ship with initializer: %s", crane.ID, err)
-				crane.Stop()
-			}
-			return
+			return errors.New("ship sank")
 		}
+
 	} else {
-		// receive Initializer
+		if crane.identity == nil {
+			return errors.New("cannot start incoming crane without designated identity")
+		}
+
+		// receive first packet
 		c := <-crane.fromShip
-		init, err := UnpackInitializer(c.CompileData())
-		if err != nil {
-			log.Warningf("crane %s: failed to unpack initializer: %s", crane.ID, err)
-			crane.Stop()
-			return
+
+		// check for status request
+		// TODO: find a better way
+		data := c.CompileData()
+		if len(data) >= 1 && data[0] == 0x7F {
+			// 0x7F is the highest single-byte varint
+			statusData, err := crane.identity.ExportStatus()
+			if err != nil {
+				return err
+			}
+			crane.toShip <- container.New(statusData)
+
+			// receive next message
+			c = <-crane.fromShip
+			data = c.CompileData()
 		}
-		crane.version = init.portVersion
 
-		// setup tinker
-		tk = tinker.NewTinker(init.TinkerTools).CommServer().NoRemoteAuth()
+		fmt.Printf("in: wireData=%v\n", data)
 
-		// TODO: control keys with initializer
-		crane.serverBottle.Lock()
-		for _, keyID := range init.KeyexIDs {
-			tk.SupplyAuthenticatedServerExchKey(crane.serverBottle.Keys[keyID].Key)
-		}
-		crane.serverBottle.Unlock()
-
-		_, err = tk.Init()
+		// parse packet
+		letter, err := jess.LetterFromWireData(data)
 		if err != nil {
-			log.Warningf("crane %s: failed to create tinker: %s", crane.ID, err)
-			crane.Stop()
-			return
+			return fmt.Errorf("failed to parse initial packet: %w", err)
+		}
+
+		fmt.Printf("in: version=%d\n", letter.Version)
+
+		// do not decrypt directly, rather get session for future use, then open
+		crane.session, err = letter.WireCorrespondence(crane.identity)
+		if err != nil {
+			return fmt.Errorf("failed to create session: %w", err)
+		}
+
+		// decrypt message
+		data, err = crane.session.Open(letter)
+		if err != nil {
+			return fmt.Errorf("failed to decrypt initial packet: %w", err)
+		}
+
+		// crane setup
+		err = crane.Controller.handleDockingRequest(container.New(data))
+		if err != nil {
+			return fmt.Errorf("failed to initialize crane controller: %w", err)
 		}
 	}
 
-	crane.tinker = tk
-	log.Infof("port17: crane %s for %s successfully set up", crane.ID, crane.ship)
+	log.Infof("spn/docks: crane %s for %s operational", crane.ID, crane.ship)
 
-	go crane.handler()
-	go crane.loader()
-
+	module.StartWorker("crane handler", crane.handler)
+	return nil
 }
 
-func (crane *Crane) handler() {
+func (crane *Crane) handler(ctx context.Context) error {
 
 	var newShipmentData []byte
 	shipment := container.NewContainer()
@@ -276,39 +333,45 @@ func (crane *Crane) handler() {
 handling:
 	for {
 		select {
+		case <-ctx.Done():
+			crane.Stop()
+			return nil
 		case <-crane.stop:
-			return
+			return nil
 		case c := <-crane.fromShip:
 
 			// log.Debugf("crane %s: before decrypt: %v ... %v", crane.ID, c.CompileData()[:10], c.CompileData()[c.Length()-10:])
 
-			if crane.tinker != nil {
-				var err error
-				crane.tinkerLock.Lock()
-				newShipmentData, err = crane.tinker.Decrypt(c.CompileData())
-				crane.tinkerLock.Unlock()
+			crane.sessionLock.Lock()
+			if crane.session != nil {
+				// parse packet
+				letter, err := jess.LetterFromWireData(c.CompileData())
+				if err == nil {
+					newShipmentData, err = crane.session.Open(letter)
+				}
 				if err != nil {
-					log.Warningf("crane %s: failed to decrypt shipment @ %d: %s", crane.ID, cnt, err)
+					log.Warningf("spn/docks: crane %s failed to decrypt shipment @ %d: %s", crane.ID, cnt, err)
 					crane.Stop()
-					return
+					return nil
 				}
 				cnt++
 			} else {
 				newShipmentData = c.CompileData()
 			}
+			crane.sessionLock.Unlock()
 
 			// get real data part
 			realDataLen, n, err := varint.Unpack32(newShipmentData)
 			if err != nil {
 				log.Warningf("crane %s: could not get length of real data: %s", crane.ID, err)
 				crane.Stop()
-				return
+				return nil
 			}
 			dataEnd := n + int(realDataLen)
 			if dataEnd > len(newShipmentData) {
 				log.Warningf("crane %s: length of real data is greater than available data: %d", crane.ID, realDataLen)
 				crane.Stop()
-				return
+				return nil
 			}
 
 			shipment.Append(newShipmentData[n:dataEnd])
@@ -327,7 +390,7 @@ handling:
 					if err != nil {
 						log.Warningf("crane %s: failed to read container length: %s", crane.ID, err)
 						crane.Stop()
-						return
+						return nil
 					}
 					nextContainerLen = int(uContainerLen)
 
@@ -335,7 +398,7 @@ handling:
 					if nextContainerLen > maxContainerLen {
 						log.Warningf("crane %s: invalid container length (greater than %d) received: %d", crane.ID, maxContainerLen, nextContainerLen)
 						crane.Stop()
-						return
+						return nil
 					}
 
 				}
@@ -351,7 +414,7 @@ handling:
 					if err != nil {
 						log.Warningf("crane %s: could not get line ID from container: %s", crane.ID, err)
 						crane.Stop()
-						return
+						return nil
 					}
 
 					if lineID == 0 {
@@ -359,7 +422,7 @@ handling:
 						if err != nil {
 							log.Warningf("crane %s: failed to handle controller msg: %s", crane.ID, err)
 							crane.Stop()
-							return
+							return nil
 						}
 					} else {
 						crane.linesLock.RLock()
@@ -395,7 +458,7 @@ handling:
 
 }
 
-func (crane *Crane) loader() {
+func (crane *Crane) loader(ctx context.Context) error {
 
 	shipmentBufSize := 4096
 	shipmentBufLengthSize := 2    // we need to bytes to encode 4094 with varint
@@ -419,8 +482,10 @@ func (crane *Crane) loader() {
 		if nextContainer == nil {
 			select {
 			// prioritize messages from controller
+			case <-ctx.Done():
+				return nil
 			case <-crane.stop:
-				return
+				return nil
 			case nextContainer = <-crane.fromController:
 				nextContainer.Prepend(varint.Pack8(0))
 				nextContainer.PrependLength()
@@ -431,7 +496,7 @@ func (crane *Crane) loader() {
 			default:
 				select {
 				case <-crane.stop:
-					return
+					return nil
 				case nextContainer = <-crane.fromController:
 					nextContainer.Prepend(varint.Pack8(0))
 					nextContainer.PrependLength()
@@ -474,7 +539,7 @@ func (crane *Crane) loader() {
 			default:
 				log.Warningf("crane %s: invalid shipment length: %v", crane.ID, encodedShipmentLength)
 				crane.Stop()
-				return
+				return nil
 			}
 
 			ok, err := crane.load(shipmentWorkingBuf)
@@ -483,7 +548,7 @@ func (crane *Crane) loader() {
 					log.Warningf("crane %s: failed to load ship: %s", crane.ID, err)
 					crane.Stop()
 				}
-				return
+				return nil
 			}
 
 			shipmentBuf = make([]byte, shipmentBufSize+shipmentBufAlignmentSize)
@@ -500,13 +565,22 @@ func (crane *Crane) load(shipment []byte) (ok bool, err error) {
 
 	var wireData []byte
 
-	if crane.tinker != nil {
-		var err error
-		crane.tinkerLock.Lock()
-		wireData, err = crane.tinker.Encrypt(shipment)
-		crane.tinkerLock.Unlock()
+	if crane.session != nil {
+		// encrypt
+		crane.sessionLock.Lock()
+		var letter *jess.Letter
+		letter, err = crane.session.Close(shipment)
+		if err == nil {
+			c, jerr := letter.ToWire()
+			if jerr != nil {
+				err = jerr
+			} else {
+				wireData = c.CompileData()
+			}
+		}
+		crane.sessionLock.Unlock()
 		if err != nil {
-			return false, err
+			return false, fmt.Errorf("failed to encrypt initial packet: %w", err)
 		}
 	} else {
 		wireData = shipment

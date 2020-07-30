@@ -8,12 +8,14 @@ import (
 )
 
 func TestIdentity(t *testing.T) {
-	// maintenance
+	// create
 
 	id, err := CreateIdentity(context.Background(), hub.ScopePublic)
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	// maintain
 
 	changed, err := id.MaintainAnnouncement()
 	if err != nil {
@@ -66,4 +68,20 @@ func TestIdentity(t *testing.T) {
 
 	// export
 
+	_, err = id.ExportAnnouncement()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = id.ExportStatus()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// check if identity was registered in the hub DB
+
+	_, err = hub.GetHub(id.Hub.Scope, id.Hub.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
 }

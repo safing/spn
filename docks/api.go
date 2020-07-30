@@ -1,4 +1,4 @@
-package core
+package docks
 
 import (
 	"fmt"
@@ -8,7 +8,7 @@ import (
 	"github.com/safing/portbase/info"
 	"github.com/safing/portbase/log"
 	"github.com/safing/spn/api"
-	"github.com/safing/spn/bottle"
+	"github.com/safing/spn/hub"
 )
 
 // API provides the interface that nodes communicate with
@@ -19,33 +19,30 @@ type API struct {
 // Message type constants
 const (
 	// Informational
-	MsgTypeInfo  uint8 = 1
-	MsgTypeLoad  uint8 = 2
-	MsgTypeStats uint8 = 3
+	MsgTypeInfo          uint8 = 1
+	MsgTypeLoad          uint8 = 2
+	MsgTypeStats         uint8 = 3
+	MsgTypePublicHubFeed uint8 = 4
 
 	// Tunneling
-	MsgTypeHop    uint8 = 4
-	MsgTypeTunnel uint8 = 5
-	MsgTypePing   uint8 = 6
+	MsgTypeHop    uint8 = 8
+	MsgTypeTunnel uint8 = 9
+	MsgTypePing   uint8 = 10
 
 	// Diagnostics
-	MsgTypeEcho      uint8 = 7
-	MsgTypeSpeedtest uint8 = 8
+	MsgTypeEcho      uint8 = 32
+	MsgTypeSpeedtest uint8 = 33
+
+	// Authentication
+	MsgTypeAuthenticate uint8 = 64
 
 	// Mgmt
-	MsgTypeEstablishRoute uint8 = 9
-	MsgTypeShutdown       uint8 = 10
-
-	// Other APIs
-	MsgTypePort17Admin uint8 = 11
-	MsgTypePortAccess  uint8 = 12
-
-	// Network Information
-	MsgTypeBottleFeed uint8 = 18
+	MsgTypeEstablishRoute uint8 = 72
+	MsgTypeShutdown       uint8 = 73
 )
 
 // NewAPI returns a new Instance of the Port17 API.
-func NewAPI(server, initiator bool) *API {
+func NewAPI(version int, server, initiator bool) *API {
 	portAPI := &API{}
 	portAPI.Init(server, initiator, nil, nil)
 
@@ -55,7 +52,7 @@ func NewAPI(server, initiator bool) *API {
 	portAPI.RegisterHandler(MsgTypeTunnel, portAPI.handleTunnel)
 	portAPI.RegisterHandler(MsgTypePing, portAPI.handlePing)
 	portAPI.RegisterHandler(MsgTypePing, portAPI.handlePing)
-	portAPI.RegisterHandler(MsgTypeBottleFeed, portAPI.handleBottleFeed)
+	portAPI.RegisterHandler(MsgTypePublicHubFeed, portAPI.handlePublicHubFeed)
 
 	return portAPI
 }
@@ -91,31 +88,26 @@ func (portAPI *API) handleInfo(call *api.Call, none *container.Container) {
 }
 
 // Hop creates a new connection from the connected node to another one and returns a new Port17 API instance for that node.
-func (portAPI *API) Hop(init *Initializer, targetBottle *bottle.Bottle) (*API, error) {
-	var err error
+func (portAPI *API) Hop(version int, dst *hub.Hub) (*API, error) {
+	// build request
+	msg := container.New()
+	msg.AppendNumber(uint64(version))
+	msg.AppendAsBlock([]byte(dst.ID))
 
-	if targetBottle != nil {
-		init.DestPortName = targetBottle.PortName
-	}
+	// call
+	call := portAPI.Call(MsgTypeHop, msg)
+	// build conveyor
+	conveyor := NewSimpleConveyorLine()
 
-	data, err := init.Pack()
+	// add encryption
+	ec, err := NewEncryptionConveyor(version, nil, dst)
 	if err != nil {
 		return nil, err
 	}
+	conveyor.AddConveyor(ec)
 
-	// call
-	call := portAPI.Call(MsgTypeHop, container.New(data))
-	// create new api
-	newPortAPI := NewAPI(false, true)
-	// build conveyor
-	conveyor := NewSimpleConveyorLine()
-	if init.TinkerVersion > 0 {
-		tk, err := NewTinkerConveyor(false, init, targetBottle)
-		if err != nil {
-			return nil, err
-		}
-		conveyor.AddConveyor(tk)
-	}
+	// add API
+	newPortAPI := NewAPI(version, false, true)
 	conveyor.AddLastConveyor(newPortAPI)
 
 	// start handling data
@@ -155,29 +147,38 @@ func (portAPI *API) relay(call *api.Call, conveyor *SimpleConveyorLine) {
 }
 
 func (portAPI *API) handleHop(call *api.Call, c *container.Container) {
-	init, err := UnpackInitializer(c.CompileData())
+	version, err := c.GetNextN8()
 	if err != nil {
 		call.SendError(err.Error())
 		call.End()
 		return
 	}
 
-	crane := GetAssignedCrane(init.DestPortName)
-	if crane == nil {
-		call.SendError(fmt.Sprintf("no route to %s", init.DestPortName))
+	hubID, err := c.GetNextBlock()
+	if err != nil {
+		call.SendError(err.Error())
 		call.End()
 		return
 	}
 
-	init.DestPortName = ""
-	convLine, err := crane.Controller.NewLine(init)
+	crane := GetAssignedCrane(string(hubID))
+	if crane == nil {
+		call.SendError(fmt.Sprintf("no route to %s", string(hubID)))
+		call.End()
+		return
+	}
+
+	convLine, err := crane.Controller.NewLine(int(version))
 	if err != nil {
 		call.SendError(fmt.Sprintf("failed to create line: %s", err))
 		call.End()
 		return
 	}
 
-	StartPortRelay(call, convLine)
+	relay := &HubRelay{
+		call: call,
+	}
+	convLine.AddLastConveyor(relay)
 }
 
 // Echo send the given data to the connected node and returns the received data.
@@ -209,41 +210,26 @@ func (portAPI *API) handlePing(call *api.Call, c *container.Container) {
 }
 
 // NewClient is used to create the initial hop to a node and returns a new Port17 API.
-func NewClient(init *Initializer, targetBottle *bottle.Bottle) (*API, error) {
-
-	var err error
-
-	if targetBottle == nil {
-		targetBottle, err = bottle.Get(init.DestPortName)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get destination bottle: %w", err)
-		}
-	}
-	init.DestPortName = ""
-	keyID, _ := targetBottle.GetValidKey()
-	init.KeyexIDs = []int{keyID}
-
-	crane := GetAssignedCrane(targetBottle.PortName)
+func NewClient(version int, dst *hub.Hub) (*API, error) {
+	crane := GetAssignedCrane(dst.ID)
 	if crane == nil {
-		return nil, fmt.Errorf("port17: no route to %s", targetBottle.PortName)
+		return nil, fmt.Errorf("no crane to %s", dst.ID)
 	}
 
-	line, err := crane.Controller.NewLine(init)
+	line, err := crane.Controller.NewLine(version)
 	if err != nil {
-		return nil, fmt.Errorf("port17: failed to create line: %s", err)
+		return nil, fmt.Errorf("failed to create line: %w", err)
 	}
 
 	// create new api
-	newPortAPI := NewAPI(false, true)
+	newPortAPI := NewAPI(version, false, true)
 
 	// build line
-	if init.TinkerVersion > 0 {
-		tk, err := NewTinkerConveyor(false, init, targetBottle)
-		if err != nil {
-			return nil, err
-		}
-		line.AddConveyor(tk)
+	ce, err := NewEncryptionConveyor(version, nil, dst)
+	if err != nil {
+		return nil, err
 	}
+	line.AddConveyor(ce)
 	line.AddLastConveyor(newPortAPI)
 
 	return newPortAPI, nil

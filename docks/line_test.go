@@ -1,11 +1,15 @@
-package core
+package docks
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"runtime/pprof"
 	"testing"
 	"time"
+
+	"github.com/safing/spn/cabin"
+	"github.com/safing/spn/hub"
 
 	"github.com/safing/portbase/container"
 	"github.com/safing/spn/ships"
@@ -13,17 +17,21 @@ import (
 
 func TestLine(t *testing.T) {
 
-	ship := ships.NewDummyShip()
-	serverBottle, err := newPortIdentity("server")
+	ship := ships.NewTestShip()
+	id, err := cabin.CreateIdentity(context.Background(), hub.ScopeTest)
 	if err != nil {
 		t.Fatalf("could not create bottle: %s", err)
 	}
 
-	crane1, err := NewCrane(ship, serverBottle.Public())
+	crane1, err := NewCrane(ship, nil, id.Hub)
 	if err != nil {
 		t.Fatalf("could not create crane: %s", err)
 	}
-	crane1.Initialize()
+	err = crane1.Start()
+	if err != nil {
+		t.Fatalf("could not start crane: %s", err)
+	}
+
 	line1, err := NewConveyorLine(crane1, 1)
 	if err != nil {
 		t.Fatalf("could not create line: %s", err)
@@ -35,11 +43,14 @@ func TestLine(t *testing.T) {
 	line1.AddLastConveyor(endpoint1)
 	crane1.lines[1] = line1
 
-	crane2, err := NewCrane(ship.Reverse(), serverBottle)
+	crane2, err := NewCrane(ship.Reverse(), id, nil)
 	if err != nil {
 		t.Fatalf("could not create crane: %s", err)
 	}
-	crane2.Initialize()
+	err = crane2.Start()
+	if err != nil {
+		t.Fatalf("could not start crane: %s", err)
+	}
 	line2, err := NewConveyorLine(crane2, 1)
 	if err != nil {
 		t.Fatalf("could not create line: %s", err)
@@ -61,7 +72,7 @@ func TestLine(t *testing.T) {
 		case <-finished:
 		default:
 			fmt.Println("===== TAKING TOO LONG FOR TEST - PRINTING STACK TRACES =====")
-			pprof.Lookup("goroutine").WriteTo(os.Stdout, 1)
+			_ = pprof.Lookup("goroutine").WriteTo(os.Stdout, 1)
 			os.Exit(1)
 		}
 	}()

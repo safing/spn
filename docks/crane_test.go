@@ -1,11 +1,15 @@
-package core
+package docks
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"runtime/pprof"
 	"testing"
 	"time"
+
+	"github.com/safing/spn/cabin"
+	"github.com/safing/spn/hub"
 
 	"github.com/safing/portbase/container"
 	"github.com/safing/portbase/formats/varint"
@@ -16,25 +20,25 @@ var testData = []byte("The quick brown fox jumps over the lazy dog. ")
 
 func TestCrane(t *testing.T) {
 
-	ship := ships.NewDummyShip()
-	serverBottle, err := newPortIdentity("server")
+	ship := ships.NewTestShip()
+	id, err := cabin.CreateIdentity(context.Background(), hub.ScopeTest)
 	if err != nil {
-		t.Fatalf("could not create bottle: %s", err)
+		t.Fatalf("could not create identity: %s", err)
 	}
 
-	crane1, err := NewCrane(ship, serverBottle)
+	crane1, err := NewCrane(ship, id, nil)
 	if err != nil {
 		t.Fatalf("could not create crane: %s", err)
 	}
-	go crane1.unloader()
-	go crane1.loader()
+	go crane1.unloader(context.Background()) //nolint:errcheck
+	go crane1.loader(context.Background())   //nolint:errcheck
 
-	crane2, err := NewCrane(ship.Reverse(), serverBottle)
+	crane2, err := NewCrane(ship.Reverse(), nil, id.Hub)
 	if err != nil {
 		t.Fatalf("could not create crane: %s", err)
 	}
-	go crane2.unloader()
-	go crane2.loader()
+	go crane2.unloader(context.Background()) //nolint:errcheck
+	go crane2.loader(context.Background())   //nolint:errcheck
 
 	fmt.Print("crane test setup complete.\n")
 
@@ -46,7 +50,7 @@ func TestCrane(t *testing.T) {
 		case <-finished:
 		default:
 			fmt.Println("===== TAKING TOO LONG FOR TEST - PRINTING STACK TRACES =====")
-			pprof.Lookup("goroutine").WriteTo(os.Stdout, 1)
+			_ = pprof.Lookup("goroutine").WriteTo(os.Stdout, 1)
 			os.Exit(1)
 		}
 	}()

@@ -1,36 +1,27 @@
-package core
+package docks
 
 import (
 	"github.com/safing/portbase/log"
 	"github.com/safing/spn/api"
 )
 
-type PortRelay struct {
+type HubRelay struct {
 	LastConveyorBase
 
 	call *api.Call
 }
 
-func StartPortRelay(call *api.Call, line *ConveyorLine) error {
-	new := &PortRelay{
-		call: call,
-	}
-	line.AddLastConveyor(new)
-
-	return nil
-}
-
-func (pr *PortRelay) Run() {
-	log.Tracef("relay: start")
+func (pr *HubRelay) Run() {
+	log.Tracef("spn/docks: relay started")
 	for {
 		select {
 		case msg := <-pr.call.Msgs:
 			switch msg.MsgType {
 			case api.API_DATA:
-				log.Tracef("relay: forward %d bytes", msg.Container.Length())
+				log.Tracef("spn/docks: relay forwarded %d bytes", msg.Container.Length())
 				pr.toShip <- msg.Container
 			case api.API_ERR:
-				log.Warningf("port17: relay: got upstream error: %s", api.ParseError(msg.Container))
+				log.Warningf("spn/docks: relay got upstream error: %s", api.ParseError(msg.Container))
 				close(pr.toShip)
 			default:
 				close(pr.toShip)
@@ -43,12 +34,12 @@ func (pr *PortRelay) Run() {
 			}
 			if c.HasError() {
 				close(pr.toShip)
-				log.Warningf("port17: relay: got downstream error: %s", c.ErrString())
+				log.Warningf("spn/docks: relay got downstream error: %s", c.ErrString())
 				pr.call.SendError(c.ErrString())
 				pr.call.End()
 				return
 			}
-			log.Tracef("relay: return %d bytes", c.Length())
+			log.Tracef("spn/docks: relay returned %d bytes", c.Length())
 			pr.call.SendData(c)
 		}
 	}

@@ -34,14 +34,35 @@ type HubConnection struct {
 	Latency  int    // ping in msecs
 }
 
+// SelectSignet selects the public key to use for initiating connections to that Hub.
+func (h *Hub) SelectSignet() (*jess.Signet, error) {
+	h.Lock()
+	defer h.Unlock()
+
+	// TODO: select key based on expiry and preferred alg?
+	for id, key := range h.Status.Keys {
+		return &jess.Signet{
+			ID:     id,
+			Scheme: key.Scheme,
+			Key:    key.Key,
+			Public: true,
+		}, nil
+	}
+
+	return nil, errors.New("no exchange keys available")
+}
+
 // GetSignet returns the public key identified by the given ID from the Hub Status.
-func (status *HubStatus) GetSignet(id string, recipient bool) (*jess.Signet, error) {
+func (h *Hub) GetSignet(id string, recipient bool) (*jess.Signet, error) {
+	h.Lock()
+	defer h.Unlock()
+
 	// check if public key is being requested
 	if !recipient {
 		return nil, jess.ErrSignetNotFound
 	}
 	// check if ID exists
-	key, ok := status.Keys[id]
+	key, ok := h.Status.Keys[id]
 	if !ok {
 		return nil, jess.ErrSignetNotFound
 	}

@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/safing/portbase/database/record"
+
 	"github.com/safing/jess/tools"
 
 	"github.com/safing/jess"
@@ -22,8 +24,10 @@ const (
 
 // Identity holds the identity of a Hub.
 type Identity struct {
-	Hub *hub.Hub
-	Key *jess.Signet
+	record.Base
+
+	Hub    *hub.Hub
+	Signet *jess.Signet
 
 	ExchKeys map[string]*ExchKey
 }
@@ -63,7 +67,7 @@ func CreateIdentity(ctx context.Context, scope hub.Scope) (*Identity, error) {
 	if err != nil {
 		return nil, err
 	}
-	id.Key = signet
+	id.Signet = signet
 	id.Hub.ID = signet.ID
 	id.Hub.PublicKey = recipient
 
@@ -135,20 +139,73 @@ func (id *Identity) MaintainStatus(connections []*hub.HubConnection) (changed bo
 	return changed, nil
 }
 
+func (id *Identity) signingEnvelope() *jess.Envelope {
+	env := jess.NewUnconfiguredEnvelope()
+	env.SuiteID = jess.SuiteSignV1
+	env.Senders = []*jess.Signet{id.Signet}
+
+	return env
+}
+
 // ExportAnnouncement serializes and signs the Announcement.
 func (id *Identity) ExportAnnouncement() ([]byte, error) {
-	return id.Hub.Info.Export(&jess.Envelope{
-		SuiteID: jess.SuiteSignV1,
-		Senders: []*jess.Signet{id.Key},
-	})
+	id.Lock()
+	defer id.Unlock()
+
+	data, err := id.Hub.Info.Export(id.signingEnvelope())
+	if err != nil {
+		return nil, fmt.Errorf("failed to export: %w", err)
+	}
+
+	err = hub.ImportAnnouncement(data, id.Hub.Scope)
+	if err != nil {
+		return nil, fmt.Errorf("failed to pass import check: %w", err)
+	}
+
+	return data, nil
 }
 
 // ExportStatus serializes and signs the Status.
 func (id *Identity) ExportStatus() ([]byte, error) {
-	return id.Hub.Status.Export(&jess.Envelope{
-		SuiteID: jess.SuiteSignV1,
-		Senders: []*jess.Signet{id.Key},
-	})
+	id.Lock()
+	defer id.Unlock()
+
+	data, err := id.Hub.Status.Export(id.signingEnvelope())
+	if err != nil {
+		return nil, fmt.Errorf("failed to export: %w", err)
+	}
+
+	err = hub.ImportStatus(data, id.Hub.Scope)
+	if err != nil {
+		return nil, fmt.Errorf("failed to pass import check: %w", err)
+	}
+
+	return data, nil
+}
+
+// SignHubMsg signs a data blob with the identity's private key.
+func (id *Identity) SignHubMsg(data []byte) ([]byte, error) {
+	return hub.SignHubMsg(data, id.signingEnvelope(), false)
+}
+
+// GetSignet returns the private exchange key with the given ID.
+func (id *Identity) GetSignet(keyID string, recipient bool) (*jess.Signet, error) {
+	if recipient {
+		return nil, errors.New("cabin.Identity only serves private keys")
+	}
+
+	id.Lock()
+	defer id.Unlock()
+
+	key, ok := id.ExchKeys[keyID]
+	if !ok {
+		return nil, errors.New("the requested key does not exist")
+	}
+	if time.Now().After(key.Expires) || key.key == nil {
+		return nil, errors.New("the requested key has expired")
+	}
+
+	return key.key, nil
 }
 
 func (ek *ExchKey) toHubKey() (*hub.HubKey, error) {

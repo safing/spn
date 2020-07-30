@@ -3,6 +3,8 @@ package hub
 import (
 	"errors"
 	"fmt"
+	"sync"
+	"time"
 
 	"github.com/safing/portbase/database"
 	"github.com/safing/portbase/database/record"
@@ -17,6 +19,9 @@ var (
 
 	// PublicHubs is the database scope for public hubs
 	PublicHubs = AllHubs + "public/"
+
+	// RawMsgsScope is for storing raw msgs. The path spec for this scope is cache:spn/rawMsgs/<scope>/<msgType>/<ID>
+	RawMsgsScope = "cache:spn/rawMsgs/"
 
 	db = database.NewInterface(nil)
 
@@ -110,4 +115,60 @@ func makeHubDBKey(scope Scope, id string) (key string, ok bool) {
 	default:
 		return "", false
 	}
+}
+
+// HubMsg stores raw Hub messages.
+type HubMsg struct {
+	record.Base
+	sync.Mutex
+
+	ID    string
+	Scope Scope
+	Type  string
+	Data  []byte
+
+	Received int64
+}
+
+// SaveRawHubMsg saves a raw (and signed) message received by another Hub.
+func SaveRawHubMsg(id string, scope Scope, msgType string, data []byte) error {
+	// create wrapper record
+	msg := &HubMsg{
+		ID:       id,
+		Scope:    scope,
+		Type:     msgType,
+		Data:     data,
+		Received: time.Now().Unix(),
+	}
+	// set key
+	msg.SetKey(fmt.Sprintf(
+		"%s%s/%s/%s",
+		RawMsgsScope,
+		msg.Scope,
+		msg.Type,
+		msg.ID,
+	))
+	// save
+	return db.PutNew(msg)
+}
+
+// EnsureHubMsg makes sure a database record is a HubMsg.
+func EnsureHubMsg(r record.Record) (*HubMsg, error) {
+	// unwrap
+	if r.IsWrapped() {
+		// only allocate a new struct, if we need it
+		new := &HubMsg{}
+		err := record.Unwrap(r, new)
+		if err != nil {
+			return nil, err
+		}
+		return new, nil
+	}
+
+	// or adjust type
+	new, ok := r.(*HubMsg)
+	if !ok {
+		return nil, fmt.Errorf("record not of type *Hub, but %T", r)
+	}
+	return new, nil
 }

@@ -1,15 +1,22 @@
-package core
+package docks
 
 import (
 	"sync"
 
-	"github.com/safing/spn/identity"
+	"github.com/safing/portbase/modules"
+	"github.com/safing/spn/hub"
 )
 
 var (
+	module *modules.Module
+
 	docks     = make(map[string]*Crane)
 	docksLock sync.RWMutex
 )
+
+func init() {
+	module = modules.Register("docks", nil, nil, nil, "cabin")
+}
 
 func GetAssignedCrane(portName string) *Crane {
 	docksLock.RLock()
@@ -21,29 +28,28 @@ func GetAssignedCrane(portName string) *Crane {
 	return nil
 }
 
-func AssignCrane(portName string, crane *Crane) {
+func AssignCrane(hubID string, crane *Crane) {
 	docksLock.Lock()
 	defer docksLock.Unlock()
-	docks[portName] = crane
+	docks[hubID] = crane
 }
 
-func RetractCraneByDestination(portName string) {
+func RetractCraneByDestination(hubID string) {
 	docksLock.Lock()
 	defer docksLock.Unlock()
-	delete(docks, portName)
-	identity.RemoveConnection(portName)
+	delete(docks, hubID)
 }
 
-func RetractCraneByID(craneID string) {
+func RetractCraneByID(craneID string) (connectedHub *hub.Hub) {
 	docksLock.Lock()
 	defer docksLock.Unlock()
-	for destination, crane := range docks {
+	for hubID, crane := range docks {
 		if crane.ID == craneID {
-			delete(docks, destination)
-			identity.RemoveConnection(destination)
-			return
+			delete(docks, hubID)
+			return crane.connectedHub
 		}
 	}
+	return nil
 }
 
 func GetAllControllers() map[string]*CraneController {

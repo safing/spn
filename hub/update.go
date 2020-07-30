@@ -45,7 +45,7 @@ func SignHubMsg(msg []byte, env *jess.Envelope, enableTofu bool) ([]byte, error)
 	// start session from envelope
 	session, err := env.Correspondence(nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to signing session: %s", err)
+		return nil, fmt.Errorf("failed to initiate signing session: %s", err)
 	}
 	// sign the data
 	letter, err := session.Close(msg)
@@ -318,7 +318,12 @@ func ImportAnnouncement(data []byte, scope Scope) error {
 	}
 	hub.Unlock()
 
-	return hub.Save()
+	err = hub.Save()
+	if err != nil {
+		return err
+	}
+
+	return SaveRawHubMsg(hub.ID, hub.Scope, "announcement", data)
 }
 
 // Export exports the status with the given signature configuration.
@@ -385,7 +390,12 @@ func ImportStatus(data []byte, scope Scope) error {
 	hub.Status = status
 	hub.Unlock()
 
-	return hub.Save()
+	err = hub.Save()
+	if err != nil {
+		return err
+	}
+
+	return SaveRawHubMsg(hub.ID, hub.Scope, "status", data)
 }
 
 // CreateHubSignet creates a signet with the correct ID for usage as a Hub Identity.

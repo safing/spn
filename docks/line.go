@@ -1,4 +1,4 @@
-package core
+package docks
 
 import (
 	"fmt"
@@ -44,8 +44,8 @@ func NewConveyorLine(crane *Crane, lineID uint32) (*ConveyorLine, error) {
 	new := &ConveyorLine{
 		crane:              crane,
 		ID:                 lineID,
-		toShore:            make(chan *container.Container, 0),
-		fromShore:          make(chan *container.Container, 0),
+		toShore:            make(chan *container.Container),
+		fromShore:          make(chan *container.Container),
 		fromShip:           make(chan *container.Container, 101),
 		shoreCap:           100,
 		shoreSpace:         &shoreSpace,
@@ -71,8 +71,8 @@ func (line *ConveyorLine) AddConveyor(conveyor Conveyor) {
 	if line.nextToShore == nil {
 		return
 	}
-	newToShore := make(chan *container.Container, 0)
-	newFromShore := make(chan *container.Container, 0)
+	newToShore := make(chan *container.Container)
+	newFromShore := make(chan *container.Container)
 	conveyor.AttachConveyorBelts(line.getLineID(), line.nextToShore, line.nextFromShore, newFromShore, newToShore)
 	line.nextToShore = newToShore
 	line.nextFromShore = newFromShore

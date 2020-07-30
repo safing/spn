@@ -1,7 +1,10 @@
-package core
+package docks
 
 import (
+	"errors"
 	"fmt"
+
+	"github.com/tevino/abool"
 
 	"github.com/safing/portbase/container"
 	"github.com/safing/portbase/formats/varint"
@@ -12,36 +15,39 @@ type CraneController struct {
 	Crane *Crane
 	send  chan *container.Container
 
+	ConnectedHubVerified  *abool.AtomicBool
 	verificationChallenge []byte
+	Publishing            *abool.AtomicBool
 }
 
 const (
-	CraneMsgTypeNewLine        uint8 = 1
-	CraneMsgTypeDiscardLine    uint8 = 2
-	CraneMsgTypeAddLineSpace   uint8 = 3
-	CraneMsgTypeUpdateBottle   uint8 = 4
-	CraneMsgTypeDistrustBottle uint8 = 5
-	CraneMsgTypePublishChannel uint8 = 7
-	CraneMsgError              uint8 = 8
-	CraneMsgClose              uint8 = 9
+	CraneMsgTypeNewLine           uint8 = 1
+	CraneMsgTypeDiscardLine       uint8 = 2
+	CraneMsgTypeAddLineSpace      uint8 = 3
+	CraneMsgTypeHubAnnouncement   uint8 = 4
+	CraneMsgTypeHubStatus         uint8 = 5
+	CraneMsgTypeVerification      uint8 = 6
+	CraneMsgTypePublishConnection uint8 = 7
+	CraneMsgError                 uint8 = 8
+	CraneMsgClose                 uint8 = 9
 )
 
 func NewCraneController(crane *Crane, send chan *container.Container) *CraneController {
 	return &CraneController{
-		Crane: crane,
-		send:  send,
+		Crane:                crane,
+		send:                 send,
+		ConnectedHubVerified: abool.New(),
+		Publishing:           abool.New(),
 	}
 }
 
 func (cControl *CraneController) Handle(c *container.Container) error {
-
 	msgType, err := c.GetNextN8()
 	if err != nil {
 		return err
 	}
 
-	err = nil
-
+	// always available endpoints
 	switch msgType {
 	case CraneMsgTypeNewLine:
 		err = cControl.handleNewLine(c)
@@ -53,37 +59,54 @@ func (cControl *CraneController) Handle(c *container.Container) error {
 		err = cControl.handleDiscardLine(c)
 	case CraneMsgTypeAddLineSpace:
 		err = cControl.handleAddLineSpace(c)
-	case CraneMsgTypeUpdateBottle:
-		err = cControl.handleUpdateBottle(c)
-	case CraneMsgTypeDistrustBottle:
-		err = cControl.handleDistrustBottle(c)
-	case CraneMsgTypePublishChannel:
-		err = cControl.handlePublishChannel(c)
+	case CraneMsgTypeHubAnnouncement:
+		err = cControl.handleHubAnnouncement(c)
+	case CraneMsgTypeHubStatus:
+		err = cControl.handleHubStatus(c)
+	case CraneMsgTypePublishConnection:
+		err = cControl.handlePublishConnection(c)
+	default:
+		err = errors.New("unknown message type")
 	}
 
 	if err != nil {
-		return fmt.Errorf("msgType %d: %s", msgType, err)
+		return fmt.Errorf("failed to handle control message %d: %s", msgType, err)
 	}
 	return nil
 }
 
-func (cControl *CraneController) NewLine(init *Initializer) (*ConveyorLine, error) {
+func (cControl *CraneController) getDockingRequest() []byte {
+	c := container.New()
+	c.AppendNumber(uint64(cControl.Crane.version))
+	return c.CompileData()
+}
+
+func (cControl *CraneController) handleDockingRequest(c *container.Container) error {
+	version, err := c.GetNextN64()
+	if err != nil {
+		return err
+	}
+	if uint8(version) != cControl.Crane.version {
+		return errors.New("incompatible version")
+	}
+	return nil
+}
+
+func (cControl *CraneController) NewLine(version int) (*ConveyorLine, error) {
 	newLine, err := NewConveyorLine(cControl.Crane, cControl.Crane.getNextLineID())
 	if err != nil {
 		return nil, err
 	}
 
-	init.LineID = newLine.ID
-	data, err := init.Pack()
-	if err != nil {
-		return nil, err
-	}
+	msg := container.New()
+	msg.AppendNumber(uint64(newLine.ID))
+	msg.AppendNumber(uint64(version))
 
 	cControl.Crane.linesLock.Lock()
 	cControl.Crane.lines[newLine.ID] = newLine
 	cControl.Crane.linesLock.Unlock()
 
-	new := container.NewContainer([]byte{CraneMsgTypeNewLine}, data)
+	new := container.NewContainer([]byte{CraneMsgTypeNewLine}, msg.CompileData())
 
 	cControl.send <- new
 
@@ -92,28 +115,33 @@ func (cControl *CraneController) NewLine(init *Initializer) (*ConveyorLine, erro
 }
 
 func (cControl *CraneController) handleNewLine(c *container.Container) error {
-	init, err := UnpackInitializer(c.CompileData())
+	lineID, err := c.GetNextN32()
+	if err != nil {
+		return err
+	}
+	version, err := c.GetNextN8()
 	if err != nil {
 		return err
 	}
 
-	newLine, err := NewConveyorLine(cControl.Crane, init.LineID)
+	// build conveyor
+	newLine, err := NewConveyorLine(cControl.Crane, lineID)
 	if err != nil {
 		return err
 	}
 
 	// add tinker
-	tc, err := NewTinkerConveyor(true, init, cControl.Crane.serverBottle)
+	ec, err := NewEncryptionConveyor(int(version), cControl.Crane.identity, nil)
 	if err != nil {
 		return err
 	}
-	newLine.AddConveyor(tc)
+	newLine.AddConveyor(ec)
 
-	// add port17 api
-	newLine.AddLastConveyor(NewAPI(true, false))
+	// add API
+	newLine.AddLastConveyor(NewAPI(int(version), true, false))
 
 	cControl.Crane.linesLock.Lock()
-	cControl.Crane.lines[init.LineID] = newLine
+	cControl.Crane.lines[lineID] = newLine
 	cControl.Crane.linesLock.Unlock()
 
 	log.Infof("crane %s: set up new incoming line %d", cControl.Crane.ID, newLine.ID)
@@ -174,13 +202,13 @@ func (cControl *CraneController) handleAddLineSpace(c *container.Container) erro
 
 		lineID, err := c.GetNextN32()
 		if err != nil {
-			log.Warningf("crane %s: could not read space update lineID: %s")
+			log.Warningf("crane %s: could not read space update lineID: %s", cControl.Crane.ID, err)
 			return nil
 		}
 
 		space, err := c.GetNextN32()
 		if err != nil {
-			log.Warningf("crane %s: could not read space update space: %s")
+			log.Warningf("crane %s: could not read space update space: %s", cControl.Crane.ID, err)
 			return nil
 		}
 
@@ -191,5 +219,4 @@ func (cControl *CraneController) handleAddLineSpace(c *container.Container) erro
 		}
 
 	}
-	return nil
 }

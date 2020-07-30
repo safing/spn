@@ -1,4 +1,4 @@
-package core
+package docks
 
 import "github.com/safing/portbase/container"
 
