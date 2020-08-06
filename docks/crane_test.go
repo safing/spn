@@ -3,6 +3,7 @@ package docks
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"runtime/pprof"
 	"testing"
@@ -18,22 +19,18 @@ import (
 
 var testData = []byte("The quick brown fox jumps over the lazy dog. ")
 
-func TestCrane(t *testing.T) {
+func TestCraneCommunication(t *testing.T) {
 
 	ship := ships.NewTestShip()
-	id, err := cabin.CreateIdentity(context.Background(), hub.ScopeTest)
-	if err != nil {
-		t.Fatalf("could not create identity: %s", err)
-	}
 
-	crane1, err := NewCrane(ship, id, nil)
+	crane1, err := NewCrane(ship, nil, nil)
 	if err != nil {
 		t.Fatalf("could not create crane: %s", err)
 	}
 	go crane1.unloader(context.Background()) //nolint:errcheck
 	go crane1.loader(context.Background())   //nolint:errcheck
 
-	crane2, err := NewCrane(ship.Reverse(), nil, id.Hub)
+	crane2, err := NewCrane(ship.Reverse(), nil, nil)
 	if err != nil {
 		t.Fatalf("could not create crane: %s", err)
 	}
@@ -100,4 +97,81 @@ func TestCrane(t *testing.T) {
 
 	close(finished)
 
+}
+
+func TestBootstrapConnection(t *testing.T) {
+
+	ship := ships.NewTestShip()
+	id, err := cabin.CreateIdentity(context.Background(), hub.ScopePublic)
+	if err != nil {
+		t.Fatalf("could not create identity: %s", err)
+	}
+	// export for caching, else we override our bootstrap entry again
+	_, err = id.ExportAnnouncement()
+	if err != nil {
+		t.Fatalf("failed to export announcement: %s", err)
+	}
+	_, err = id.ExportStatus()
+	if err != nil {
+		t.Fatalf("failed to export status: %s", err)
+	}
+
+	bootstrapHub := &hub.Hub{
+		ID:    id.Hub().ID,
+		Scope: hub.ScopePublic,
+		Info: &hub.HubAnnouncement{
+			ID: id.Hub().ID,
+		},
+		Status: &hub.HubStatus{},
+	}
+	err = bootstrapHub.Save()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// get fresh from DB
+	dstHub, err := hub.GetHub(hub.ScopePublic, bootstrapHub.ID)
+	if err != nil {
+		t.Fatalf("could not get hub: %s", err)
+	}
+
+	crane1, err := NewCrane(ship, nil, dstHub)
+	if err != nil {
+		t.Fatalf("could not create crane: %s", err)
+	}
+
+	crane2, err := NewCrane(ship.Reverse(), id, nil)
+	if err != nil {
+		t.Fatalf("could not create crane: %s", err)
+	}
+
+	// start
+
+	errors := make(chan error)
+
+	go func() {
+		err := crane1.Start()
+		if err != nil {
+			errors <- fmt.Errorf("crane1: %w", err)
+			return
+		}
+		errors <- nil
+	}()
+
+	go func() {
+		err := crane2.Start()
+		if err != nil {
+			errors <- fmt.Errorf("crane2: %w", err)
+			return
+		}
+		errors <- nil
+	}()
+
+	for i := 0; i < 2; i++ {
+		err := <-errors
+		if err != nil {
+			log.Fatal(err)
+			return
+		}
+	}
 }

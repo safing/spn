@@ -117,9 +117,11 @@ func OpenHubMsg(data []byte, scope Scope, tofu bool) (msg []byte, sendingHub *Hu
 	}
 
 	var truststore jess.TrustStore
-	if hub != nil {
-		// FIXME: check seal against hub
+	if hub != nil && hub.PublicKey != nil { // bootstrap entries will not have a public key
 		// check ID integrity
+		if hub.ID != seal.ID {
+			return nil, nil, errors.New("ID mismatch")
+		}
 		if !verifyHubID(seal.ID, hub.PublicKey.Scheme, hub.PublicKey.Key) {
 			return nil, nil, errors.New("ID integrity violated with existing key")
 		}
@@ -214,7 +216,7 @@ func ImportAnnouncement(data []byte, scope Scope) error {
 	// a signed version of the ID to mitigate fake IDs.
 	// Fake IDs are possible because the hash algorithm of the ID is dynamic.
 	if hub.ID != announcement.ID {
-		return fmt.Errorf("announcement ID (%s) mismatches hub ID (%s)", announcement.ID, hub.ID)
+		return fmt.Errorf("announcement ID %q mismatches hub ID %q", announcement.ID, hub.ID)
 	}
 
 	// check timestamp
@@ -233,10 +235,10 @@ func ImportAnnouncement(data []byte, scope Scope) error {
 		case announcement.Timestamp == hub.Info.Timestamp:
 			// The new copy is not saved, as we expect the versions to be identical.
 			// Also, the new version has not been validated at this point.
-			return errors.New("version already imported")
+			return nil
 		case announcement.Timestamp < hub.Info.Timestamp:
 			// Received an old version, do not update.
-			return errors.New("newer version present")
+			return errors.New("newer announcement version present")
 		}
 	}
 
@@ -373,10 +375,10 @@ func ImportStatus(data []byte, scope Scope) error {
 		case status.Timestamp == hub.Status.Timestamp:
 			// The new copy is not saved, as we expect the versions to be identical.
 			// Also, the new version has not been validated at this point.
-			return errors.New("version already imported")
+			return nil
 		case status.Timestamp < hub.Status.Timestamp:
 			// Received an old version, do not update.
-			return errors.New("newer version present")
+			return errors.New("newer status version present")
 		}
 	}
 

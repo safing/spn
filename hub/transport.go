@@ -25,6 +25,7 @@ type Transport struct {
 	Domain   string
 	Port     uint16
 	Path     string
+	Option   string
 }
 
 // ParseTransport parses a transport definition.
@@ -38,15 +39,13 @@ func ParseTransport(definition string) (*Transport, error) {
 	if u.User != nil {
 		return nil, errors.New("user/pass is not allowed")
 	}
-	if u.Fragment != "" {
-		return nil, errors.New("fragment is not allowed")
-	}
 
 	// put into transport
 	t := &Transport{
 		Protocol: u.Scheme,
 		Domain:   u.Hostname(),
 		Path:     u.RequestURI(),
+		Option:   u.Fragment,
 	}
 
 	// parse port
@@ -87,8 +86,12 @@ func ParseTransport(definition string) (*Transport, error) {
 
 // String returns the definition form of the transport.
 func (t *Transport) String() string {
-	if t.Domain != "" {
+	switch {
+	case t.Option != "":
+		return fmt.Sprintf("%s://%s:%d%s#%s", t.Protocol, t.Domain, t.Port, t.Path, t.Option)
+	case t.Domain != "":
 		return fmt.Sprintf("%s://%s:%d%s", t.Protocol, t.Domain, t.Port, t.Path)
+	default:
+		return fmt.Sprintf("%s:%d%s", t.Protocol, t.Port, t.Path)
 	}
-	return fmt.Sprintf("%s:%d%s", t.Protocol, t.Port, t.Path)
 }

@@ -15,13 +15,13 @@ var (
 )
 
 func init() {
-	module = modules.Register("docks", nil, nil, nil, "cabin")
+	module = modules.Register("docks", nil, nil, nil, "base", "cabin", "access-codes")
 }
 
-func GetAssignedCrane(portName string) *Crane {
+func GetAssignedCrane(hubID string) *Crane {
 	docksLock.RLock()
 	defer docksLock.RUnlock()
-	crane, ok := docks[portName]
+	crane, ok := docks[hubID]
 	if ok {
 		return crane
 	}
@@ -46,7 +46,7 @@ func RetractCraneByID(craneID string) (connectedHub *hub.Hub) {
 	for hubID, crane := range docks {
 		if crane.ID == craneID {
 			delete(docks, hubID)
-			return crane.connectedHub
+			return crane.ConnectedHub
 		}
 	}
 	return nil

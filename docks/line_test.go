@@ -23,7 +23,7 @@ func TestLine(t *testing.T) {
 		t.Fatalf("could not create bottle: %s", err)
 	}
 
-	crane1, err := NewCrane(ship, nil, id.Hub)
+	crane1, err := NewCrane(ship, nil, id.Hub())
 	if err != nil {
 		t.Fatalf("could not create crane: %s", err)
 	}

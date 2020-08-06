@@ -42,12 +42,12 @@ func LaunchShip(ctx context.Context, h *hub.Hub, transport *hub.Transport, ip ne
 		if h.Info == nil {
 			return nil, hub.ErrMissingInfo
 		}
-		// prioritize IPv6
-		if h.Info.IPv6 != nil {
-			ips = append(ips, h.Info.IPv6)
-		}
+		// prioritize IPv4
 		if h.Info.IPv4 != nil {
 			ips = append(ips, h.Info.IPv4)
+		}
+		if h.Info.IPv6 != nil {
+			ips = append(ips, h.Info.IPv6)
 		}
 		if len(ips) == 0 {
 			return nil, hub.ErrMissingIPs

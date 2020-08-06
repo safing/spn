@@ -26,20 +26,30 @@ const (
 type Identity struct {
 	record.Base
 
-	Hub    *hub.Hub
+	ID     string
+	Scope  hub.Scope
+	hub    *hub.Hub
 	Signet *jess.Signet
 
 	ExchKeys map[string]*ExchKey
+
+	infoExportCache   []byte
+	statusExportCache []byte
+}
+
+// Hub returns the identity's Hub.
+func (id *Identity) Hub() *hub.Hub {
+	return id.hub
 }
 
 // Lock locks the Identity through the Hub lock.
 func (id *Identity) Lock() {
-	id.Hub.Lock()
+	id.Hub().Lock()
 }
 
 // Unlock unlocks the Identity through the Hub lock.
 func (id *Identity) Unlock() {
-	id.Hub.Unlock()
+	id.Hub().Unlock()
 }
 
 // ExchKey holds the private information of a HubKey.
@@ -53,12 +63,7 @@ type ExchKey struct {
 // CreateIdentity creates a new identity.
 func CreateIdentity(ctx context.Context, scope hub.Scope) (*Identity, error) {
 	id := &Identity{
-		Hub: &hub.Hub{
-			Scope:     scope,
-			Info:      &hub.HubAnnouncement{},
-			Status:    &hub.HubStatus{},
-			FirstSeen: time.Now().UTC(),
-		},
+		Scope:    scope,
 		ExchKeys: make(map[string]*ExchKey),
 	}
 
@@ -68,8 +73,8 @@ func CreateIdentity(ctx context.Context, scope hub.Scope) (*Identity, error) {
 		return nil, err
 	}
 	id.Signet = signet
-	id.Hub.ID = signet.ID
-	id.Hub.PublicKey = recipient
+	id.ID = signet.ID
+	id.initializeIdentityHub(recipient)
 
 	// initial maintenance routine
 	_, err = id.MaintainAnnouncement()
@@ -84,6 +89,23 @@ func CreateIdentity(ctx context.Context, scope hub.Scope) (*Identity, error) {
 	return id, nil
 }
 
+func (id *Identity) initializeIdentityHub(recipient *jess.Signet) {
+	now := time.Now().UTC()
+	id.hub = &hub.Hub{
+		ID:        id.ID,
+		Scope:     id.Scope,
+		PublicKey: recipient,
+		Info: &hub.HubAnnouncement{
+			ID:        id.ID,
+			Timestamp: now.Unix(),
+		},
+		Status: &hub.HubStatus{
+			Timestamp: now.Unix(),
+		},
+		FirstSeen: now,
+	}
+}
+
 // MaintainAnnouncement maintains the Hub's Announcenemt and returns whether there was a change that should be communicated to other Hubs.
 func (id *Identity) MaintainAnnouncement() (changed bool, err error) {
 	id.Lock()
@@ -92,22 +114,23 @@ func (id *Identity) MaintainAnnouncement() (changed bool, err error) {
 	// update hub information
 	var newHubInfo *hub.HubAnnouncement
 
-	switch id.Hub.Scope {
+	switch id.Hub().Scope {
 	case hub.ScopePublic:
 		newHubInfo = getPublicHubInfo()
-		newHubInfo.ID = id.Hub.ID
-		newHubInfo.Timestamp = id.Hub.Info.Timestamp
+		newHubInfo.ID = id.Hub().ID
+		newHubInfo.Timestamp = id.Hub().Info.Timestamp
 	default:
 		return false, nil
 	}
 
-	if newHubInfo.Equal(id.Hub.Info) {
+	if newHubInfo.Equal(id.Hub().Info) {
 		return false, nil
 	}
 
 	// update info and timestamp
-	id.Hub.Info = newHubInfo
-	id.Hub.Info.Timestamp = time.Now().Unix()
+	id.Hub().Info = newHubInfo
+	id.Hub().Info.Timestamp = time.Now().Unix()
+	id.infoExportCache = nil // reset cache
 	return true, nil
 }
 
@@ -126,14 +149,15 @@ func (id *Identity) MaintainStatus(connections []*hub.HubConnection) (changed bo
 	}
 
 	// update connections
-	if !hub.ConnectionsEqual(id.Hub.Status.Connections, connections) {
-		id.Hub.Status.Connections = connections
+	if !hub.ConnectionsEqual(id.Hub().Status.Connections, connections) {
+		id.Hub().Status.Connections = connections
 		changed = true
 	}
 
 	// update timestamp
 	if changed {
-		id.Hub.Status.Timestamp = time.Now().Unix()
+		id.Hub().Status.Timestamp = time.Now().Unix()
+		id.statusExportCache = nil // reset cache
 	}
 
 	return changed, nil
@@ -152,16 +176,21 @@ func (id *Identity) ExportAnnouncement() ([]byte, error) {
 	id.Lock()
 	defer id.Unlock()
 
-	data, err := id.Hub.Info.Export(id.signingEnvelope())
+	if id.infoExportCache != nil {
+		return id.infoExportCache, nil
+	}
+
+	data, err := id.Hub().Info.Export(id.signingEnvelope())
 	if err != nil {
 		return nil, fmt.Errorf("failed to export: %w", err)
 	}
 
-	err = hub.ImportAnnouncement(data, id.Hub.Scope)
+	err = hub.ImportAnnouncement(data, id.Hub().Scope)
 	if err != nil {
 		return nil, fmt.Errorf("failed to pass import check: %w", err)
 	}
 
+	id.infoExportCache = data
 	return data, nil
 }
 
@@ -170,16 +199,21 @@ func (id *Identity) ExportStatus() ([]byte, error) {
 	id.Lock()
 	defer id.Unlock()
 
-	data, err := id.Hub.Status.Export(id.signingEnvelope())
+	if id.statusExportCache != nil {
+		return id.statusExportCache, nil
+	}
+
+	data, err := id.Hub().Status.Export(id.signingEnvelope())
 	if err != nil {
 		return nil, fmt.Errorf("failed to export: %w", err)
 	}
 
-	err = hub.ImportStatus(data, id.Hub.Scope)
+	err = hub.ImportStatus(data, id.Hub().Scope)
 	if err != nil {
 		return nil, fmt.Errorf("failed to pass import check: %w", err)
 	}
 
+	id.statusExportCache = data
 	return data, nil
 }
 

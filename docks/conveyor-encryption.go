@@ -37,15 +37,15 @@ func (ec *EncryptionConveyor) setupIncoming(letter *jess.Letter) (err error) {
 	return err
 }
 
-func (ec *EncryptionConveyor) setupOutgoing() error {
+func (ec *EncryptionConveyor) setupOutgoing() (err error) {
 	if ec.dst == nil {
 		return errors.New("missing destination Hub")
 	}
 
 	// select a public key of connected hub
-	s, err := ec.dst.SelectSignet()
-	if err != nil {
-		return fmt.Errorf("failed to select signet: %w", err)
+	s := ec.dst.SelectSignet()
+	if s == nil {
+		return errors.New("failed to select signet")
 	}
 
 	// create envelope

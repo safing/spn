@@ -20,6 +20,10 @@ import (
 	"github.com/safing/spn/ships"
 )
 
+const (
+	QOTD = "Privacy is not an option, and it shouldn't be the price we accept for just getting on the Internet.\nGary Kovacs\n"
+)
+
 // Crane Status Options
 var (
 	CraneStatusStopped          int8 = -1
@@ -36,7 +40,7 @@ type Crane struct {
 
 	// involved Hubs
 	identity     *cabin.Identity
-	connectedHub *hub.Hub
+	ConnectedHub *hub.Hub
 
 	// link encryption
 	session     *jess.Session
@@ -75,7 +79,7 @@ func NewCrane(ship ships.Ship, id *cabin.Identity, connectedHub *hub.Hub) (*Cran
 		ID:      hex.EncodeToString(randomID),
 
 		identity:     id,
-		connectedHub: connectedHub,
+		ConnectedHub: connectedHub,
 
 		fromController: make(chan *container.Container),
 		stopped:        abool.NewBool(false),
@@ -98,6 +102,10 @@ func NewCrane(ship ships.Ship, id *cabin.Identity, connectedHub *hub.Hub) (*Cran
 	}
 
 	return new, nil
+}
+
+func (crane *Crane) Status() int8 {
+	return crane.status
 }
 
 func (crane *Crane) getNextLineID() uint32 {
@@ -143,13 +151,17 @@ func (crane *Crane) unloader(ctx context.Context) error {
 		// get message
 		if msgLen == 0 {
 			// get msgLen
-			if len(buf) < 5 {
+			if len(buf) < 2 {
 				continue
 			}
 
 			// unpack uvarint
 			uMsgLen, n, err := varint.Unpack32(buf)
 			if err != nil {
+				// Don't treat as error if there are less than 5 bytes available
+				if len(buf) < 5 {
+					continue
+				}
 				if !crane.stopped.IsSet() {
 					log.Warningf("crane %s: failed to read msg length: %s", crane.ID, err)
 					crane.Stop()
@@ -178,7 +190,7 @@ func (crane *Crane) unloader(ctx context.Context) error {
 
 		// forward msg if complete
 		if len(buf) == cap(buf) {
-			crane.fromShip <- container.NewContainer(buf)
+			crane.fromShip <- container.New(buf)
 			msgLen = 0
 			buf = make([]byte, 0, lenBufLen)
 		}
@@ -186,37 +198,86 @@ func (crane *Crane) unloader(ctx context.Context) error {
 	}
 }
 
-func (crane *Crane) Start() error {
+const (
+	// hubInfoRequest is a special code used to request the Hub Announcement and
+	// Status from the server. The value 0x7F is used at the place where the wire
+	// format version of the first transmitted jess.Letter would be. It is the
+	// highest single-byte varint.
+	hubInfoRequest = 0x7F
+)
+
+func (crane *Crane) Start() (err error) {
+	err = crane.start()
+	if err != nil {
+		crane.Stop()
+	}
+	return
+}
+
+func (crane *Crane) start() (err error) {
 	log.Infof("spn/docks: starting crane %s for %s", crane.ID, crane.ship)
 
 	module.StartWorker("crane unloader", crane.unloader)
-	module.StartWorker("crane loader", crane.loader)
 
 	if crane.ship.IsMine() {
-		if crane.connectedHub == nil {
+		if crane.ConnectedHub == nil {
 			return errors.New("cannot start outgoing crane without connected Hub")
 		}
 
+		// Workaround: always send hub info request, as keys are not saved to disk
 		// select a public key of connected hub
-		s, err := crane.connectedHub.SelectSignet()
+		// s := crane.ConnectedHub.SelectSignet()
+		// if s == nil {
+		// send request
+		request := container.New([]byte{hubInfoRequest})
+		request.PrependLength()
+		ok, err := crane.ship.Load(request.CompileData())
 		if err != nil {
-			return fmt.Errorf("failed to select signet: %w", err)
+			return fmt.Errorf("ship sank: %w", err)
+		}
+		if !ok {
+			return errors.New("ship sank")
 		}
 
-		// check for status request
-		// TODO: find a better way
-		// data := c.CompileData()
-		// if len(data) >= 1 && data[0] = 0x7F {
-		// 	// 0x7F is the highest single-byte varint
-		// 	statusData, err := crane.identity.ExportStatus()
-		// 	if err != nil {
-		// 		return err
-		// 	}
-		// 	crane.toShip <- container.New(statusData)
+		// wait for reply
+		var reply *container.Container
+		select {
+		case reply = <-crane.fromShip:
+		case <-time.After(1 * time.Second):
+			return errors.New("timed out waiting for hub info")
+		}
 
-		// 	// receive next message
-		// 	c = <-crane.fromShip
-		// 	data = c.CompileData()
+		// parse announcement
+		announcementData, err := reply.GetNextBlock()
+		if err != nil {
+			return fmt.Errorf("failed to get announcement: %w", err)
+		}
+		err = hub.ImportAnnouncement(announcementData, hub.ScopePublic)
+		if err != nil {
+			return fmt.Errorf("failed to import announcement: %w", err)
+		}
+		// parse status
+		statusData, err := reply.GetNextBlock()
+		if err != nil {
+			return fmt.Errorf("failed to get status: %w", err)
+		}
+		err = hub.ImportStatus(statusData, hub.ScopePublic)
+		if err != nil {
+			return fmt.Errorf("failed to import status: %w", err)
+		}
+
+		// refetch from DB to ensure we have the new version
+		dstHub, err := hub.GetHub(hub.ScopePublic, crane.ConnectedHub.ID)
+		if err != nil {
+			return fmt.Errorf("failed to refetch destination Hub: %w", err)
+		}
+		crane.ConnectedHub = dstHub
+
+		// try to select public key again
+		s := crane.ConnectedHub.SelectSignet()
+		if s == nil {
+			return errors.New("failed to select signet even after hub info request")
+		}
 		// }
 
 		// create envelope
@@ -239,19 +300,15 @@ func (crane *Crane) Start() error {
 			return fmt.Errorf("failed to encrypt initial packet: %w", err)
 		}
 
-		fmt.Printf("out: version=%d\n", letter.Version)
-
 		// serialize
 		c, err := letter.ToWire()
 		if err != nil {
 			return fmt.Errorf("failed to pack initial packet: %w", err)
 		}
 
-		fmt.Printf("out: wireData=%v\n", c.CompileData())
-
 		// manually send docking request
 		c.PrependLength()
-		ok, err := crane.ship.Load(c.CompileData())
+		ok, err = crane.ship.Load(c.CompileData())
 		if err != nil {
 			return fmt.Errorf("ship sank: %w", err)
 		}
@@ -265,33 +322,66 @@ func (crane *Crane) Start() error {
 		}
 
 		// receive first packet
-		c := <-crane.fromShip
+		var c *container.Container
+		select {
+		case c = <-crane.fromShip:
+		case <-time.After(1 * time.Second):
+			// send QOTD
+			// TODO: check if this works
+			qotdMsg := container.New([]byte(QOTD))
+			qotdMsg.PrependLength()
+			_, _ = crane.ship.Load(qotdMsg.CompileData())
+			crane.Stop()
+			return errors.New("timed out while waiting for first packet, sent QotD")
+		}
 
 		// check for status request
 		// TODO: find a better way
 		data := c.CompileData()
 		if len(data) >= 1 && data[0] == 0x7F {
 			// 0x7F is the highest single-byte varint
+			// and is a request for the Hub Announcement and Status
+
+			msg := container.New()
+
+			// send announcement
+			announcementData, err := crane.identity.ExportAnnouncement()
+			if err != nil {
+				return err
+			}
+			msg.AppendAsBlock(announcementData)
+
+			// send status
 			statusData, err := crane.identity.ExportStatus()
 			if err != nil {
 				return err
 			}
-			crane.toShip <- container.New(statusData)
+			msg.AppendAsBlock(statusData)
+
+			// manually send info reply
+			msg.PrependLength()
+			ok, err := crane.ship.Load(msg.CompileData())
+			if err != nil {
+				return fmt.Errorf("ship sank: %w", err)
+			}
+			if !ok {
+				return errors.New("ship sank")
+			}
 
 			// receive next message
-			c = <-crane.fromShip
-			data = c.CompileData()
+			select {
+			case c = <-crane.fromShip:
+				data = c.CompileData()
+			case <-time.After(1 * time.Second):
+				return errors.New("timed out waiting for docking request")
+			}
 		}
-
-		fmt.Printf("in: wireData=%v\n", data)
 
 		// parse packet
 		letter, err := jess.LetterFromWireData(data)
 		if err != nil {
 			return fmt.Errorf("failed to parse initial packet: %w", err)
 		}
-
-		fmt.Printf("in: version=%d\n", letter.Version)
 
 		// do not decrypt directly, rather get session for future use, then open
 		crane.session, err = letter.WireCorrespondence(crane.identity)
@@ -314,6 +404,7 @@ func (crane *Crane) Start() error {
 
 	log.Infof("spn/docks: crane %s for %s operational", crane.ID, crane.ship)
 
+	module.StartWorker("crane loader", crane.loader)
 	module.StartWorker("crane handler", crane.handler)
 	return nil
 }
@@ -618,6 +709,9 @@ func (crane *Crane) Stop() {
 		crane.status = CraneStatusStopped
 		crane.ship.Sink()
 		RetractCraneByID(crane.ID)
+		if hooksActive.IsSet() {
+			_ = discontinueConnectionHook(crane.Controller, crane.ConnectedHub, nil)
+		}
 		log.Warningf("crane %s: stopped, %s sunk.", crane.ID, crane.ship)
 	}
 }

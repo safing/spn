@@ -9,7 +9,7 @@ var (
 )
 
 func init() {
-	modules.Register("cabin", prep, nil, nil, "config")
+	modules.Register("cabin", prep, nil, nil, "base")
 }
 
 func prep() error {

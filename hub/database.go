@@ -73,7 +73,7 @@ func EnsureHub(r record.Record) (*Hub, error) {
 		if err != nil {
 			return nil, err
 		}
-		return new, nil
+		return checkAndReturn(new), nil
 	}
 
 	// or adjust type
@@ -81,7 +81,16 @@ func EnsureHub(r record.Record) (*Hub, error) {
 	if !ok {
 		return nil, fmt.Errorf("record not of type *Hub, but %T", r)
 	}
-	return new, nil
+
+	// ensure status
+	return checkAndReturn(new), nil
+}
+
+func checkAndReturn(h *Hub) *Hub {
+	if h.Status == nil {
+		h.Status = &HubStatus{}
+	}
+	return h
 }
 
 // Save saves to Hub to the correct scope in the database.
@@ -112,6 +121,8 @@ func makeHubDBKey(scope Scope, id string) (key string, ok bool) {
 		return LocalHubs + id, true
 	case ScopePublic:
 		return PublicHubs + id, true
+	case ScopeTest:
+		return AllHubs + "test/" + id, true
 	default:
 		return "", false
 	}

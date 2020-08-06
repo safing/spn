@@ -2,6 +2,9 @@ package hub
 
 import (
 	"errors"
+	"fmt"
+	"sort"
+	"time"
 
 	"github.com/safing/jess"
 )
@@ -35,21 +38,23 @@ type HubConnection struct {
 }
 
 // SelectSignet selects the public key to use for initiating connections to that Hub.
-func (h *Hub) SelectSignet() (*jess.Signet, error) {
+func (h *Hub) SelectSignet() *jess.Signet {
 	h.Lock()
 	defer h.Unlock()
 
-	// TODO: select key based on expiry and preferred alg?
+	// TODO: select key based preferred alg?
 	for id, key := range h.Status.Keys {
-		return &jess.Signet{
-			ID:     id,
-			Scheme: key.Scheme,
-			Key:    key.Key,
-			Public: true,
-		}, nil
+		if time.Now().Unix() < key.Expires {
+			return &jess.Signet{
+				ID:     id,
+				Scheme: key.Scheme,
+				Key:    key.Key,
+				Public: true,
+			}
+		}
 	}
 
-	return nil, errors.New("no exchange keys available")
+	return nil
 }
 
 // GetSignet returns the public key identified by the given ID from the Hub Status.
@@ -130,6 +135,10 @@ func (c *HubConnection) Equal(other *HubConnection) bool {
 	return true
 }
 
+func (c *HubConnection) String() string {
+	return fmt.Sprintf("<%s cap=%d lat=%d>", c.ID, c.Capacity, c.Latency)
+}
+
 // ConnectionsEqual returns whether the given []*HubConnection are equal.
 func ConnectionsEqual(a, b []*HubConnection) bool {
 	if len(a) != len(b) {
@@ -143,4 +152,15 @@ func ConnectionsEqual(a, b []*HubConnection) bool {
 	}
 
 	return true
+}
+
+type connections []*HubConnection
+
+func (c connections) Len() int           { return len(c) }
+func (c connections) Swap(i, j int)      { c[i], c[j] = c[j], c[i] }
+func (c connections) Less(i, j int) bool { return c[i].ID < c[j].ID }
+
+// SortConnections sorts a slice of HubConnections.
+func SortConnections(c []*HubConnection) {
+	sort.Sort(connections(c))
 }

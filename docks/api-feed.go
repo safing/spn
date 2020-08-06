@@ -11,6 +11,12 @@ import (
 	"github.com/safing/spn/hub"
 )
 
+const (
+	HubFeedAnnouncement = 1
+	HubFeedStatus       = 2
+	HubFeedDistrust     = 3 // TODO
+)
+
 var (
 	db = database.NewInterface(nil)
 )
@@ -25,27 +31,26 @@ func (portAPI *API) handlePublicHubFeed(call *api.Call, c *container.Container) 
 
 func publicHubFeeder(call *api.Call) {
 	// announcement feed
-	ok := hubMsgFeeder(call, hub.ScopePublic, "announcement")
+	ok := hubMsgFeeder(call, hub.ScopePublic, "announcement", HubFeedAnnouncement)
 
 	// status feed
 	if ok {
-		hubMsgFeeder(call, hub.ScopePublic, "status")
+		hubMsgFeeder(call, hub.ScopePublic, "status", HubFeedStatus)
 	}
 
 	call.End()
 }
 
-func hubMsgFeeder(call *api.Call, scope hub.Scope, msgType string) (ok bool) {
+func hubMsgFeeder(call *api.Call, scope hub.Scope, dataType string, msgType int) (ok bool) {
 	iter, err := db.Query(query.New(fmt.Sprintf(
 		"%s%s/%s/",
 		hub.RawMsgsScope,
 		scope,
-		msgType,
+		dataType,
 	)))
 	if err != nil {
-		call.SendError(fmt.Sprintf("could not initialize %s hub %s feed", scope, msgType))
-		call.End()
-		log.Warningf("spn/api: failed to initialize %s hub %s feed: %s", scope, msgType, err)
+		call.SendError(fmt.Sprintf("could not initialize %s hub %s feed", scope, dataType))
+		log.Warningf("spn/api: failed to initialize %s hub %s feed: %s", scope, dataType, err)
 		return false
 	}
 
@@ -62,7 +67,10 @@ func hubMsgFeeder(call *api.Call, scope hub.Scope, msgType string) (ok bool) {
 			continue
 		}
 
-		call.SendData(container.New(hubMsg.Data))
+		data := container.New()
+		data.AppendInt(msgType)
+		data.AppendAsBlock(hubMsg.Data)
+		call.SendData(data)
 	}
 	if iter.Err() != nil {
 		call.SendError("error during hub msg feed")

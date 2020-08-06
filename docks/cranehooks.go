@@ -18,18 +18,20 @@ type craneHookFunc func(controller *CraneController, connectedHub *hub.Hub, c *c
 var (
 	ErrInternalError = errors.New("internal error")
 
-	hubAnnouncementHook   craneHookFunc
-	hubStatusHook         craneHookFunc
-	publishConnectionHook craneHookFunc
-	hooksActive           = abool.New()
+	hubAnnouncementHook       craneHookFunc
+	hubStatusHook             craneHookFunc
+	publishConnectionHook     craneHookFunc
+	discontinueConnectionHook craneHookFunc
+	hooksActive               = abool.New()
 )
 
 // RegisterCraneHooks allows the manager to hook into important crane functions without creating an import loop
-func RegisterCraneHooks(announcement, status, publish craneHookFunc) {
+func RegisterCraneHooks(announcement, status, publish, discontinue craneHookFunc) {
 	if announcement != nil && status != nil && publish != nil {
 		hubAnnouncementHook = announcement
 		hubStatusHook = status
 		publishConnectionHook = publish
+		discontinueConnectionHook = discontinue
 		hooksActive.Set()
 	}
 }
@@ -40,7 +42,7 @@ func (cControl *CraneController) SendHubAnnouncement(msg []byte) {
 
 func (cControl *CraneController) handleHubAnnouncement(c *container.Container) error {
 	if hooksActive.IsSet() {
-		return hubAnnouncementHook(cControl, cControl.Crane.connectedHub, c)
+		return hubAnnouncementHook(cControl, cControl.Crane.ConnectedHub, c)
 	}
 	return ErrInternalError
 }
@@ -51,7 +53,7 @@ func (cControl *CraneController) SendHubStatus(msg []byte) {
 
 func (cControl *CraneController) handleHubStatus(c *container.Container) error {
 	if hooksActive.IsSet() {
-		return hubStatusHook(cControl, cControl.Crane.connectedHub, c)
+		return hubStatusHook(cControl, cControl.Crane.ConnectedHub, c)
 	}
 	return ErrInternalError
 }
@@ -116,9 +118,9 @@ func (cControl *CraneController) handlePublishConnection(c *container.Container)
 		// sign challenge
 		response := container.New()
 		// To:
-		response.AppendAsBlock([]byte(cControl.Crane.connectedHub.ID))
+		response.AppendAsBlock([]byte(cControl.Crane.ConnectedHub.ID))
 		// From:
-		response.AppendAsBlock([]byte(cControl.Crane.identity.Hub.ID))
+		response.AppendAsBlock([]byte(cControl.Crane.identity.Hub().ID))
 		// Token:
 		response.AppendContainerAsBlock(c)
 		// sign
@@ -149,7 +151,7 @@ func (cControl *CraneController) handlePublishConnection(c *container.Container)
 		if err != nil {
 			return fmt.Errorf("format error: %w", err)
 		}
-		if string(to) != cControl.Crane.identity.Hub.ID {
+		if string(to) != cControl.Crane.identity.Hub().ID {
 			return errors.New("challange response recipient mismatch")
 		}
 		// From:
@@ -170,7 +172,7 @@ func (cControl *CraneController) handlePublishConnection(c *container.Container)
 		}
 
 		// set connected hub
-		cControl.Crane.connectedHub = sendingHub
+		cControl.Crane.ConnectedHub = sendingHub
 
 		// send confirmation
 		cControl.send <- container.NewContainer([]byte{CraneMsgTypePublishConnection})
@@ -181,7 +183,7 @@ func (cControl *CraneController) handlePublishConnection(c *container.Container)
 
 		// publish
 		if hooksActive.IsSet() {
-			return publishConnectionHook(cControl, cControl.Crane.connectedHub, nil)
+			return publishConnectionHook(cControl, cControl.Crane.ConnectedHub, nil)
 		}
 
 		return nil
@@ -194,7 +196,7 @@ func (cControl *CraneController) handlePublishConnection(c *container.Container)
 
 		// publish
 		if hooksActive.IsSet() {
-			return publishConnectionHook(cControl, cControl.Crane.connectedHub, nil)
+			return publishConnectionHook(cControl, cControl.Crane.ConnectedHub, nil)
 		}
 
 		return nil

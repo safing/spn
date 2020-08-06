@@ -80,7 +80,7 @@ func TestIdentity(t *testing.T) {
 
 	// check if identity was registered in the hub DB
 
-	_, err = hub.GetHub(id.Hub.Scope, id.Hub.ID)
+	_, err = hub.GetHub(id.Scope, id.ID)
 	if err != nil {
 		t.Fatal(err)
 	}

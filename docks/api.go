@@ -2,11 +2,13 @@ package docks
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/safing/portbase/container"
 	"github.com/safing/portbase/formats/dsd"
 	"github.com/safing/portbase/info"
 	"github.com/safing/portbase/log"
+	"github.com/safing/spn/access"
 	"github.com/safing/spn/api"
 	"github.com/safing/spn/hub"
 )
@@ -24,17 +26,20 @@ const (
 	MsgTypeStats         uint8 = 3
 	MsgTypePublicHubFeed uint8 = 4
 
-	// Tunneling
-	MsgTypeHop    uint8 = 8
-	MsgTypeTunnel uint8 = 9
-	MsgTypePing   uint8 = 10
-
 	// Diagnostics
-	MsgTypeEcho      uint8 = 32
-	MsgTypeSpeedtest uint8 = 33
+	MsgTypeEcho      uint8 = 16
+	MsgTypeSpeedtest uint8 = 17
 
-	// Authentication
-	MsgTypeAuthenticate uint8 = 64
+	// User Access
+	MsgTypeUserAuth uint8 = 32
+
+	// Tunneling
+	MsgTypeHop    uint8 = 40
+	MsgTypeTunnel uint8 = 41
+	MsgTypePing   uint8 = 42
+
+	// Admin/Mod Access
+	MsgTypeAdminAuth uint8 = 64
 
 	// Mgmt
 	MsgTypeEstablishRoute uint8 = 72
@@ -46,15 +51,54 @@ func NewAPI(version int, server, initiator bool) *API {
 	portAPI := &API{}
 	portAPI.Init(server, initiator, nil, nil)
 
+	portAPI.RegisterHandler(MsgTypeUserAuth, portAPI.handleUserAuth)
+
 	portAPI.RegisterHandler(MsgTypeInfo, portAPI.handleInfo)
-	portAPI.RegisterHandler(MsgTypeHop, portAPI.handleHop)
 	portAPI.RegisterHandler(MsgTypeEcho, portAPI.handleEcho)
-	portAPI.RegisterHandler(MsgTypeTunnel, portAPI.handleTunnel)
-	portAPI.RegisterHandler(MsgTypePing, portAPI.handlePing)
-	portAPI.RegisterHandler(MsgTypePing, portAPI.handlePing)
 	portAPI.RegisterHandler(MsgTypePublicHubFeed, portAPI.handlePublicHubFeed)
 
 	return portAPI
+}
+
+// Info calls and returns node information of the connected node.
+func (portAPI *API) UserAuth(code *access.Code) error {
+	call := portAPI.Call(MsgTypeUserAuth, container.New(code.Raw()))
+	select {
+	case msg := <-call.Msgs:
+		switch msg.MsgType {
+		case api.API_ACK:
+			return nil
+		case api.API_ERR:
+			return fmt.Errorf("failed authenticate with access code: %s", api.ParseError(msg.Container))
+		}
+		return fmt.Errorf("received unexpected data")
+	case <-time.After(1 * time.Second):
+		return fmt.Errorf("timed out")
+	}
+}
+
+func (portAPI *API) handleUserAuth(call *api.Call, data *container.Container) {
+	// parse code
+	code, err := access.ParseRawCode(data.CompileData())
+	if err != nil {
+		call.SendError(fmt.Sprintf("failed to parse access code: %s", err))
+		call.End()
+		return
+	}
+
+	// verify code
+	err = access.Check(code)
+	if err != nil {
+		call.SendError(fmt.Sprintf("access code verification failed: %s", err))
+		call.End()
+		return
+	}
+
+	// register additional handlers
+	portAPI.RegisterHandler(MsgTypeHop, portAPI.handleHop)
+	portAPI.RegisterHandler(MsgTypeTunnel, portAPI.handleTunnel)
+	portAPI.RegisterHandler(MsgTypePing, portAPI.handlePing)
+	call.SendAck()
 }
 
 // Info calls and returns node information of the connected node.
