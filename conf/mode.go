@@ -6,6 +6,7 @@ import (
 
 var (
 	publicHub = abool.New()
+	client    = abool.New()
 )
 
 func PublicHub() bool {
@@ -14,4 +15,12 @@ func PublicHub() bool {
 
 func EnablePublicHub(enable bool) {
 	publicHub.SetTo(enable)
+}
+
+func Client() bool {
+	return client.IsSet()
+}
+
+func EnableClient(enable bool) {
+	client.SetTo(enable)
 }
