@@ -10,7 +10,6 @@ import (
 
 // TestShip is a simulated ship that is used for testing higher level components.
 type TestShip struct {
-	name      string
 	mine      bool
 	forward   chan []byte
 	backward  chan []byte
@@ -51,7 +50,6 @@ func (d *TestShip) IsMine() bool {
 // Reverse creates a connected TestShip. This is used to simulate a connection instead of using a Pier.
 func (d *TestShip) Reverse() *TestShip {
 	return &TestShip{
-		name:     "TestShip",
 		mine:     !d.mine,
 		forward:  d.backward,
 		backward: d.forward,
