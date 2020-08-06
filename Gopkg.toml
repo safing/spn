@@ -24,4 +24,4 @@
 #   go-tests = true
 #   unused-packages = true
 
-ignored = ["github.com/safing/portbase/*", "github.com/safing/portmaster/*", "github.com/safing/tinker/*"]
+ignored = ["github.com/safing/portbase/*", "github.com/safing/portmaster/*"]

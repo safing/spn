@@ -1,6 +1,8 @@
 # Compiled binaries
 spn
 spn.exe
+client
+client.exe
 main
 main.exe
 
@@ -11,7 +13,6 @@ dist
 vendor
 
 # testing data
-
 testing/simple/data
 
 # Compiled Object files, Static and Dynamic libs (Shared Objects)
