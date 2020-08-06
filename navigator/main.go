@@ -6,7 +6,7 @@ import (
 	"sync"
 
 	"github.com/safing/portbase/log"
-	"github.com/safing/spn/bottle"
+	"github.com/safing/spn/hub"
 )
 
 var (
@@ -25,6 +25,16 @@ func SetPrimaryPort(port *Port) {
 	primaryPortLock.Lock()
 	defer primaryPortLock.Unlock()
 	primaryPort = port
+}
+
+func GetHub(ID string) *hub.Hub {
+	publicPortsLock.RLock()
+	defer publicPortsLock.RUnlock()
+	port, ok := publicPorts[ID]
+	if !ok {
+		return nil
+	}
+	return port.Hub
 }
 
 func GetPublicPort(portName string) *Port {
@@ -69,78 +79,57 @@ func FindPathToPorts(ports []*Port) ([]*Port, error) {
 	return path, nil
 }
 
-func UpdatePublicBottle(newBottle *bottle.Bottle) {
-	log.Infof("navigator: updating public bottle %s", newBottle.PortName)
-	updateBottle(publicPorts, &publicPortsLock, newBottle)
+func UpdateHub(h *hub.Hub) {
+	log.Infof("spn/navigator: updating Hub %s", h)
+	updateHub(publicPorts, &publicPortsLock, h)
 }
 
-func UpdateLocalBottle(newBottle *bottle.Bottle) {
-	log.Infof("navigator: updating local bottle %s", newBottle.PortName)
-	updateBottle(localPorts, &localPortsLock, newBottle)
-}
-
-func StartPublicReset() {
+func RemovePublicHub(id string) {
 	publicPortsLock.Lock()
-	publicPorts = make(map[string]*Port)
+	defer publicPortsLock.Unlock()
+	delete(publicPorts, id)
 }
 
-func FeedPublicBottle(newBottle *bottle.Bottle) {
-	updateBottle(publicPorts, nil, newBottle)
-}
-
-func FinishPublicReset() {
-	publicPortsLock.Unlock()
-}
-
-func StartLocalReset() {
-	localPortsLock.Lock()
-	localPorts = make(map[string]*Port)
-}
-
-func FinishLocalReset() {
-	localPortsLock.Unlock()
-}
-
-func updateBottle(collection map[string]*Port, locker *sync.RWMutex, newBottle *bottle.Bottle) {
-	// check authenticity of bottle
-	// TODO: check authenticity of bottle
-
+func updateHub(collection map[string]*Port, locker *sync.RWMutex, h *hub.Hub) {
 	if locker != nil {
 		locker.Lock()
 		defer locker.Unlock()
 	}
 
 	// create or update Port
-	port, ok := collection[newBottle.PortName]
+	port, ok := collection[h.ID]
 	if ok {
 		// update Port
 		port.Lock()
-		port.Bottle = newBottle
+		port.Hub = h
 		port.Unlock()
 		port.CheckLocation()
 	} else {
 		// create new Port
-		port = NewPort(newBottle)
-		collection[newBottle.PortName] = port
+		port = NewPort(h)
+		collection[h.ID] = port
 	}
 
 	// update Routes
+	if h.Status == nil {
+		return
+	}
 
 	// add
-	for _, route := range newBottle.Connections {
-		newPort, ok := collection[route.PortName]
+	for _, route := range h.Status.Connections {
+		newPort, ok := collection[route.ID]
 		if ok {
-			port.AddRoute(newPort, route.Cost)
+			port.AddRoute(newPort, route.Latency)
 		}
 	}
 
 	// delete
-	if len(port.Routes) > len(newBottle.Connections) {
+	if len(port.Routes) > len(h.Status.Connections) {
 		for _, route := range port.Routes {
 			// look if current route is still present in bottle
 			found := false
-			for _, bottleConn := range newBottle.Connections {
-				if route.Port.Name() == bottleConn.PortName {
+			for _, conn := range h.Status.Connections {
+				if route.Port.Name() == conn.ID {
 					found = true
 					break
 				}

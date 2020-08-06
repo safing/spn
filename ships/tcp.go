@@ -1,47 +1,70 @@
 package ships
 
 import (
-	"bytes"
+	"context"
 	"net"
-	"strings"
+	"time"
 
-	"github.com/safing/portbase/log"
+	"github.com/safing/spn/hub"
 )
 
-type TCPShipFactory struct{}
+// TCPShip is a ship that uses TCP.
+type TCPShip struct {
+	ShipBase
+}
 
-var (
-	TCPShipIdentifier = []byte("Port17 TCP")
-)
+// TCPPier is a pier that uses TCP.
+type TCPPier struct {
+	PierBase
+}
 
 func init() {
-	RegisterStreamShipFactory("TCP", &TCPShipFactory{})
+	Register("tcp", &Builder{
+		LaunchShip:    launchTCPShip,
+		EstablishPier: establishTCPPier,
+	})
 }
 
-func (factory *TCPShipFactory) SetSail(address string) (Ship, error) {
-	conn, err := net.Dial("tcp", address)
+func launchTCPShip(ctx context.Context, transport *hub.Transport, ip net.IP) (Ship, error) {
+	dialer := &net.Dialer{
+		Timeout: 3 * time.Second,
+	}
+	conn, err := dialer.DialContext(ctx, "tcp", net.JoinHostPort(ip.String(), portToA(transport.Port)))
 	if err != nil {
 		return nil, err
 	}
 
-	_, err = conn.Write(TCPShipIdentifier)
+	ship := &TCPShip{}
+	ship.initBase(ctx, transport, true, conn)
+	return ship, nil
+}
+
+func establishTCPPier(ctx context.Context, transport *hub.Transport, dockingRequests chan *DockingRequest) (Pier, error) {
+	listener, err := net.ListenTCP("tcp", &net.TCPAddr{
+		Port: int(transport.Port),
+	})
 	if err != nil {
 		return nil, err
 	}
 
-	log.Infof("port17: new ship (TCP) to %s docked.", address)
-	return NewTCPShip(conn, true), nil
+	pier := &TCPPier{}
+	pier.initBase(
+		ctx,
+		transport,
+		listener,
+		pier.dockShip,
+		dockingRequests,
+	)
+	return pier, nil
 }
 
-func (factory *TCPShipFactory) IdentifyShip(network string, firstPacket []byte, conn net.Conn) (Ship, error) {
-	if strings.HasPrefix(network, "tcp") && bytes.HasPrefix(firstPacket, TCPShipIdentifier) {
-		ship := NewTCPShip(conn, false)
-		ship.initial = firstPacket[len(TCPShipIdentifier):]
-		return ship, nil
+func (pier *TCPPier) dockShip() (Ship, error) {
+	conn, err := pier.listener.Accept()
+	if err != nil {
+		return nil, err
 	}
-	return nil, nil
-}
 
-func NewTCPShip(conn net.Conn, mine bool) *GenericShip {
-	return NewGenericShip("TCP", conn, mine)
+	ship := &TCPShip{}
+	ship.initBase(pier.ctx, pier.transport, false, conn)
+	return ship, nil
 }

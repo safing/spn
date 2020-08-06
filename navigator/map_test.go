@@ -8,7 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/safing/portmaster/network/geoip"
+	"github.com/safing/spn/hub"
+
+	"github.com/safing/portmaster/intel/geoip"
 )
 
 func TestMap(t *testing.T) {
@@ -27,9 +29,21 @@ func TestMap(t *testing.T) {
 	}()
 
 	collection := buildTestNet()
+	collection["a"] = NewPort(&hub.Hub{
+		ID: "a",
+		Info: &hub.HubAnnouncement{
+			ID:   "a",
+			IPv4: net.ParseIP("6.0.0.1"),
+		},
+		Status: &hub.HubStatus{},
+	})
+
 	var lock sync.Mutex
 
 	m := NewMap(collection["1"], collection, &lock)
+
+	testNearestPort(t, m, nil, "104.103.72.43")
+	return
 
 	// IPv4
 	testNearestPort(t, m, nil, "54.132.253.167")
@@ -104,6 +118,9 @@ func testNearestPort(t *testing.T, m *Map, expectedPorts []uint8, dests ...strin
 	col, err := m.FindNearestPorts(ips)
 	if err != nil {
 		t.Errorf("error finding nearest port: %s", err)
+	}
+	if col.Len() == 0 {
+		t.Errorf("no ports found near %s", ips)
 	}
 
 	t.Logf("===== results for %v", ips)
