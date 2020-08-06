@@ -8,30 +8,30 @@ import (
 
 	"github.com/safing/portbase/log"
 	"github.com/safing/portmaster/intel/geoip"
-	"github.com/safing/spn/bottle"
-	"github.com/safing/spn/core"
+	"github.com/safing/spn/docks"
+	"github.com/safing/spn/hub"
 )
 
 // Port represents a node in the Port17 network.
 type Port struct {
 	sync.RWMutex
 
-	Bottle         *bottle.Bottle
+	Hub            *hub.Hub
 	IgnoreUntil    int64 // e.g. if an error occurred with this port
 	Trusted        bool
 	Location4      *geoip.Location
 	Location6      *geoip.Location
 	Routes         []*Route
-	ActiveAPI      *core.API // Api to active Port
-	ActiveRoute    []*Port   // list of Ports this connection runs through
-	DependingPorts []*Port   // list of Ports that use this Port for a connection
-	Load           int       // estimated in microseconds this port adds to latency
+	ActiveAPI      *docks.API // API to active Port
+	ActiveRoute    []*Port    // list of Ports this connection runs through
+	DependingPorts []*Port    // list of Ports that use this Port for a connection
+	Load           int        // estimated in microseconds this port adds to latency
 }
 
-func NewPort(newBottle *bottle.Bottle) *Port {
+func NewPort(h *hub.Hub) *Port {
 	new := &Port{
-		Bottle: newBottle,
-		Load:   newBottle.Load,
+		Hub:  h,
+		Load: h.Status.Load,
 	}
 	new.CheckLocation()
 	new.CheckTrustStatus()
@@ -43,25 +43,25 @@ func (p *Port) String() string {
 }
 
 func (p *Port) Name() string {
-	return p.Bottle.PortName
+	return p.Hub.ID
 }
 
 func (p *Port) CheckLocation() {
 	// get IPv4 location
-	if len(p.Bottle.IPv4) > 0 {
-		loc, err := geoip.GetLocation(p.Bottle.IPv4)
+	if p.Hub.Info.IPv4 != nil {
+		loc, err := geoip.GetLocation(p.Hub.Info.IPv4)
 		if err != nil {
-			log.Warningf("port17/navigator: failed to get IPv4 location of %s for Port %s: %s", p.Bottle.IPv4, p.Name(), err)
+			log.Warningf("port17/navigator: failed to get IPv4 location of %s for Port %s: %s", p.Hub.Info.IPv4, p.Name(), err)
 		} else {
 			p.Location4 = loc
 		}
 	}
 
 	// get IPv6 location
-	if len(p.Bottle.IPv6) > 0 {
-		loc, err := geoip.GetLocation(p.Bottle.IPv6)
+	if p.Hub.Info.IPv6 != nil {
+		loc, err := geoip.GetLocation(p.Hub.Info.IPv6)
 		if err != nil {
-			log.Warningf("port17/navigator: failed to get IPv6 location of %s for Port %s: %s", p.Bottle.IPv6, p.Name(), err)
+			log.Warningf("port17/navigator: failed to get IPv6 location of %s for Port %s: %s", p.Hub.Info.IPv6, p.Name(), err)
 		} else {
 			p.Location6 = loc
 		}
@@ -219,5 +219,5 @@ func (p *Port) RemoveRoute(newPort *Port) {
 }
 
 func (p *Port) Equal(other *Port) bool {
-	return p.Bottle.PortName == other.Bottle.PortName
+	return p.Hub.ID == other.Hub.ID
 }

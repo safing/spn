@@ -88,7 +88,7 @@ func (m *Map) FindNearestPorts(ips []net.IP) (*ProximityCollection, error) {
 			continue
 		}
 
-		if port.Bottle.IPv4 != nil {
+		if port.Hub.Info.IPv4 != nil {
 			for i := 0; i < len(ip4s); i++ {
 				proximity := 0
 				if geoMatch {
@@ -96,7 +96,7 @@ func (m *Map) FindNearestPorts(ips []net.IP) (*ProximityCollection, error) {
 						proximity = ip4Locs[i].EstimateNetworkProximity(port.Location4)
 					}
 				} else {
-					proximity = geoip.PrimitiveNetworkProximity(port.Bottle.IPv4, ip4s[i], 4)
+					proximity = geoip.PrimitiveNetworkProximity(port.Hub.Info.IPv4, ip4s[i], 4)
 				}
 				if proximity >= col.MinProximity {
 					col.Add(&ProximityResult{
@@ -108,7 +108,7 @@ func (m *Map) FindNearestPorts(ips []net.IP) (*ProximityCollection, error) {
 			}
 		}
 
-		if port.Bottle.IPv6 != nil {
+		if port.Hub.Info.IPv6 != nil {
 			for i := 0; i < len(ip6s); i++ {
 				proximity := 0
 				if geoMatch {
@@ -116,7 +116,7 @@ func (m *Map) FindNearestPorts(ips []net.IP) (*ProximityCollection, error) {
 						proximity = ip6Locs[i].EstimateNetworkProximity(port.Location6)
 					}
 				} else {
-					proximity = geoip.PrimitiveNetworkProximity(port.Bottle.IPv6, ip6s[i], 6)
+					proximity = geoip.PrimitiveNetworkProximity(port.Hub.Info.IPv6, ip6s[i], 6)
 				}
 				if proximity >= col.MinProximity {
 					col.Add(&ProximityResult{

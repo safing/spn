@@ -48,9 +48,6 @@ func (pc *ProximityCollection) Swap(i, j int) {
 
 func (pc *ProximityCollection) Add(result *ProximityResult) {
 	if result.Proximity >= pc.MinProximity {
-		if len(pc.All) == cap(pc.All) {
-			pc.Clean()
-		}
 		pc.All = append(pc.All, result)
 		if result.Proximity-10 > pc.MinProximity {
 			pc.MinProximity = result.Proximity - 10
@@ -65,8 +62,5 @@ func (pc *ProximityCollection) Clean() {
 			pc.All = pc.All[:i]
 			break
 		}
-	}
-	if len(pc.All) > cap(pc.All)/2 {
-		pc.All = pc.All[:cap(pc.All)/2]
 	}
 }

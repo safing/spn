@@ -1,18 +1,17 @@
 package navigator
 
 import (
-	"bytes"
 	"sync"
 )
 
 // TODO: revamp, maybe move to bottle loading
 
 var (
-	trustedPorts     = make(map[string][]byte)
+	trustedPorts     = make(map[string]struct{})
 	trustedPortsLock sync.RWMutex
 )
 
-func UpdateTrustedPorts(list map[string][]byte) {
+func UpdateTrustedPorts(list map[string]struct{}) {
 	trustedPortsLock.Lock()
 	defer trustedPortsLock.Unlock()
 	trustedPorts = list
@@ -21,9 +20,6 @@ func UpdateTrustedPorts(list map[string][]byte) {
 func IsPortTrusted(port *Port) bool {
 	trustedPortsLock.RLock()
 	defer trustedPortsLock.RUnlock()
-	trustedPortID, ok := trustedPorts[port.Name()]
-	if ok && bytes.Equal(port.Bottle.PortID, trustedPortID) {
-		return true
-	}
-	return false
+	_, ok := trustedPorts[port.Hub.ID]
+	return ok
 }
