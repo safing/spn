@@ -15,7 +15,7 @@ import (
 
 func main() {
 	// configure
-	info.Set("SPN Hub", "0.1.10", "AGPLv3", true)
+	info.Set("SPN Hub", "0.2.0", "AGPLv3", true)
 	conf.EnablePublicHub(true)
 	conf.EnableClient(false)
 	config.SetDefaultConfigOption(captain.CfgOptionEnableSPNKey, true)
