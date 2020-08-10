@@ -73,6 +73,11 @@ func prepPublicIdentityMgmt() error {
 		maintainPublicIdentity,
 	)
 
+	module.NewTask(
+		"maintain public status",
+		maintainPublicStatus,
+	).Repeat(1 * time.Hour)
+
 	return module.RegisterEventHook(
 		"config",
 		"config change",
@@ -109,6 +114,30 @@ func maintainPublicIdentity(ctx context.Context, task *modules.Task) error {
 	// manage docks in order to react to possibly changed transports
 	if managePiersTask != nil {
 		managePiersTask.Queue()
+	}
+
+	return nil
+}
+
+func maintainPublicStatus(ctx context.Context, task *modules.Task) error {
+	changed, err := publicIdentity.MaintainExchKeys(time.Now())
+	if err != nil {
+		return fmt.Errorf("failed to maintain status: %w", err)
+	}
+
+	if !changed {
+		return nil
+	}
+
+	// export announcement
+	statusData, err := publicIdentity.ExportStatus()
+	if err != nil {
+		return fmt.Errorf("failed to export status: %w", err)
+	}
+
+	// forward to other connected Hubs
+	for _, controller := range docks.GetAllControllers() {
+		controller.SendHubStatus(statusData)
 	}
 
 	return nil

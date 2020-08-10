@@ -140,7 +140,7 @@ func (id *Identity) MaintainStatus(connections []*hub.HubConnection) (changed bo
 	defer id.Unlock()
 
 	// update keys
-	keysChanged, err := id.maintainExchKeys(time.Now())
+	keysChanged, err := id.MaintainExchKeys(time.Now())
 	if err != nil {
 		return false, fmt.Errorf("failed to maintain keys: %w", err)
 	}
