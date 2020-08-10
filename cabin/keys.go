@@ -52,7 +52,7 @@ func initProvidedExchKeySchemes() error {
 	return nil
 }
 
-func (id *Identity) maintainExchKeys(now time.Time) (changed bool, err error) {
+func (id *Identity) MaintainExchKeys(now time.Time) (changed bool, err error) {
 	// create Keys map
 	if id.ExchKeys == nil {
 		id.ExchKeys = make(map[string]*ExchKey)
