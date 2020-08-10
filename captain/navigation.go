@@ -58,41 +58,61 @@ func primaryHubManager(ctx context.Context) (err error) {
 }
 
 func establishPrimaryHub(ctx context.Context) (*navigator.Port, error) {
+	var primaryPortCandidate *navigator.Port
+	var bootstrapped bool
+
+findCandidate:
 	// find approximate network location
 	ip, err := netenv.GetApproximateInternetLocation()
 	if err != nil {
-		return nil, fmt.Errorf("unable to get own location: %w", err)
-	}
+		log.Warningf("unable to get own location: %s", err)
 
-	col, err := navigator.FindNearestPorts([]net.IP{ip})
-	if err != nil {
-		log.Warningf("spn/captain: unable to find nearest port for primary port: %s", err)
-		col = nil
-	} else if col.Len() == 0 {
-		log.Warning("spn/captain: no near ports could be found: will bootstrap.")
-		col = nil
-	}
+		// could not get location, use random port instead
+		primaryPortCandidate = navigator.GetRandomPort()
 
-	var port *navigator.Port
-	if col != nil {
-		port = col.All[0].Port
 	} else {
+		// find nearest ports to location
+		col, err := navigator.FindNearestPorts([]net.IP{ip})
+		if err != nil {
+			log.Warningf("spn/captain: unable to find nearest port for primary port: %s", err)
+			col = nil
+		} else if col.Len() == 0 {
+			log.Warning("spn/captain: no near ports could be found: will bootstrap.")
+			col = nil
+		}
+
+		// set candidate if there is a result
+		if col != nil {
+			primaryPortCandidate = col.All[0].Port
+		}
+	}
+
+	// bootstrap if no Port could be found
+	if primaryPortCandidate == nil {
+		if bootstrapped {
+			return nil, fmt.Errorf("unable to find a primary hub")
+		}
+
 		// bootstrap to the network!
 		err := bootstrapWithUpdates()
 		if err != nil {
 			return nil, fmt.Errorf("failed to bootstrap: %w", err)
 		}
 		log.Infof("spn/captain: bootstrap successful")
+
+		// try again
+		bootstrapped = true
+		goto findCandidate
 	}
 
 	// connect
-	ship, err := docks.LaunchShip(ctx, port.Hub, nil, nil)
+	ship, err := docks.LaunchShip(ctx, primaryPortCandidate.Hub, nil, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to connect to primary %s: %w", port.Hub, err)
+		return nil, fmt.Errorf("failed to connect to primary %s: %w", primaryPortCandidate.Hub, err)
 	}
 
 	// establish crane
-	crane, err := docks.NewCrane(ship, publicIdentity, port.Hub)
+	crane, err := docks.NewCrane(ship, publicIdentity, primaryPortCandidate.Hub)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create crane for primary Hub: %w", err)
 	}
@@ -100,12 +120,12 @@ func establishPrimaryHub(ctx context.Context) (*navigator.Port, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to start crane for primary Hub: %w", err)
 	}
-	docks.AssignCrane(port.Hub.ID, crane)
+	docks.AssignCrane(primaryPortCandidate.Hub.ID, crane)
 
 	// make client
-	client, err := docks.NewClient(conf.CurrentVersion, port.Hub)
+	client, err := docks.NewClient(conf.CurrentVersion, primaryPortCandidate.Hub)
 	if err != nil {
-		return nil, fmt.Errorf("unable to create client at primary %s: %w", port.Hub, err)
+		return nil, fmt.Errorf("unable to create client at primary %s: %w", primaryPortCandidate.Hub, err)
 	}
 
 	// get access code
@@ -117,19 +137,19 @@ func establishPrimaryHub(ctx context.Context) (*navigator.Port, error) {
 	// authenticate
 	err = client.UserAuth(accessCode)
 	if err != nil {
-		return nil, fmt.Errorf("failed to authenticate to primary %s: %w", port.Hub, err)
+		return nil, fmt.Errorf("failed to authenticate to primary %s: %w", primaryPortCandidate.Hub, err)
 	}
 
-	port.ActiveAPI = client
+	primaryPortCandidate.ActiveAPI = client
 	// TODO: let API be managed
 
 	// set primary port in navigator
-	navigator.SetPrimaryPort(port)
+	navigator.SetPrimaryPort(primaryPortCandidate)
 
 	// get bottles
 	feedHubs(client)
 
-	return port, nil
+	return primaryPortCandidate, nil
 }
 
 func feedHubs(client *docks.API) {

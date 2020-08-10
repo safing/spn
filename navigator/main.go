@@ -47,6 +47,16 @@ func GetPublicPort(portName string) *Port {
 	return port
 }
 
+func GetRandomPort() *Port {
+	publicPortsLock.RLock()
+	defer publicPortsLock.RUnlock()
+
+	for _, port := range publicPorts {
+		return port
+	}
+	return nil
+}
+
 // FindNearestPorts returns the nearest ports to a set of IP addresses.
 func FindNearestPorts(ips []net.IP) (*ProximityCollection, error) {
 	publicPortsLock.RLock()

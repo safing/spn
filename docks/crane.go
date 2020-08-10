@@ -327,10 +327,7 @@ func (crane *Crane) start() (err error) {
 		case c = <-crane.fromShip:
 		case <-time.After(1 * time.Second):
 			// send QOTD
-			// TODO: check if this works
-			qotdMsg := container.New([]byte(QOTD))
-			qotdMsg.PrependLength()
-			_, _ = crane.ship.Load(qotdMsg.CompileData())
+			_, _ = crane.ship.Load([]byte(QOTD))
 			crane.Stop()
 			return errors.New("timed out while waiting for first packet, sent QotD")
 		}

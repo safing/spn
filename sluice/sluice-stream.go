@@ -69,10 +69,20 @@ func (s *StreamSluice) handler(ctx context.Context) error {
 func (s *StreamSluice) handleConnection(ctx context.Context, conn net.Conn) error {
 	defer conn.Close()
 
-	// get address
+	// get addresses
+	localAddr, ok := conn.LocalAddr().(*net.TCPAddr)
+	if !ok {
+		return fmt.Errorf("failed to get local address, unexpected type: %T", conn.LocalAddr())
+	}
 	remoteAddr, ok := conn.RemoteAddr().(*net.TCPAddr)
 	if !ok {
 		return fmt.Errorf("failed to get remote address, unexpected type: %T", conn.RemoteAddr())
+	}
+
+	// check if local
+	if !remoteAddr.IP.Equal(localAddr.IP) {
+		log.Debugf("spn/sluice: received non-local request from %s", remoteAddr)
+		return nil
 	}
 
 	// get request

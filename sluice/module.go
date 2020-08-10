@@ -15,9 +15,9 @@ func init() {
 
 func start() error {
 	if conf.Client() {
-		StartStreamSluice("tcp4", "127.0.0.17:717")
+		StartStreamSluice("tcp4", "0.0.0.0:717")
 		// StartPacketSluice("udp4", "127.0.0.17:717")
-		StartStreamSluice("tcp6", "[fd17::17]:717")
+		StartStreamSluice("tcp6", "[::]:717")
 		// StartPacketSluice("udp6", "[fd17::17]:717")
 	}
 
