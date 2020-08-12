@@ -46,21 +46,6 @@ func (api *APIBase) RegisterHandler(id uint8, handler ApiHandler) {
 	api.handlers[id] = handler
 }
 
-func (api *APIBase) GetNextID() uint32 {
-	for {
-		if api.nextID > 2147483640 {
-			api.nextID -= 2147483640
-		}
-		api.nextID += 2
-		api.activeCallsLock.Lock()
-		_, ok := api.activeCalls[api.nextID]
-		api.activeCallsLock.Unlock()
-		if !ok {
-			return api.nextID
-		}
-	}
-}
-
 func (api *APIBase) Run() {
 	for {
 		c := <-api.fromShip
@@ -147,18 +132,37 @@ func (api *APIBase) Call(handlerID uint8, c *container.Container) *Call {
 	newCall := &Call{
 		Api:       api,
 		Initiator: true,
-		ID:        api.GetNextID(),
 		Msgs:      make(chan *ApiMsg, 0),
 		ended:     abool.NewBool(false),
 	}
-
-	api.activeCallsLock.Lock()
-	api.activeCalls[newCall.ID] = newCall
-	api.activeCallsLock.Unlock()
+	api.RegisterCall(newCall)
 
 	c.Prepend(varint.Pack8(handlerID))
 	newCall.send(API_CALL, c)
 	return newCall
+}
+
+func (api *APIBase) RegisterCall(call *Call) {
+	api.activeCallsLock.Lock()
+	defer api.activeCallsLock.Unlock()
+
+	for {
+		// wrap around
+		if api.nextID > 2147483640 {
+			api.nextID -= 2147483640
+		}
+		// increase call counter
+		api.nextID += 2
+
+		// check if ID is already registered
+		_, ok := api.activeCalls[api.nextID]
+		if !ok {
+			// use if free
+			call.ID = api.nextID
+			api.activeCalls[call.ID] = call
+			return
+		}
+	}
 }
 
 func (api *APIBase) Send(id uint32, msgType uint8, c *container.Container) {

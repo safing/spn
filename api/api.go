@@ -12,7 +12,6 @@ const (
 
 type API interface {
 	Init(server, initiator bool, fromShip, toShip chan *container.Container)
-	GetNextID() uint32
 	Run()
 	Send(id uint32, msgType uint8, c *container.Container)
 	EndCall(id uint32)

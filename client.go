@@ -19,15 +19,19 @@ import (
 )
 
 func main() {
-	// configure
-	info.Set("SPN Hub", "0.2.0", "AGPLv3", true)
+	info.Set("SPN Client Simulator", "0.0.0", "AGPLv3", false)
+
+	// configure SPN
 	conf.EnablePublicHub(false)
 	conf.EnableClient(true)
 	config.SetDefaultConfigOption(captain.CfgOptionEnableSPNKey, true)
 
-	go clientSim()
+	// adapt portmaster updates module
+	updates.MandatoryUpdates = []string{}
+	updates.UserAgent = "Hub"
 
 	// start
+	go clientSim()
 	os.Exit(run.Run())
 }
 

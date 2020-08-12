@@ -164,6 +164,10 @@ func (portAPI *API) relay(call *api.Call, conveyor *SimpleConveyorLine) {
 	for {
 		select {
 		case msg := <-call.Msgs:
+			if msg == nil { // call ended
+				close(conveyor.toShore)
+				return
+			}
 			switch msg.MsgType {
 			case api.API_DATA:
 				conveyor.toShore <- msg.Container
