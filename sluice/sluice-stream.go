@@ -7,7 +7,7 @@ import (
 	"net"
 	"time"
 
-	"github.com/safing/portmaster/network/netutils"
+	"github.com/safing/portmaster/netenv"
 
 	"github.com/tevino/abool"
 
@@ -77,18 +77,15 @@ func (s *StreamSluice) handleConnection(ctx context.Context, conn net.Conn) erro
 		return fmt.Errorf("failed to get remote address, unexpected type: %T", conn.RemoteAddr())
 	}
 
-	// get local address
-	localAddr, ok := conn.LocalAddr().(*net.TCPAddr)
-	if !ok {
-		return fmt.Errorf("failed to get local address, unexpected type: %T", conn.LocalAddr())
+	// check if the request is local
+	local, err := netenv.IsMyIP(remoteAddr.IP)
+	if err != nil {
+		log.Warningf("spn/sluice: failed to check if request from %s is local: %s", remoteAddr, err)
+		return nil
 	}
-
-	if !netutils.IPIsLocalhost(localAddr.IP) {
-		// If request is not from a localhost address, check it it's really local.
-		if !remoteAddr.IP.Equal(localAddr.IP) {
-			log.Debugf("spn/sluice: received non-local request from %s", remoteAddr)
-			return nil
-		}
+	if !local {
+		log.Warningf("spn/sluice: received external request from %s, ignoring", remoteAddr)
+		return nil
 	}
 
 	// get request
