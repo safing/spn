@@ -42,6 +42,7 @@ func (call *Call) send(msgType uint8, c *container.Container) {
 }
 
 func (call *Call) End() {
+	call.send(API_END, container.NewContainer(nil))
 	call.ended.Set()
 	call.Api.EndCall(call.ID)
 }

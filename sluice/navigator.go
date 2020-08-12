@@ -40,7 +40,7 @@ func buildTunnel(r *Request) (*api.Call, error) {
 	if !ports[0].HasActiveRoute() {
 		return nil, errors.New("first port in route has no active client")
 	}
-	log.Tracef("spn/sluice: found route with %d (additional) hops and with exit %s", len(ports), ports[len(ports)-1].Hub)
+	log.Tracef("spn/sluice: found route with %d (additional) hops and with exit %s", len(ports)-1, ports[len(ports)-1].Hub)
 
 	// get access code
 	accessCode, err := access.Get()

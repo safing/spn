@@ -32,7 +32,7 @@ func init() {
 	flag.StringVar(&bootstrapFileFlag, "bootstrap-file", "", "bootstrap file containing bootstrap hubs - will be initialized if running a public hub and it doesn't exist")
 }
 
-// processBootstrapFileFlag cehcks the bootstrap-hub argument if it is valid.
+// prepBootstrapHubFlag cehcks the bootstrap-hub argument if it is valid.
 func prepBootstrapHubFlag() error {
 	if bootstrapHubFlag != "" {
 		return processBootstrapHub(bootstrapHubFlag, false)
@@ -40,7 +40,7 @@ func prepBootstrapHubFlag() error {
 	return nil
 }
 
-// processBootstrapFileFlag processes the bootstrap-file argument.
+// processBootstrapHubFlag processes the bootstrap-hub argument.
 func processBootstrapHubFlag() error {
 	if bootstrapHubFlag != "" {
 		return processBootstrapHub(bootstrapHubFlag, true)
@@ -48,7 +48,7 @@ func processBootstrapHubFlag() error {
 	return nil
 }
 
-// processBootstrapFileFlag processes the bootstrap-file argument.
+// processBootstrapHub processes the bootstrap-hub argument.
 func processBootstrapHub(bootstrapTransport string, save bool) error {
 	// parse argument
 	t, err := hub.ParseTransport(bootstrapTransport)
@@ -132,6 +132,10 @@ func processBootstrapFileFlag() error {
 
 // bootstrapWithUpdates loads bootstrap hubs from the updates server and imports them.
 func bootstrapWithUpdates() error {
+	if bootstrapFileFlag != "" {
+		return errors.New("using the bootstrap-file argument disables bootstrapping via the update system")
+	}
+
 	file, err := updates.GetFile("spn/bootstrap.dsd")
 	if err != nil {
 		return fmt.Errorf("failed to get updates file: %w", err)

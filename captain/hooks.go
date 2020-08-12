@@ -6,6 +6,7 @@ import (
 	"github.com/safing/spn/conf"
 	"github.com/safing/spn/docks"
 	"github.com/safing/spn/hub"
+	"github.com/safing/spn/navigator"
 )
 
 func initDockHooks() {
@@ -87,6 +88,17 @@ func handleDiscontinuedConnection(
 	connectedHub *hub.Hub,
 	c *container.Container,
 ) error {
+	// do nothing if identity is unknown - there is no higher level logic initiated by us
+	if connectedHub == nil {
+		return nil
+	}
+
+	// shutdown any active API
+	port := navigator.GetPublicPort(connectedHub.ID)
+	if port != nil && port.ActiveAPI != nil {
+		port.ActiveAPI.Shutdown()
+	}
+
 	// do nothing if we're not a public hub
 	if !conf.PublicHub() {
 		return nil
@@ -99,6 +111,8 @@ func handleDiscontinuedConnection(
 
 	// update status
 	updateConnectionStatus()
+
+	// TODO: prepone restart if we loose all connections (ie. all connected hubs are restarting and no client are connected)
 
 	return nil
 }
