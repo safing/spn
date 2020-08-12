@@ -15,7 +15,7 @@ import (
 )
 
 func main() {
-	info.Set("SPN Hub", "0.2.2", "AGPLv3", true)
+	info.Set("SPN Hub", "0.2.3", "AGPLv3", true)
 
 	// configure SPN
 	conf.EnablePublicHub(true)
