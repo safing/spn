@@ -33,24 +33,24 @@ func TestIdentity(t *testing.T) {
 		t.Error("unexpected change of status")
 	}
 
-	connections := []*hub.HubConnection{
-		&hub.HubConnection{
+	lanes := []*hub.Lane{
+		&hub.Lane{
 			ID:       "A",
 			Capacity: 1,
 			Latency:  2,
 		},
-		&hub.HubConnection{
+		&hub.Lane{
 			ID:       "B",
 			Capacity: 3,
 			Latency:  4,
 		},
-		&hub.HubConnection{
+		&hub.Lane{
 			ID:       "C",
 			Capacity: 5,
 			Latency:  6,
 		},
 	}
-	changed, err = id.MaintainStatus(connections)
+	changed, err = id.MaintainStatus(lanes)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +58,7 @@ func TestIdentity(t *testing.T) {
 		t.Error("status should have changed")
 	}
 
-	changed, err = id.MaintainStatus(connections)
+	changed, err = id.MaintainStatus(lanes)
 	if err != nil {
 		t.Fatal(err)
 	}

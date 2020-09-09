@@ -105,7 +105,7 @@ func (id *Identity) MaintainExchKeys(now time.Time) (changed bool, err error) {
 	// export most recent keys to HubStatus
 	if changed {
 		// reset
-		id.Hub().Status.Keys = make(map[string]*hub.HubKey)
+		id.Hub().Status.Keys = make(map[string]*hub.Key)
 
 		// find longest valid key for every provided scheme
 		for _, eks := range provideExchKeySchemes {

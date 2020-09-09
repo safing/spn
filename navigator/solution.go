@@ -1,5 +1,6 @@
 package navigator
 
+/*
 type Solution struct {
 	Cost      int
 	Current   *Port
@@ -55,3 +56,4 @@ func (s *Solution) Export() []*Port {
 	}
 	return path
 }
+*/

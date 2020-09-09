@@ -15,11 +15,11 @@ func TestMain(m *testing.M) {
 
 func TestEquality(t *testing.T) {
 	// empty match
-	a := &HubAnnouncement{}
+	a := &Announcement{}
 	assert.True(t, a.Equal(a), "should match itself")
 
 	// full match
-	a = &HubAnnouncement{
+	a = &Announcement{
 		ID:             "a",
 		Timestamp:      1,
 		Name:           "a",
@@ -36,28 +36,28 @@ func TestEquality(t *testing.T) {
 	assert.True(t, a.Equal(a), "should match itself")
 
 	// no match
-	b := &HubAnnouncement{ID: "b"}
+	b := &Announcement{ID: "b"}
 	assert.False(t, a.Equal(b), "should not match")
-	b = &HubAnnouncement{Timestamp: 2}
+	b = &Announcement{Timestamp: 2}
 	assert.False(t, a.Equal(b), "should not match")
-	b = &HubAnnouncement{Name: "b"}
+	b = &Announcement{Name: "b"}
 	assert.False(t, a.Equal(b), "should not match")
-	b = &HubAnnouncement{ContactAddress: "b"}
+	b = &Announcement{ContactAddress: "b"}
 	assert.False(t, a.Equal(b), "should not match")
-	b = &HubAnnouncement{ContactService: "b"}
+	b = &Announcement{ContactService: "b"}
 	assert.False(t, a.Equal(b), "should not match")
-	b = &HubAnnouncement{Hosters: []string{"b", "c"}}
+	b = &Announcement{Hosters: []string{"b", "c"}}
 	assert.False(t, a.Equal(b), "should not match")
-	b = &HubAnnouncement{Datacenter: "b"}
+	b = &Announcement{Datacenter: "b"}
 	assert.False(t, a.Equal(b), "should not match")
-	b = &HubAnnouncement{IPv4: net.IPv4(1, 2, 3, 5)}
+	b = &Announcement{IPv4: net.IPv4(1, 2, 3, 5)}
 	assert.False(t, a.Equal(b), "should not match")
-	b = &HubAnnouncement{IPv6: net.ParseIP("::2")}
+	b = &Announcement{IPv6: net.ParseIP("::2")}
 	assert.False(t, a.Equal(b), "should not match")
-	b = &HubAnnouncement{Transports: []string{"b", "c"}}
+	b = &Announcement{Transports: []string{"b", "c"}}
 	assert.False(t, a.Equal(b), "should not match")
-	b = &HubAnnouncement{Entry: []string{"b", "c"}}
+	b = &Announcement{Entry: []string{"b", "c"}}
 	assert.False(t, a.Equal(b), "should not match")
-	b = &HubAnnouncement{Exit: []string{"b", "c"}}
+	b = &Announcement{Exit: []string{"b", "c"}}
 	assert.False(t, a.Equal(b), "should not match")
 }

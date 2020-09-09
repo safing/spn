@@ -1,5 +1,6 @@
 package navigator
 
+/*
 import (
 	"fmt"
 	"os"
@@ -105,3 +106,4 @@ func testPath(t *testing.T, m *Map, dests []uint8, expectedPath []uint8, conside
 	// 	t.Error(err)
 	// }
 }
+*/

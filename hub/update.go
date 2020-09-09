@@ -181,7 +181,7 @@ func OpenHubMsg(data []byte, scope Scope, tofu bool) (msg []byte, sendingHub *Hu
 }
 
 // Export exports the announcement with the given signature configuration.
-func (ha *HubAnnouncement) Export(env *jess.Envelope) ([]byte, error) {
+func (ha *Announcement) Export(env *jess.Envelope) ([]byte, error) {
 	// pack
 	msg, err := dsd.Dump(ha, dsd.JSON)
 	if err != nil {
@@ -203,7 +203,7 @@ func ImportAnnouncement(data []byte, scope Scope) error {
 	}
 
 	// parse
-	announcement := &HubAnnouncement{}
+	announcement := &Announcement{}
 	_, err = dsd.Load(msg, announcement)
 	if err != nil {
 		return err
@@ -217,15 +217,6 @@ func ImportAnnouncement(data []byte, scope Scope) error {
 	// Fake IDs are possible because the hash algorithm of the ID is dynamic.
 	if hub.ID != announcement.ID {
 		return fmt.Errorf("announcement ID %q mismatches hub ID %q", announcement.ID, hub.ID)
-	}
-
-	// check timestamp
-	if announcement.Timestamp > time.Now().Add(clockSkewTolerance).Unix() {
-		return fmt.Errorf(
-			"announcement from %s is from the future: %s",
-			announcement.ID,
-			time.Unix(announcement.Timestamp, 0),
-		)
 	}
 
 	// version check
@@ -242,7 +233,61 @@ func ImportAnnouncement(data []byte, scope Scope) error {
 		}
 	}
 
-	// validation
+	// Validate the announcement.
+	err = hub.validateAnnouncement(announcement, scope)
+	if err != nil {
+		if hub.FirstSeen.IsZero() {
+			// The first announcement must always be fully valid.
+			return err
+		}
+
+		log.Warningf("received an invalid announcement from %s: %s", hub, err)
+		// If a previously fully validated Hub publishes an update that breaks it, a
+		// soft-fail will accept the faulty changes, but mark is as invalid and
+		// forward it to neighbors. This way the invalid update is propagated through
+		// the network and all nodes will mark it as invalid an thus ingore the Hub
+		// until the issue is fixed.
+	}
+
+	// Apply the result to the Hub.
+	hub.Lock()
+	// Only save announcement if it is valid, else mark it as invalid.
+	if err == nil {
+		hub.Info = announcement
+		hub.InvalidInfo = false
+	} else {
+		hub.InvalidInfo = true
+	}
+	// Set FirstSeen timestamp when we see this Hub for the first time.
+	if hub.FirstSeen.IsZero() {
+		hub.FirstSeen = time.Now().UTC()
+	}
+	hub.Unlock()
+
+	// Save the Hub to the database.
+	err = hub.Save()
+	if err != nil {
+		return err
+	}
+
+	// Save the raw message to the database.
+	return SaveRawHubMsg(hub.ID, hub.Scope, "announcement", data)
+}
+
+func (hub *Hub) validateAnnouncement(announcement *Announcement, scope Scope) error {
+	// check timestamp
+	if announcement.Timestamp > time.Now().Add(clockSkewTolerance).Unix() {
+		return fmt.Errorf(
+			"announcement from %s is from the future: %s",
+			announcement.ID,
+			time.Unix(announcement.Timestamp, 0),
+		)
+	}
+
+	// value formatting
+	if err := announcement.validateFormatting(); err != nil {
+		return err
+	}
 
 	// validate IP changes
 	if hub.Info != nil {
@@ -310,26 +355,11 @@ func ImportAnnouncement(data []byte, scope Scope) error {
 		}
 	}
 
-	// save to database
-
-	hub.Lock()
-	hub.Info = announcement
-
-	if hub.FirstSeen.IsZero() {
-		hub.FirstSeen = time.Now().UTC()
-	}
-	hub.Unlock()
-
-	err = hub.Save()
-	if err != nil {
-		return err
-	}
-
-	return SaveRawHubMsg(hub.ID, hub.Scope, "announcement", data)
+	return nil
 }
 
 // Export exports the status with the given signature configuration.
-func (hs *HubStatus) Export(env *jess.Envelope) ([]byte, error) {
+func (hs *Status) Export(env *jess.Envelope) ([]byte, error) {
 	// pack
 	msg, err := dsd.Dump(hs, dsd.JSON)
 	if err != nil {
@@ -351,14 +381,45 @@ func ImportStatus(data []byte, scope Scope) error {
 	}
 
 	// parse
-	status := &HubStatus{}
+	status := &Status{}
 	_, err = dsd.Load(msg, status)
 	if err != nil {
 		return err
 	}
 
-	// integrity check
+	// Validate the status.
+	err = hub.validateStatus(status)
+	if err != nil {
+		log.Warningf("received an invalid announcement from %s: %s", hub, err)
+		// If a previously fully validated Hub publishes an update that breaks it, a
+		// soft-fail will accept the faulty changes, but mark is as invalid and
+		// forward it to neighbors. This way the invalid update is propagated through
+		// the network and all nodes will mark it as invalid an thus ingore the Hub
+		// until the issue is fixed.
+	}
 
+	// Apply the result to the Hub.
+	hub.Lock()
+	// Only save status if it is valid, else mark it as invalid.
+	if err == nil {
+		hub.Status = status
+		hub.InvalidStatus = false
+	} else {
+		hub.InvalidStatus = true
+	}
+	hub.Unlock()
+
+	// Save the Hub to the database.
+	err = hub.Save()
+	if err != nil {
+		return err
+	}
+
+	// Save the raw message to the database.
+	return SaveRawHubMsg(hub.ID, hub.Scope, "status", data)
+}
+
+func (hub *Hub) validateStatus(status *Status) error {
 	// check timestamp
 	if status.Timestamp > time.Now().Add(clockSkewTolerance).Unix() {
 		return fmt.Errorf(
@@ -366,6 +427,11 @@ func ImportStatus(data []byte, scope Scope) error {
 			hub.ID,
 			time.Unix(status.Timestamp, 0),
 		)
+	}
+
+	// value formatting
+	if err := status.validateFormatting(); err != nil {
+		return err
 	}
 
 	// version check
@@ -382,22 +448,9 @@ func ImportStatus(data []byte, scope Scope) error {
 		}
 	}
 
-	// validation
+	// TODO: validate status.Keys
 
-	// TODO: validate keys
-
-	// save to database
-
-	hub.Lock()
-	hub.Status = status
-	hub.Unlock()
-
-	err = hub.Save()
-	if err != nil {
-		return err
-	}
-
-	return SaveRawHubMsg(hub.ID, hub.Scope, "status", data)
+	return nil
 }
 
 // CreateHubSignet creates a signet with the correct ID for usage as a Hub Identity.

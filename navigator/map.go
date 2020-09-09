@@ -1,34 +1,44 @@
 package navigator
 
 import (
-	"math"
-	"net"
 	"sync"
 
-	"github.com/safing/portbase/log"
-	"github.com/safing/portmaster/intel/geoip"
+	"github.com/safing/spn/hub"
 )
 
-// Dijkstra "#AI"
+var ()
+
+var (
+	Main = NewMap("main")
+)
+
+// Map represent a collection of Pins and their relationship and status.
 type Map struct {
-	Collection     map[string]*Port
-	CollectionLock sync.Locker
-	PrimaryPort    *Port
-	GoodEnough     int
-	IgnoreAbove    int
-	solutions      map[string]*Solution
+	sync.RWMutex
+	Name string
+
+	All   map[string]*Pin
+	Intel *hub.Intel
+
+	Home *Pin
 }
 
-func NewMap(primaryPort *Port, collection map[string]*Port, lock sync.Locker) *Map {
+// NewMap returns a new and empty Map.
+func NewMap(name string) *Map {
 	return &Map{
-		Collection:     collection,
-		CollectionLock: lock,
-		GoodEnough:     math.MaxInt32,
-		IgnoreAbove:    math.MaxInt32,
-		PrimaryPort:    primaryPort,
+		Name: name,
+		All:  make(map[string]*Pin),
 	}
 }
 
+// isEmpty returns whether the Map is regarded as empty.
+func (m *Map) isEmpty() bool {
+	// We also regard a map with only one entry to be empty, as this will be the
+	// case for Hubs, which will have their own entry in the Map.
+	return len(m.All) <= 1
+}
+
+/*
 // FindNearestPorts returns the nearest ports to a set of IP addresses.
 func (m *Map) FindNearestPorts(ips []net.IP) (*ProximityCollection, error) {
 
@@ -78,10 +88,10 @@ func (m *Map) FindNearestPorts(ips []net.IP) (*ProximityCollection, error) {
 
 	// start searching for nearby ports
 
-	m.CollectionLock.Lock()
-	defer m.CollectionLock.Unlock()
+	m.Lock()
+	defer m.Unlock()
 
-	for _, port := range m.Collection {
+	for _, port := range m.All {
 
 		// exclude primary if given
 		if m.PrimaryPort != nil && m.PrimaryPort.Name() == port.Name() {
@@ -137,3 +147,4 @@ func (m *Map) FindNearestPorts(ips []net.IP) (*ProximityCollection, error) {
 func (m *Map) Reset() {
 	m.solutions = nil
 }
+*/

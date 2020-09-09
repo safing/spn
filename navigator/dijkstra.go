@@ -1,20 +1,11 @@
 package navigator
 
+/*
 import (
 	"fmt"
 )
 
-func (m *Map) getUnprocessedSolutions() (unprocessedSolutions []*Solution) {
-	for _, solution := range m.solutions {
-		if !solution.Processed {
-			unprocessedSolutions = append(unprocessedSolutions, solution)
-		}
-		// TODO: can we at some point start purging solutions?
-	}
-	return
-}
-
-func (m *Map) FindShortestPath(considerActiveRoutes bool, destinations ...*Port) (path []*Port, ok bool, err error) {
+func (m *Map) FindShortestPath(considerActiveRoutes bool, destinations ...*Pin) (path []*Pin, ok bool, err error) {
 
 	m.solutions = make(map[string]*Solution)
 
@@ -115,3 +106,4 @@ func (m *Map) evaluateRoutes(s *Solution, solutionCandidate *Solution, considerA
 	s.Processed = true
 	return
 }
+*/

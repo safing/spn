@@ -1,9 +1,6 @@
 package navigator
 
-import (
-	"testing"
-)
-
+/*
 func TestCostCalculation(t *testing.T) {
 
 	port := &Port{
@@ -65,3 +62,4 @@ func TestCostCalculation(t *testing.T) {
 	}
 
 }
+*/

@@ -95,11 +95,11 @@ func (id *Identity) initializeIdentityHub(recipient *jess.Signet) {
 		ID:        id.ID,
 		Scope:     id.Scope,
 		PublicKey: recipient,
-		Info: &hub.HubAnnouncement{
+		Info: &hub.Announcement{
 			ID:        id.ID,
 			Timestamp: now.Unix(),
 		},
-		Status: &hub.HubStatus{
+		Status: &hub.Status{
 			Timestamp: now.Unix(),
 		},
 		FirstSeen: now,
@@ -112,7 +112,7 @@ func (id *Identity) MaintainAnnouncement() (changed bool, err error) {
 	defer id.Unlock()
 
 	// update hub information
-	var newHubInfo *hub.HubAnnouncement
+	var newHubInfo *hub.Announcement
 
 	switch id.Hub().Scope {
 	case hub.ScopePublic:
@@ -135,7 +135,7 @@ func (id *Identity) MaintainAnnouncement() (changed bool, err error) {
 }
 
 // MaintainStatus maintains the Hub's Status and returns whether there was a change that should be communicated to other Hubs.
-func (id *Identity) MaintainStatus(connections []*hub.HubConnection) (changed bool, err error) {
+func (id *Identity) MaintainStatus(lanes []*hub.Lane) (changed bool, err error) {
 	id.Lock()
 	defer id.Unlock()
 
@@ -149,8 +149,8 @@ func (id *Identity) MaintainStatus(connections []*hub.HubConnection) (changed bo
 	}
 
 	// update connections
-	if !hub.ConnectionsEqual(id.Hub().Status.Connections, connections) {
-		id.Hub().Status.Connections = connections
+	if !hub.LanesEqual(id.Hub().Status.Lanes, lanes) {
+		id.Hub().Status.Lanes = lanes
 		changed = true
 	}
 
@@ -242,7 +242,7 @@ func (id *Identity) GetSignet(keyID string, recipient bool) (*jess.Signet, error
 	return key.key, nil
 }
 
-func (ek *ExchKey) toHubKey() (*hub.HubKey, error) {
+func (ek *ExchKey) toHubKey() (*hub.Key, error) {
 	if ek.key == nil {
 		return nil, errors.New("no key")
 	}
@@ -258,7 +258,7 @@ func (ek *ExchKey) toHubKey() (*hub.HubKey, error) {
 	}
 
 	// repackage
-	return &hub.HubKey{
+	return &hub.Key{
 		Scheme:  rcpt.Scheme,
 		Key:     rcpt.Key,
 		Expires: ek.Expires.Unix(),

@@ -1,7 +1,7 @@
 package navigator
 
-func buildTestNet() map[string]*Port {
-	return make(map[string]*Port)
+func buildTestNet() map[string]*Pin {
+	return make(map[string]*Pin)
 }
 
 /*

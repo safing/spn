@@ -50,6 +50,10 @@ func GetHub(scope Scope, id string) (*Hub, error) {
 		return nil, errors.New("invalid scope")
 	}
 
+	return GetHubByKey(key)
+}
+
+func GetHubByKey(key string) (*Hub, error) {
 	r, err := db.Get(key)
 	if err != nil {
 		return nil, err
@@ -58,6 +62,15 @@ func GetHub(scope Scope, id string) (*Hub, error) {
 	hub, err := EnsureHub(r)
 	if err != nil {
 		return nil, err
+	}
+
+	// Check Formatting
+	// This should also be checked on records loaded from disk in order to update validation criteria retroactively.
+	if err = hub.Info.validateFormatting(); err != nil {
+		return nil, fmt.Errorf("announcement failed format validation: %w", err)
+	}
+	if err = hub.Status.validateFormatting(); err != nil {
+		return nil, fmt.Errorf("status failed format validation: %w", err)
 	}
 
 	return hub, nil
@@ -88,7 +101,7 @@ func EnsureHub(r record.Record) (*Hub, error) {
 
 func checkAndReturn(h *Hub) *Hub {
 	if h.Status == nil {
-		h.Status = &HubStatus{}
+		h.Status = &Status{}
 	}
 	return h
 }

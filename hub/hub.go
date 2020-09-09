@@ -35,16 +35,16 @@ type Hub struct {
 	PublicKey *jess.Signet
 
 	Scope  Scope
-	Info   *HubAnnouncement
-	Status *HubStatus
+	Info   *Announcement
+	Status *Status
 
-	// activeRoute
-
-	FirstSeen time.Time
+	FirstSeen     time.Time
+	InvalidInfo   bool
+	InvalidStatus bool
 }
 
-// HubAnnouncement is the main message type to publish Hub Information. This only changes if updated manually.
-type HubAnnouncement struct {
+// Announcement is the main message type to publish Hub Information. This only changes if updated manually.
+type Announcement struct {
 
 	// Primary Key
 	// hash of public key
@@ -92,13 +92,38 @@ type HubAnnouncement struct {
 	// {"- * TCP/25", "- US"}
 }
 
-// String returns a human-readable representation of a Hub.
+// String returns a human-readable representation of the Hub.
 func (h *Hub) String() string {
-	return "<Hub " + h.ID + ">"
+	h.Lock()
+	defer h.Unlock()
+
+	return "<Hub " + h.getName() + ">"
+}
+
+// Name returns a human-readable version of a Hub's name. This name will likely consist of two parts: the given name and the ending of the ID to make it unique.
+func (h *Hub) Name() string {
+	h.Lock()
+	defer h.Unlock()
+
+	return h.getName()
+}
+
+func (h *Hub) getName() string {
+	// Be more careful, as the Hub name is user input.
+	switch {
+	case len(h.ID) < 4:
+		return h.ID
+	case len(h.Info.Name) > 30:
+		return h.Info.Name[:30] + " " + h.ID[len(h.ID)-4:]
+	case len(h.Info.Name) > 0:
+		return h.Info.Name + " " + h.ID[len(h.ID)-4:]
+	default:
+		return h.ID[len(h.ID)-4:]
+	}
 }
 
 // Equal returns whether the given Announcements are equal.
-func (a *HubAnnouncement) Equal(b *HubAnnouncement) bool {
+func (a *Announcement) Equal(b *Announcement) bool {
 	switch {
 	case a.ID != b.ID:
 		return false
@@ -127,6 +152,47 @@ func (a *HubAnnouncement) Equal(b *HubAnnouncement) bool {
 	default:
 		return true
 	}
+}
+
+// validateFormatting check if all values conform to the basic format.
+func (a *Announcement) validateFormatting() (err error) {
+	if err = checkStringFormat("ID", a.ID, 255); err != nil {
+		return err
+	}
+	if err = checkStringFormat("Name", a.Name, 255); err != nil {
+		return err
+	}
+	if err = checkStringFormat("Group", a.Group, 255); err != nil {
+		return err
+	}
+	if err = checkStringFormat("ContactAddress", a.ContactAddress, 255); err != nil {
+		return err
+	}
+	if err = checkStringFormat("ContactService", a.ContactService, 255); err != nil {
+		return err
+	}
+	if err = checkStringSliceFormat("Hosters", a.Hosters, 255, 255); err != nil {
+		return err
+	}
+	if err = checkStringFormat("Datacenter", a.Datacenter, 255); err != nil {
+		return err
+	}
+	if err = checkIPFormat("IPv4", a.IPv4); err != nil {
+		return err
+	}
+	if err = checkIPFormat("IPv6", a.IPv6); err != nil {
+		return err
+	}
+	if err = checkStringSliceFormat("Transports", a.Transports, 255, 255); err != nil {
+		return err
+	}
+	if err = checkStringSliceFormat("Entry", a.Entry, 255, 255); err != nil {
+		return err
+	}
+	if err = checkStringSliceFormat("Exit", a.Exit, 255, 255); err != nil {
+		return err
+	}
+	return nil
 }
 
 // String returns the string representation of the scope.

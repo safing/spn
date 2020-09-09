@@ -1,15 +1,19 @@
 package navigator
 
 import (
-	"context"
 	"errors"
-	"path"
 	"time"
 
-	"github.com/safing/portbase/database/query"
-	"github.com/safing/portbase/log"
 	"github.com/safing/portbase/modules"
 	"github.com/safing/spn/hub"
+)
+
+var (
+	// ErrHomeHubUnset is returned when the Home Hub is required and not set.
+	ErrHomeHubUnset = errors.New("map has no Home Hub set")
+
+	// ErrEmptyMap is returned when the Map is empty.
+	ErrEmptyMap = errors.New("map is empty")
 )
 
 var (
@@ -25,46 +29,14 @@ func prep() error {
 }
 
 func start() error {
-	module.StartServiceWorker("hub subscription", 0, hubSubFeeder)
+	Main.InitializeFromDatabase(hub.PublicHubs)
+	module.StartServiceWorker("subscription feeder", 0, Main.SubscriptionFeeder(hub.PublicHubs))
 
-	InitializeNavigator()
-	hub.SetNavigatorAccess(GetHub)
+	// TODO: delete superseded hubs after x amount of time
+
+	module.NewTask("update states", Main.updateStates).
+		Repeat(1 * time.Hour).
+		Schedule(time.Now().Add(3 * time.Minute))
 
 	return nil
-}
-
-func hubSubFeeder(ctx context.Context) error {
-	// TODO: fix bug and remove workaround
-	time.Sleep(1 * time.Second)
-
-	sub, err := db.Subscribe(query.New(hub.PublicHubs))
-	if err != nil {
-		return err
-	}
-
-	for {
-		select {
-		case <-ctx.Done():
-			sub.Cancel()
-			return nil
-		case r := <-sub.Feed:
-			if r == nil {
-				return errors.New("subscription ended")
-			}
-
-			if r.Meta().IsDeleted() {
-				RemovePublicHub(path.Base(r.Key()))
-				continue
-			}
-
-			h, err := hub.EnsureHub(r)
-			if err != nil {
-				log.Warningf("spn/captain: hub ingestion hook received invalid Hub: %s", err)
-				continue
-			}
-
-			UpdateHub(h)
-			continue
-		}
-	}
 }
