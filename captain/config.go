@@ -18,9 +18,11 @@ func prepConfig() error {
 		Name:         "Special Access Code",
 		Key:          cfgOptionSpecialAccessCodeKey,
 		Description:  "Special Access Codes grant access to the SPN for testing or evaluation purposes.",
-		Order:        cfgOptionSpecialAccessCodeOrder,
 		OptType:      config.OptTypeString,
 		DefaultValue: cfgOptionSpecialAccessCodeDefault,
+		Annotations: config.Annotations{
+			config.DisplayOrderAnnotation: cfgOptionSpecialAccessCodeOrder,
+		},
 	})
 	if err != nil {
 		return err
