@@ -27,9 +27,11 @@ func init() {
 			Name:         "Enable SPN",
 			Key:          CfgOptionEnableSPNKey,
 			Description:  "Enable the Safing Privacy Network.",
-			Order:        cfgOptionEnableSPNOrder,
 			OptType:      config.OptTypeBool,
 			DefaultValue: false,
+			Annotations: config.Annotations{
+				config.DisplayOrderAnnotation: cfgOptionEnableSPNOrder,
+			},
 		},
 	)
 }

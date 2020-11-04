@@ -7,6 +7,7 @@ import (
 	"github.com/safing/portbase/config"
 	"github.com/safing/portbase/log"
 	"github.com/safing/portmaster/netenv"
+	"github.com/safing/portmaster/profile/endpoints"
 	"github.com/safing/spn/hub"
 )
 
@@ -88,10 +89,12 @@ func prepConfig() error {
 		Name:           "Name",
 		Key:            publicCfgOptionNameKey,
 		Description:    "Human readable name of the Hub.",
-		Order:          publicCfgOptionNameOrder,
 		OptType:        config.OptTypeString,
 		ExpertiseLevel: config.ExpertiseLevelExpert,
 		DefaultValue:   publicCfgOptionNameDefault,
+		Annotations: config.Annotations{
+			config.DisplayOrderAnnotation: publicCfgOptionNameOrder,
+		},
 	})
 	if err != nil {
 		return err
@@ -102,10 +105,12 @@ func prepConfig() error {
 		Name:           "Group",
 		Key:            publicCfgOptionGroupKey,
 		Description:    "Name of the hub group this Hub belongs to.",
-		Order:          publicCfgOptionGroupOrder,
 		OptType:        config.OptTypeString,
 		ExpertiseLevel: config.ExpertiseLevelExpert,
 		DefaultValue:   publicCfgOptionGroupDefault,
+		Annotations: config.Annotations{
+			config.DisplayOrderAnnotation: publicCfgOptionGroupOrder,
+		},
 	})
 	if err != nil {
 		return err
@@ -116,10 +121,12 @@ func prepConfig() error {
 		Name:           "Contact Address",
 		Key:            publicCfgOptionContactAddressKey,
 		Description:    "Contact address where the Hub operator can be reached.",
-		Order:          publicCfgOptionContactAddressOrder,
 		OptType:        config.OptTypeString,
 		ExpertiseLevel: config.ExpertiseLevelExpert,
 		DefaultValue:   publicCfgOptionContactAddressDefault,
+		Annotations: config.Annotations{
+			config.DisplayOrderAnnotation: publicCfgOptionContactAddressOrder,
+		},
 	})
 	if err != nil {
 		return err
@@ -130,10 +137,12 @@ func prepConfig() error {
 		Name:           "Contact Service",
 		Key:            publicCfgOptionContactServiceKey,
 		Description:    "Name of the service the contact address corresponds to, if not email.",
-		Order:          publicCfgOptionContactServiceOrder,
 		OptType:        config.OptTypeString,
 		ExpertiseLevel: config.ExpertiseLevelExpert,
 		DefaultValue:   publicCfgOptionContactServiceDefault,
+		Annotations: config.Annotations{
+			config.DisplayOrderAnnotation: publicCfgOptionContactServiceOrder,
+		},
 	})
 	if err != nil {
 		return err
@@ -144,10 +153,12 @@ func prepConfig() error {
 		Name:           "Hosters",
 		Key:            publicCfgOptionHostersKey,
 		Description:    "List of all involved entities and organisations that are involved in hosting this Hub.",
-		Order:          publicCfgOptionHostersOrder,
 		OptType:        config.OptTypeStringArray,
 		ExpertiseLevel: config.ExpertiseLevelExpert,
 		DefaultValue:   publicCfgOptionHostersDefault,
+		Annotations: config.Annotations{
+			config.DisplayOrderAnnotation: publicCfgOptionHostersOrder,
+		},
 	})
 	if err != nil {
 		return err
@@ -158,10 +169,12 @@ func prepConfig() error {
 		Name:           "Datacenter",
 		Key:            publicCfgOptionDatacenterKey,
 		Description:    "Identifier of the datacenter this Hub is hosted in.",
-		Order:          publicCfgOptionDatacenterOrder,
 		OptType:        config.OptTypeString,
 		ExpertiseLevel: config.ExpertiseLevelExpert,
 		DefaultValue:   publicCfgOptionDatacenterDefault,
+		Annotations: config.Annotations{
+			config.DisplayOrderAnnotation: publicCfgOptionDatacenterOrder,
+		},
 	})
 	if err != nil {
 		return err
@@ -172,10 +185,12 @@ func prepConfig() error {
 		Name:           "IPv4",
 		Key:            publicCfgOptionIPv4Key,
 		Description:    "IPv4 address of this Hub. Must be globally reachable.",
-		Order:          publicCfgOptionIPv4Order,
 		OptType:        config.OptTypeString,
 		ExpertiseLevel: config.ExpertiseLevelExpert,
 		DefaultValue:   publicCfgOptionIPv4Default,
+		Annotations: config.Annotations{
+			config.DisplayOrderAnnotation: publicCfgOptionIPv4Order,
+		},
 	})
 	if err != nil {
 		return err
@@ -186,10 +201,12 @@ func prepConfig() error {
 		Name:           "IPv6",
 		Key:            publicCfgOptionIPv6Key,
 		Description:    "IPv6 address of this Hub. Must be globally reachable.",
-		Order:          publicCfgOptionIPv6Order,
 		OptType:        config.OptTypeString,
 		ExpertiseLevel: config.ExpertiseLevelExpert,
 		DefaultValue:   publicCfgOptionIPv6Default,
+		Annotations: config.Annotations{
+			config.DisplayOrderAnnotation: publicCfgOptionIPv6Order,
+		},
 	})
 	if err != nil {
 		return err
@@ -200,10 +217,12 @@ func prepConfig() error {
 		Name:           "Transports",
 		Key:            publicCfgOptionTransportsKey,
 		Description:    "List of transports this Hub supports.",
-		Order:          publicCfgOptionTransportsOrder,
 		OptType:        config.OptTypeStringArray,
 		ExpertiseLevel: config.ExpertiseLevelExpert,
 		DefaultValue:   publicCfgOptionTransportsDefault,
+		Annotations: config.Annotations{
+			config.DisplayOrderAnnotation: publicCfgOptionTransportsOrder,
+		},
 	})
 	if err != nil {
 		return err
@@ -214,10 +233,14 @@ func prepConfig() error {
 		Name:           "Entry",
 		Key:            publicCfgOptionEntryKey,
 		Description:    "Define an entry policy. The format is the same for the endpoint lists. Default is permit.",
-		Order:          publicCfgOptionEntryOrder,
 		OptType:        config.OptTypeStringArray,
 		ExpertiseLevel: config.ExpertiseLevelExpert,
 		DefaultValue:   publicCfgOptionEntryDefault,
+		Annotations: config.Annotations{
+			config.DisplayOrderAnnotation:    publicCfgOptionEntryOrder,
+			config.DisplayHintAnnotation:     endpoints.DisplayHintEndpointList,
+			endpoints.EndpointListAnnotation: []string{endpoints.EndpointListIP},
+		},
 	})
 	if err != nil {
 		return err
@@ -228,10 +251,14 @@ func prepConfig() error {
 		Name:           "Exit",
 		Key:            publicCfgOptionExitKey,
 		Description:    "Define an exit policy. The format is the same for the endpoint lists. Default is permit.",
-		Order:          publicCfgOptionExitOrder,
 		OptType:        config.OptTypeStringArray,
 		ExpertiseLevel: config.ExpertiseLevelExpert,
 		DefaultValue:   publicCfgOptionExitDefault,
+		Annotations: config.Annotations{
+			config.DisplayOrderAnnotation:    publicCfgOptionExitOrder,
+			config.DisplayHintAnnotation:     endpoints.DisplayHintEndpointList,
+			endpoints.EndpointListAnnotation: []string{endpoints.EndpointListIP},
+		},
 	})
 	if err != nil {
 		return err
