@@ -4,13 +4,13 @@ import "github.com/safing/portbase/config"
 
 var (
 	CfgOptionEnableSPNKey   = "spn/enable"
-	cfgOptionEnableSPNOrder = 500
+	cfgOptionEnableSPNOrder = 128
 
 	// Special Access Code
 	cfgOptionSpecialAccessCodeKey     = "spn/specialAccessCode"
 	cfgOptionSpecialAccessCodeDefault = "none"
 	cfgOptionSpecialAccessCode        config.StringOption
-	cfgOptionSpecialAccessCodeOrder   = 501
+	cfgOptionSpecialAccessCodeOrder   = 144
 )
 
 func prepConfig() error {
@@ -22,6 +22,7 @@ func prepConfig() error {
 		DefaultValue: cfgOptionSpecialAccessCodeDefault,
 		Annotations: config.Annotations{
 			config.DisplayOrderAnnotation: cfgOptionSpecialAccessCodeOrder,
+			config.CategoryAnnotation:     "Advanced",
 		},
 	})
 	if err != nil {

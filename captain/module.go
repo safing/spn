@@ -31,6 +31,7 @@ func init() {
 			DefaultValue: false,
 			Annotations: config.Annotations{
 				config.DisplayOrderAnnotation: cfgOptionEnableSPNOrder,
+				config.CategoryAnnotation:     "General",
 			},
 		},
 	)
