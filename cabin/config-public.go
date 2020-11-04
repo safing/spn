@@ -84,7 +84,7 @@ var (
 	publicCfgOptionExitOrder   = 522
 )
 
-func prepConfig() error {
+func prepPublicHubConfig() error {
 	err := config.Register(&config.Option{
 		Name:           "Name",
 		Key:            publicCfgOptionNameKey,

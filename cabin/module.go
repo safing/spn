@@ -2,6 +2,7 @@ package cabin
 
 import (
 	"github.com/safing/portbase/modules"
+	"github.com/safing/spn/conf"
 )
 
 var (
@@ -17,5 +18,11 @@ func prep() error {
 		return err
 	}
 
-	return prepConfig()
+	if conf.PublicHub() {
+		if err := prepPublicHubConfig(); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
