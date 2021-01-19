@@ -5,7 +5,7 @@ import (
 	"net"
 
 	"github.com/safing/spn/hub"
-	kcp "github.com/xtaci/kcp-go"
+	kcp "github.com/xtaci/kcp-go/v5"
 )
 
 // KCPShip is a ship that uses KCP.

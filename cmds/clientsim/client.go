@@ -10,6 +10,7 @@ import (
 	"github.com/safing/portbase/log"
 	"github.com/safing/portbase/run"
 	"github.com/safing/portmaster/network/packet"
+	"github.com/safing/portmaster/updates"
 	"github.com/safing/spn/captain"
 	"github.com/safing/spn/conf"
 	"github.com/safing/spn/sluice"
