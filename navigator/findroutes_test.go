@@ -3,13 +3,11 @@ package navigator
 import (
 	"net"
 	"testing"
-
-	"github.com/brianvoe/gofakeit"
 )
 
 func TestFindRoutes(t *testing.T) {
 	// Create map and lock faking in order to guarantee reproducability of faked data.
-	m := getDefaultTestMap()
+	m := getOptimizedDefaultTestMap(t)
 	fakeLock.Lock()
 	defer fakeLock.Unlock()
 
@@ -31,25 +29,23 @@ func TestFindRoutes(t *testing.T) {
 
 func BenchmarkFindRoutes(b *testing.B) {
 	// Create map and lock faking in order to guarantee reproducability of faked data.
-	m := getDefaultTestMap()
+	m := getOptimizedDefaultTestMap(nil)
 	fakeLock.Lock()
 	defer fakeLock.Unlock()
 
+	// Pre-generate 100 IPs
+	preGenIPs := make([]net.IP, 0, 100)
+	for i := 0; i < cap(preGenIPs); i++ {
+		preGenIPs = append(preGenIPs, createGoodIP(i%2 == 0))
+	}
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		// Create a random destination address
-		var dstIP net.IP
-		if i%2 == 0 {
-			dstIP = net.ParseIP(gofakeit.IPv4Address())
-		} else {
-			dstIP = net.ParseIP(gofakeit.IPv6Address())
-		}
-
-		routes, err := m.FindRoutes(dstIP, m.DefaultOptions(), 10)
+		routes, err := m.FindRoutes(preGenIPs[i%len(preGenIPs)], m.DefaultOptions(), 10)
 		if err != nil {
 			b.Error(err)
 		} else {
-			b.Logf("Best route for %s: %s", dstIP, routes.All[0])
+			b.Logf("Best route for %s: %s", preGenIPs[i%len(preGenIPs)], routes.All[0])
 		}
 	}
 }

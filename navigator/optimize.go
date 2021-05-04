@@ -35,7 +35,7 @@ func (m *Map) optimize(opts *Options) (connectTo *Pin, err error) {
 	}
 
 	// Create default matcher.
-	matcher := opts.Matcher(TransitHub)
+	matcher := opts.Matcher(DestinationHub)
 
 	// Define loop variables.
 	var (

@@ -86,48 +86,66 @@ var (
 	}
 )
 
-// setStates sets the given states on the Pin, regardless of what they were before.
-func (pin *Pin) setStates(states PinState) {
+// add returns a new PinState with the given states added.
+func (state PinState) add(states PinState) PinState {
 	// OR:
 	//   0011
 	// | 0101
 	// = 0111
-
-	pin.State |= states
+	return state | states
 }
 
-// unsetStates removes the given states on the Pin, regardless of what they were before.
-func (pin *Pin) unsetStates(states PinState) {
+// remove returns a new PinState with the given states removed.
+func (state PinState) remove(states PinState) PinState {
 	// AND NOT:
 	//    0011
 	// &^ 0101
 	// =  0010
-
-	pin.State &^= states
+	return state &^ states
 }
 
-// hasAllOf checks if the state has all of the given states.
-func (s PinState) hasAllOf(states PinState) bool {
+// has returns whether the state has all of the given states.
+func (state PinState) has(states PinState) bool {
 	// AND:
 	//   0011
 	// & 0101
 	// = 0001
 
-	return (s & states) == states
+	return state&states == states
 }
 
-// hasAnyOf checks if the state has any of the given states.
-func (s PinState) hasAnyOf(states PinState) bool {
+// hasAnyOf returns whether the state has any of the given states.
+func (state PinState) hasAnyOf(states PinState) bool {
 	// AND:
 	//   0011
 	// & 0101
 	// = 0001
 
-	return (s & states) != 0
+	return (state & states) != 0
+}
+
+// hasNoneOf returns whether the state does not have any of the given states.
+func (state PinState) hasNoneOf(states PinState) bool {
+	// AND:
+	//   0011
+	// & 0101
+	// = 0001
+
+	return (state & states) == 0
+}
+
+// addStates adds the given states on the Pin.
+func (pin *Pin) addStates(states PinState) {
+	pin.State = pin.State.add(states)
+}
+
+// removeStates removes the given states on the Pin.
+func (pin *Pin) removeStates(states PinState) {
+	pin.State = pin.State.remove(states)
 }
 
 func (m *Map) updateStateSuperseded(pin *Pin) {
-	pin.unsetStates(StateSuperseded)
+	pin.removeStates(StateSuperseded)
 
 	// Update StateSuperseded
 	// Iterate over all Pins in order to find a matching IP address.
@@ -146,10 +164,10 @@ func (m *Map) updateStateSuperseded(pin *Pin) {
 		if pin.Hub.Info.IPv4.Equal(mapPin.Hub.Info.IPv4) {
 			// If there is a match assign the older Hub the Superseded status.
 			if pin.Hub.FirstSeen.After(mapPin.Hub.FirstSeen) {
-				mapPin.setStates(StateSuperseded)
+				mapPin.addStates(StateSuperseded)
 				// This Pin is newer and superseeds another, keep looking for more.
 			} else {
-				pin.setStates(StateSuperseded)
+				pin.addStates(StateSuperseded)
 				// This Pin is older than an existing one, don't keep looking, as this
 				// results in incorrect data.
 				break
@@ -168,10 +186,10 @@ func (m *Map) updateStateSuperseded(pin *Pin) {
 		if pin.Hub.Info.IPv6.Equal(mapPin.Hub.Info.IPv6) {
 			// If there is a match assign the older Hub the Superseded status.
 			if pin.Hub.FirstSeen.After(mapPin.Hub.FirstSeen) {
-				mapPin.setStates(StateSuperseded)
+				mapPin.addStates(StateSuperseded)
 				// This Pin is newer and superseeds another, keep looking for more.
 			} else {
-				pin.setStates(StateSuperseded)
+				pin.addStates(StateSuperseded)
 				// This Pin is older than an existing one, don't keep looking, as this
 				// results in incorrect data.
 				break
@@ -181,7 +199,7 @@ func (m *Map) updateStateSuperseded(pin *Pin) {
 }
 
 func (pin *Pin) updateStateHasRequiredInfo() {
-	pin.unsetStates(StateHasRequiredInfo)
+	pin.removeStates(StateHasRequiredInfo)
 
 	// Check for required Hub Information.
 	switch {
@@ -193,7 +211,7 @@ func (pin *Pin) updateStateHasRequiredInfo() {
 	case len(pin.Hub.Info.Hosters[0]) == 0:
 	case len(pin.Hub.Info.Datacenter) == 0:
 	default:
-		pin.setStates(StateHasRequiredInfo)
+		pin.addStates(StateHasRequiredInfo)
 	}
 }
 
@@ -205,12 +223,12 @@ func (m *Map) updateActiveHubs() {
 }
 
 func (pin *Pin) updateStateActive(now int64) {
-	pin.unsetStates(StateActive)
+	pin.removeStates(StateActive)
 
 	// Check for active key.
 	for _, key := range pin.Hub.Status.Keys {
 		if now < key.Expires {
-			pin.setStates(StateActive)
+			pin.addStates(StateActive)
 			return
 		}
 	}
@@ -223,7 +241,7 @@ func (m *Map) recalculateReachableHubs() error {
 
 	// reset
 	for _, pin := range m.All {
-		pin.unsetStates(StateReachable)
+		pin.removeStates(StateReachable)
 		pin.HopDistance = 0
 	}
 
@@ -234,13 +252,13 @@ func (m *Map) recalculateReachableHubs() error {
 
 func (pin *Pin) markReachable(hopDistance int) {
 	// Set states for this Pin.
-	pin.setStates(StateReachable)
+	pin.addStates(StateReachable)
 	pin.HopDistance = hopDistance
 
 	// Propagate to connected Pins.
 	hopDistance += 1
 	for _, lane := range pin.ConnectedTo {
-		if !lane.Pin.State.hasAllOf(StateReachable) ||
+		if !lane.Pin.State.has(StateReachable) ||
 			hopDistance < lane.Pin.HopDistance {
 			lane.Pin.markReachable(hopDistance)
 		}

@@ -16,90 +16,94 @@ var (
 
 func getOptimizedDefaultTestMap(t *testing.T) *Map {
 	optimizedDefaultMapCreate.Do(func() {
-		optimizedDefaultMap = createRandomTestMap(1, 1000)
+		optimizedDefaultMap = createRandomTestMap(2, 100)
 		optimizedDefaultMap.optimizeTestMap(t)
 	})
 	return optimizedDefaultMap
 }
 
 func (m *Map) optimizeTestMap(t *testing.T) {
-	t.Logf("optimizing test map %s with %d pins", m.Name, len(m.All))
+	if t != nil {
+		t.Logf("optimizing test map %s with %d pins", m.Name, len(m.All))
+	}
 
 	// Save original Home, as we will be switching around the home for the
 	// optimization.
-	progress := 0
+	run := 0
 	newLanes := 0
+	newLanesInRun := 0
+	lastRun := false
 	originalHome := m.Home
 
-	for _, pin := range m.All {
-		// Set Home to this Pin for this iteration.
-		m.Home = pin
-		err := m.recalculateReachableHubs()
-		if err != nil {
-			panic(err)
-		}
+	for {
+		run++
+		newLanesInRun = 0
+		// Let's check if we have a run without any map changes.
+		lastRun = true
 
-		for {
+		for _, pin := range m.All {
+
+			// Set Home to this Pin for this iteration.
+			m.Home = pin
+			err := m.recalculateReachableHubs()
+			if err != nil {
+				panic(err)
+			}
+
 			connectTo, err := m.optimize(m.defaultOptions())
 			if err != nil {
 				panic(err)
 			}
-			if connectTo == nil {
-				break
-			}
+			if connectTo != nil {
+				// Add lanes to the Hub status.
+				m.Home.Hub.AddLane(&hub.Lane{
+					ID:       connectTo.Hub.ID,
+					Capacity: gofakeit.Number(10, 100),
+					Latency:  gofakeit.Number(10, 100),
+				})
+				connectTo.Hub.AddLane(&hub.Lane{
+					ID:       m.Home.Hub.ID,
+					Capacity: gofakeit.Number(10, 100),
+					Latency:  gofakeit.Number(10, 100),
+				})
+				// Update Hubs in map.
+				m.updateHub(m.Home.Hub)
+				m.updateHub(connectTo.Hub)
+				newLanes++
+				newLanesInRun++
 
-			// Add lanes to the Hub status.
-			m.Home.Hub.AddLane(&hub.Lane{
-				ID:       connectTo.Hub.ID,
-				Capacity: gofakeit.Number(10, 100),
-				Latency:  gofakeit.Number(10, 100),
-			})
-			connectTo.Hub.AddLane(&hub.Lane{
-				ID:       m.Home.Hub.ID,
-				Capacity: gofakeit.Number(10, 100),
-				Latency:  gofakeit.Number(10, 100),
-			})
-			// Update Hubs in map.
-			m.updateHub(m.Home.Hub)
-			m.updateHub(connectTo.Hub)
-			newLanes++
-
-			if newLanes%100 == 0 {
-				t.Logf(
-					"optimizing progress %d/%d (lanes created: %d)",
-					progress,
-					len(m.All),
-					newLanes,
-				)
-			}
-
-			// Set other Hub as new Home for next test net optimization.
-			m.Home = connectTo
-			err = m.recalculateReachableHubs()
-			if err != nil {
-				panic(err)
+				// We are changing the map in this run, so this is not the last.
+				lastRun = false
 			}
 		}
 
 		// Log progress.
-		progress++
-		if progress%10 == 0 || progress == len(m.All) {
+		if t != nil {
 			t.Logf(
-				"optimizing progress %d/%d (lanes created: %d)",
-				progress,
+				"optimizing: added %d lanes in run #%d (%d Hubs) - %d new lanes in total",
+				newLanesInRun,
+				run,
 				len(m.All),
 				newLanes,
 			)
 		}
+
+		// End optimization after last run.
+		if lastRun {
+			break
+		}
 	}
 
 	// Log what was done and set home back to the original value.
-	t.Logf("finishid optimizing test map %s: added %d lanes", m.Name, newLanes)
+	if t != nil {
+		t.Logf("finished optimizing test map %s: added %d lanes in %d runs", m.Name, newLanes, run)
+	}
 	m.Home = originalHome
 }
 
 func TestOptimize(t *testing.T) {
 	m := getOptimizedDefaultTestMap(t)
+	matcher := m.defaultOptions().Matcher(DestinationHub)
 	originalHome := m.Home
 
 	for _, pin := range m.All {
@@ -111,8 +115,13 @@ func TestOptimize(t *testing.T) {
 		}
 
 		for _, peer := range m.All {
-			if peer.HopDistance > 3 {
-				t.Errorf("%s is %d hops away from %s", peer, peer.HopDistance, pin)
+			// Check if the Pin matches the criteria.
+			if !matcher(peer) {
+				continue
+			}
+
+			if peer.HopDistance > optimizationHopDistanceTarget {
+				t.Errorf("Optimization error: %s is %d hops away from %s", peer, peer.HopDistance, pin)
 			}
 		}
 	}

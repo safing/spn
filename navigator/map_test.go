@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/safing/portmaster/intel/geoip"
 	"github.com/safing/jess/lhash"
+	"github.com/safing/portmaster/intel/geoip"
 	"github.com/safing/spn/hub"
 
 	"github.com/brianvoe/gofakeit"
@@ -23,7 +23,7 @@ var (
 
 func getDefaultTestMap() *Map {
 	defaultMapCreate.Do(func() {
-		defaultMap = createRandomTestMap(1, 1000)
+		defaultMap = createRandomTestMap(1, 200)
 	})
 	return defaultMap
 }
@@ -145,7 +145,7 @@ func createRandomTestMap(seed int64, size int) *Map {
 	var i int
 	for _, pin := range m.All {
 		pin.FailingUntil = time.Now().Add(1 * time.Hour)
-		pin.setStates(StateFailing)
+		pin.addStates(StateFailing)
 
 		if i++; i >= 3 {
 			break
@@ -161,7 +161,7 @@ func createRandomTestMap(seed int64, size int) *Map {
 func createFakeHub(group string, randomFailes bool, mapIntel *hub.Intel) *hub.Hub {
 	// Create fake Hub ID.
 	idSrc := gofakeit.Password(true, true, true, true, true, 64)
-	id := lhash.Digest(lhash.BLAKE2b_256, []byte(idSrc)).String()
+	id := lhash.Digest(lhash.BLAKE2b_256, []byte(idSrc)).Base58()
 
 	// Create and return new fake Hub.
 	h := &hub.Hub{

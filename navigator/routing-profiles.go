@@ -7,15 +7,24 @@ import (
 type RoutingProfile struct {
 	ID string
 
-	// MinHops defines how many hops a route must have at minimum. In order to reduce confusion, the Home Hub is also counted.
+	// MinHops defines how many hops a route must have at minimum. In order to
+	// reduce confusion, the Home Hub is also counted.
 	MinHops int
 
+	// MaxHops defines the limit on how many hops a route may have. In order to
+	// reduce confusion, the Home Hub is also counted.
 	MaxHops int
 
-	// MaxExtraHops sets a limit on how many extra hops are allowed in addition to the amount of Hops in the currently best route. This is an optimization option and should not interfere with finding the best route, but might reduce the amount of routes found.
+	// MaxExtraHops sets a limit on how many extra hops are allowed in addition
+	// to the amount of Hops in the currently best route. This is an optimization
+	// option and should not interfere with finding the best route, but might
+	// reduce the amount of routes found.
 	MaxExtraHops int
 
-	// MaxExtraCost sets a limit on the extra cost allowed in addition to the cost of the currently best route. This is an optimization option and should not interfere with finding the best route, but might reduce the amount of routes found.
+	// MaxExtraCost sets a limit on the extra cost allowed in addition to the
+	// cost of the currently best route. This is an optimization option and
+	// should not interfere with finding the best route, but might reduce the
+	// amount of routes found.
 	MaxExtraCost int
 }
 

@@ -7,78 +7,44 @@ import (
 )
 
 func TestGenerateAndCheck(t *testing.T) {
-	// Part 1: Manual Setup
+	// Part 1: Bootstrap
 
-	// setup handler
-	zone := "test-static"
-	handler := &SaticCodeHandler{
-		scrambleAlg: lhash.BLAKE2b_256,
-	}
-	RegisterZone(zone, handler)
-
-	// generate a new code
-	randomData, err := getBeautifulRandom(staticCodeSecretSize)
+	_, accessCode, scrambledCode, verificationHash, err := BootstrapStaticCodeHandler(
+		"test-static-bootstrap",
+		lhash.BLAKE2b_256,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	configuredCode := &Code{
-		Zone: zone,
-		Data: randomData,
-	}
-	t.Logf("configured code: %s", configuredCode.String())
-
-	// import code, have it scrambled
-	err = Import(configuredCode)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Logf("scrambled code: %s", handler.scrambledCode.String())
-
-	// create verification hash from scrambled code
-	verificationHash := lhash.Digest(handler.scrambleAlg, handler.scrambledCode.Data)
-	t.Logf("verification hash: %s", verificationHash.String())
-
-	// load verification hash like the constructor does
-	verifier, err := lhash.LoadFromString(verificationHash.String())
-	if err != nil {
-		t.Fatal(err)
-	}
-	handler.verifier = verifier
-
-	// check if scrambled code is valid
-	err = Check(handler.scrambledCode)
-	if err != nil {
-		t.Fatal(err)
-	}
+	t.Logf("access code: %s", accessCode)
+	t.Logf("scrambled code: %s", scrambledCode)
+	t.Logf("verification hash: %s", verificationHash.Base58())
 
 	// Part 2: Production Storyline
 
-	// server: create zone with verification hash at start
-	zone = "test-static-2"
-	handler2, err := NewSaticCodeHandler(verificationHash.String(), lhash.BLAKE2b_256)
+	// Client and Server: Create a static code handler with the verification hash.
+	zone := "test-static-prod"
+	handler, err := NewSaticCodeHandler(verificationHash.Base58(), lhash.BLAKE2b_256)
 	if err != nil {
 		t.Fatal(err)
 	}
-	RegisterZone(zone, handler2)
+	RegisterZone(zone, handler)
 
-	// client: get configured code and import it
-	configuredCode2 := &Code{
-		Zone: zone,
-		Data: configuredCode.Data,
-	}
-	err = Import(configuredCode2)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// client: when connecting, get code for authorization
-	scrambledCode2, err := handler2.Get()
+	// Client only: Import access code.
+	accessCode.Zone = zone
+	err = Import(accessCode)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// server: check code
-	err = Check(scrambledCode2)
+	// Client only: Get scrambled code to send to server.
+	codeForServer, err := handler.Get()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Server only: Check code provided by client.
+	err = Check(codeForServer)
 	if err != nil {
 		t.Fatal(err)
 	}

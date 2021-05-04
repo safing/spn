@@ -305,20 +305,20 @@ func (hub *Hub) validateAnnouncement(announcement *Announcement, scope Scope) er
 
 	// validate IP scopes
 	if announcement.IPv4 != nil {
-		classification := netutils.ClassifyIP(announcement.IPv4)
+		ipScope := netutils.GetIPScope(announcement.IPv4)
 		switch {
-		case scope == ScopeLocal && classification != netutils.LinkLocal && classification != netutils.SiteLocal:
+		case scope == ScopeLocal && !ipScope.IsLAN():
 			return errors.New("IPv4 scope violation: outside of local scope")
-		case scope == ScopePublic && classification != netutils.Global:
+		case scope == ScopePublic && !ipScope.IsGlobal():
 			return errors.New("IPv4 scope violation: outside of global scope")
 		}
 	}
 	if announcement.IPv6 != nil {
-		classification := netutils.ClassifyIP(announcement.IPv6)
+		ipScope := netutils.GetIPScope(announcement.IPv6)
 		switch {
-		case scope == ScopeLocal && classification != netutils.LinkLocal && classification != netutils.SiteLocal:
+		case scope == ScopeLocal && !ipScope.IsLAN():
 			return errors.New("IPv6 scope violation: outside of local scope")
-		case scope == ScopePublic && classification != netutils.Global:
+		case scope == ScopePublic && !ipScope.IsGlobal():
 			return errors.New("IPv6 scope violation: outside of global scope")
 		}
 	}
@@ -487,12 +487,12 @@ func createHubID(scheme string, pubkey []byte) string {
 	c.AppendAsBlock([]byte(scheme))
 	c.AppendAsBlock(pubkey)
 
-	return lhash.Digest(lhash.BLAKE2b_256, c.CompileData()).String()
+	return lhash.Digest(lhash.BLAKE2b_256, c.CompileData()).Base58()
 }
 
 func verifyHubID(id string, scheme string, pubkey []byte) (ok bool) {
 	// load labeled hash from ID
-	labeledHash, err := lhash.LoadFromString(id)
+	labeledHash, err := lhash.FromBase58(id)
 	if err != nil {
 		return false
 	}
@@ -503,5 +503,5 @@ func verifyHubID(id string, scheme string, pubkey []byte) (ok bool) {
 	c.AppendAsBlock(pubkey)
 
 	// check if it matches
-	return labeledHash.Matches(c.CompileData())
+	return labeledHash.MatchesData(c.CompileData())
 }

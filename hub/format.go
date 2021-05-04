@@ -57,7 +57,7 @@ func checkIPFormat(fieldName string, value net.IP) error {
 	switch {
 	case len(value) != 4 && len(value) != 16:
 		return fmt.Errorf("field %s has an invalid length of %d for an IP address", fieldName, len(value))
-	case netutils.ClassifyIP(value) == netutils.Invalid:
+	case netutils.GetIPScope(value) == netutils.Invalid:
 		return fmt.Errorf("field %s holds an invalid IP address: %s", fieldName, value)
 	default:
 		return nil

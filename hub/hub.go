@@ -109,16 +109,24 @@ func (h *Hub) Name() string {
 }
 
 func (h *Hub) getName() string {
+	// Check for a short ID that is sometimes used for testing.
+	if len(h.ID) < 8 {
+		return h.ID
+	}
+
+	shortenedID :=
+		h.ID[len(h.ID)-8:len(h.ID)-4] +
+			"-" +
+			h.ID[len(h.ID)-4:]
+
 	// Be more careful, as the Hub name is user input.
 	switch {
-	case len(h.ID) < 4:
-		return h.ID
+	case h.Info.Name == "":
+		return shortenedID
 	case len(h.Info.Name) > 30:
-		return h.Info.Name[:30] + " " + h.ID[len(h.ID)-4:]
-	case len(h.Info.Name) > 0:
-		return h.Info.Name + " " + h.ID[len(h.ID)-4:]
+		return h.Info.Name[:30] + " " + shortenedID
 	default:
-		return h.ID[len(h.ID)-4:]
+		return h.Info.Name + " " + shortenedID
 	}
 }
 

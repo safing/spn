@@ -22,7 +22,7 @@ func (m *Map) UpdateIntel(update *hub.Intel) {
 
 func (m *Map) updateIntelStatuses(pin *Pin) {
 	// Reset all related states.
-	pin.unsetStates(StateTrusted | StateUsageDiscouraged | StateUsageAsHomeDiscouraged | StateUsageAsDestinationDiscouraged)
+	pin.removeStates(StateTrusted | StateUsageDiscouraged | StateUsageAsHomeDiscouraged | StateUsageAsDestinationDiscouraged)
 
 	// Check if Intel data is loaded.
 	if m.Intel == nil {
@@ -32,7 +32,7 @@ func (m *Map) updateIntelStatuses(pin *Pin) {
 	// Check if Hub is trusted.
 	for _, hubID := range m.Intel.TrustedHubs {
 		if pin.Hub.ID == hubID {
-			pin.setStates(StateTrusted)
+			pin.addStates(StateTrusted)
 			break
 		}
 	}
@@ -62,19 +62,19 @@ func (m *Map) updateIntelStatuses(pin *Pin) {
 }
 
 func checkStatusList(pin *Pin, state PinState, requireTrusted bool, endpointList endpoints.Endpoints) {
-	if requireTrusted && !pin.State.hasAllOf(StateTrusted) {
-		pin.setStates(state)
+	if requireTrusted && !pin.State.has(StateTrusted) {
+		pin.addStates(state)
 		return
 	}
 
 	result, _ := endpointList.Match(context.TODO(), pin.EntityV4)
 	if result == endpoints.Denied {
-		pin.setStates(state)
+		pin.addStates(state)
 		return
 	}
 
 	result, _ = endpointList.Match(context.TODO(), pin.EntityV6)
 	if result == endpoints.Denied {
-		pin.setStates(state)
+		pin.addStates(state)
 	}
 }

@@ -2,13 +2,13 @@ package access
 
 import (
 	"bytes"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"strings"
 
+	"github.com/mr-tron/base58"
+
 	"github.com/safing/portbase/container"
-	"github.com/safing/portbase/rng"
 )
 
 type Code struct {
@@ -32,7 +32,7 @@ func (c *Code) Raw() []byte {
 }
 
 func (c *Code) String() string {
-	return c.Zone + ":" + base64.RawURLEncoding.EncodeToString(c.Data)
+	return c.Zone + ":" + base58.Encode(c.Data)
 }
 
 func ParseRawCode(code []byte) (*Code, error) {
@@ -53,7 +53,7 @@ func ParseCode(code string) (*Code, error) {
 		return nil, errors.New("invalid code format: zone/data separator missing")
 	}
 
-	data, err := base64.RawURLEncoding.DecodeString(splitted[1])
+	data, err := base58.Decode(splitted[1])
 	if err != nil {
 		return nil, fmt.Errorf("invalid code format: %s", err)
 	}
@@ -62,19 +62,4 @@ func ParseCode(code string) (*Code, error) {
 		Zone: splitted[0],
 		Data: data,
 	}, nil
-}
-
-func getBeautifulRandom(n int) (randomData []byte, err error) {
-	for i := 0; i < 10000; i++ {
-		// get random data
-		randomData, err = rng.Bytes(n)
-		if err != nil {
-			return
-		}
-
-		if strings.ContainsAny(base64.RawURLEncoding.EncodeToString(randomData), "_-") {
-			continue
-		}
-	}
-	return
 }

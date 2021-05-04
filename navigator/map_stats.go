@@ -2,6 +2,7 @@ package navigator
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -30,7 +31,7 @@ func (m *Map) Stats() *MapStats {
 	for _, pin := range m.All {
 		// Check all states.
 		for _, state := range allStates {
-			if pin.State.hasAllOf(state) {
+			if pin.State.has(state) {
 				stats.States[state] += 1
 			}
 		}
@@ -54,13 +55,23 @@ func (ms *MapStats) String() string {
 	fmt.Fprintf(&builder, "Stats for Map %s:\n", ms.Name)
 
 	// Write State Stats
+	stateSummary := make([]string, 0, len(ms.Lanes))
 	for state, cnt := range ms.States {
-		fmt.Fprintf(&builder, "State %s: %d\n", state, cnt)
+		stateSummary = append(stateSummary, fmt.Sprintf("State %s: %d Hubs", state, cnt))
+	}
+	sort.Strings(stateSummary)
+	for _, stateSum := range stateSummary {
+		fmt.Fprintln(&builder, stateSum)
 	}
 
 	// Write Lane Stats
+	laneStats := make([]string, 0, len(ms.Lanes))
 	for laneCnt, pinCnt := range ms.Lanes {
-		fmt.Fprintf(&builder, "%d Lanes: %d\n", laneCnt, pinCnt)
+		laneStats = append(laneStats, fmt.Sprintf("%d Lanes: %d Hubs", laneCnt, pinCnt))
+	}
+	sort.Strings(laneStats)
+	for _, laneStat := range laneStats {
+		fmt.Fprintln(&builder, laneStat)
 	}
 
 	return builder.String()

@@ -5,6 +5,7 @@ import (
 
 	"github.com/safing/portbase/config"
 	"github.com/safing/portbase/info"
+	"github.com/safing/portbase/metrics"
 	"github.com/safing/portbase/run"
 	"github.com/safing/spn/captain"
 	"github.com/safing/spn/conf"
@@ -16,6 +17,9 @@ import (
 
 func main() {
 	info.Set("SPN Hub", "0.2.5", "AGPLv3", true)
+
+	// Configure metrics.
+	metrics.SetNamespace("hub")
 
 	// configure SPN
 	conf.EnablePublicHub(true)

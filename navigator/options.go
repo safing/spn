@@ -57,16 +57,17 @@ func (m *Map) DefaultOptions() *Options {
 }
 
 func (m *Map) defaultOptions() *Options {
-	if m.Intel == nil || m.Intel.Parsed() == nil {
-		return &Options{}
+	opts := &Options{
+		RoutingProfile: RoutingProfileDefaultName,
 	}
 
-	return &Options{
-		HubPolicy:            m.Intel.Parsed().HubAdvisory,
-		HomeHubPolicy:        m.Intel.Parsed().HomeHubAdvisory,
-		DestinationHubPolicy: m.Intel.Parsed().DestinationHubAdvisory,
-		RoutingProfile:       RoutingProfileDefaultName,
+	if m.Intel != nil && m.Intel.Parsed() != nil {
+		opts.HubPolicy = m.Intel.Parsed().HubAdvisory
+		opts.HomeHubPolicy = m.Intel.Parsed().HomeHubAdvisory
+		opts.DestinationHubPolicy = m.Intel.Parsed().DestinationHubAdvisory
 	}
+
+	return opts
 }
 
 func (o *Options) Matcher(hubType HubType) PinMatcher {
@@ -83,10 +84,10 @@ func (o *Options) Matcher(hubType HubType) PinMatcher {
 		// Add type based Advisories.
 		switch hubType {
 		case HomeHub:
-			regard &^= StateReachable
-			disregard |= StateUsageAsHomeDiscouraged
+			regard = regard.remove(StateReachable)
+			disregard = disregard.add(StateUsageAsHomeDiscouraged)
 		case DestinationHub:
-			disregard |= StateUsageAsDestinationDiscouraged
+			disregard = disregard.add(StateUsageAsDestinationDiscouraged)
 		}
 	}
 
@@ -108,7 +109,7 @@ func (o *Options) Matcher(hubType HubType) PinMatcher {
 
 	return func(pin *Pin) bool {
 		// Check required Pin States.
-		if !pin.State.hasAllOf(regard) || pin.State.hasAnyOf(disregard) {
+		if !pin.State.has(regard) || pin.State.hasAnyOf(disregard) {
 			return false
 		}
 

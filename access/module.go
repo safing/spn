@@ -15,7 +15,7 @@ var (
 )
 
 func init() {
-	module = modules.Register("access-codes", prep, nil, nil)
+	module = modules.Register("access-codes", nil, nil, nil)
 	flag.StringVar(&accessCodeFlag, "access-code", "", "Supply an SPN Special Access Code")
 }
 
@@ -23,7 +23,7 @@ func prep() error {
 	if testMode {
 		// test handler
 		testHandler, err := NewSaticCodeHandler(
-			"GSDDwb5BopqDHKqsA9haIQpYo2JHnIEAkvOVPAt7b7MH1Q",
+			"Zwj41uHqLw9U3hNTTgUCfiZYJ1SNyt6JiSJPqdKHUHogNA",
 			lhash.BLAKE2b_256,
 		)
 		if err != nil {
@@ -32,7 +32,7 @@ func prep() error {
 		RegisterZone("test", testHandler)
 
 		// test code
-		code, err := ParseCode("test:TVVvR5NSDNUauXh36YAzggE728kWOx0ZcUi9zh4W834")
+		code, err := ParseCode("test:DcAszve1aLxQLEfUPcXnMTsnRrbChRxscaWK3s3rrz79")
 		if err != nil {
 			return fmt.Errorf("failed to parse test code: %s", err)
 		}
@@ -41,13 +41,13 @@ func prep() error {
 
 	// alpha1 handler
 	alpha1Handler, err := NewSaticCodeHandler(
-		"GSB7goxRH9wfV0zbo2SzGIs5qpK_6kPfz8COMfWjcc1BbQ",
+		"ZwojEvXZmAv7SZdNe7m94Xzu7F9J8vULqKf7QYtoTpN2tH",
 		lhash.BLAKE2b_256,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create alpha1 handler: %s", err)
 	}
-	RegisterZone("alpha1", alpha1Handler)
+	RegisterZone("alpha2", alpha1Handler)
 
 	// parse access code flag
 	if accessCodeFlag != "" {

@@ -127,9 +127,9 @@ func (m *Map) updateHub(h *hub.Hub) {
 
 	// Update the invalid status of the Pin.
 	if pin.Hub.InvalidInfo || pin.Hub.InvalidStatus {
-		pin.setStates(StateInvalid)
+		pin.addStates(StateInvalid)
 	} else {
-		pin.unsetStates(StateInvalid)
+		pin.removeStates(StateInvalid)
 	}
 
 	// Add/Update location data from IP addresses.
@@ -247,10 +247,10 @@ func (m *Map) updateHubLane(pin *Pin, lane *hub.Lane, peer *Pin) {
 
 	// Check for reachability.
 	switch {
-	case pin.State.hasAllOf(StateReachable):
-		peer.setStates(StateReachable)
-	case peer.State.hasAllOf(StateReachable):
-		pin.setStates(StateReachable)
+	case pin.State.has(StateReachable):
+		peer.addStates(StateReachable)
+	case peer.State.has(StateReachable):
+		pin.addStates(StateReachable)
 	}
 }
 
@@ -260,8 +260,8 @@ func (m *Map) updateStates(ctx context.Context, task *modules.Task) error {
 
 	for _, pin := range m.All {
 		// Update StateFailing
-		if pin.State.hasAllOf(StateFailing) && now.After(pin.FailingUntil) {
-			pin.unsetStates(StateFailing)
+		if pin.State.has(StateFailing) && now.After(pin.FailingUntil) {
+			pin.removeStates(StateFailing)
 		}
 
 		// Delete stale Hubs that haven't been updated in over a month.

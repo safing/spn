@@ -1,7 +1,6 @@
 package navigator
 
 import (
-	"fmt"
 	"net"
 )
 
@@ -38,6 +37,9 @@ func (m *Map) findRoutes(dsts *nearbyPins, opts *Options, maxRoutes int) (*Route
 		maxRoutes: maxRoutes,
 	}
 
+	// TODO: Start from the destination and use HopDistance to prioritize
+	// exploring routes that are in the right direction.
+
 	// Create initial route.
 	route := &Route{
 		// Estimate how much space we will need, else it'll just expand.
@@ -67,7 +69,6 @@ func (m *Map) findRoutes(dsts *nearbyPins, opts *Options, maxRoutes int) (*Route
 	exploreHop = func(route *Route, lane *Lane) {
 		// Check if the Pin should be regarded as Transit Hub.
 		if !transitMatcher(lane.Pin) {
-			fmt.Printf("skipping %s\n", lane.Pin)
 			return
 		}
 
@@ -75,11 +76,8 @@ func (m *Map) findRoutes(dsts *nearbyPins, opts *Options, maxRoutes int) (*Route
 		route.addHop(lane.Pin, lane.Latency)
 		defer route.removeHop()
 
-		fmt.Printf("exploring %s\n", route)
-
 		// Check if the route would even make it into the list.
 		if !routes.isGoodEnough(route) {
-			fmt.Println("not good enough")
 			return
 		}
 
@@ -99,7 +97,6 @@ func (m *Map) findRoutes(dsts *nearbyPins, opts *Options, maxRoutes int) (*Route
 					routes.add(route)
 
 					// We have found a route and have come to an end here.
-					fmt.Println("found!")
 					return
 				}
 			}
@@ -110,7 +107,7 @@ func (m *Map) findRoutes(dsts *nearbyPins, opts *Options, maxRoutes int) (*Route
 			// Continue exploration.
 			exploreLanes(route)
 		default:
-			fmt.Println("route disqualified")
+			// Route is disqualified and we can return without further exploration.
 		}
 	}
 

@@ -1,13 +1,16 @@
-package navigator
+package crew
 
-/*
+import (
+	"fmt"
+	"net"
+)
 
 // SetHome sets the h
-func (m *Map) EstablishHome(ip net.IP) error {
+func (m *Map) EstablishHome(deviceIP net.IP) error {
 	m.Lock()
 	defer m.Unlock()
 
-	nbPins, err := m.findNearestPins(ip, m.DefaultOptions().Matcher(HomeHub), 10)
+	nbPins, err := m.findNearestPins(deviceIP, m.DefaultOptions().Matcher(HomeHub), 10)
 	if err != nil {
 		return fmt.Errorf("failed to find nearby Hubs: %w", err)
 	}
@@ -20,5 +23,3 @@ func (m *Map) EstablishHome(ip net.IP) error {
 
 	return m.recalculateReachableHubs()
 }
-
-*/
