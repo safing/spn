@@ -21,7 +21,6 @@ import (
 
 func primaryHubManager(ctx context.Context) (err error) {
 	var primaryPort *navigator.Port
-	module.Hint("primary-hub-starting", "Establishing connection to primary (uplink) Hub.")
 	defer ready.UnSet()
 
 	for {
@@ -36,11 +35,19 @@ func primaryHubManager(ctx context.Context) (err error) {
 				log.Infof("spn/captain: client not ready")
 			}
 
-			module.Hint("primary-hub-starting", "Establishing connection to primary (uplink) Hub.")
+			module.Hint(
+				"spn:establishing-primary-hub",
+				"SPN Starting",
+				"Connecting to the SPN network is in progress.",
+			)
 			primaryPort, err = establishPrimaryHub(ctx)
 			if err != nil {
 				log.Warningf("failed to establish connection to primary hub: %s", err)
-				module.Warning("primary-hub-failure", fmt.Sprintf("Failed to establish connection to primary hub: %s", err))
+				module.Warning(
+					"spn:primary-hub-failure",
+					"SPN Failed to Start",
+					fmt.Sprintf("Failed to connect to a primary hub: %s. The Portmaster will retry to connect automatically.", err),
+				)
 				select {
 				case <-ctx.Done():
 				case <-time.After(5 * time.Second):
@@ -49,7 +56,11 @@ func primaryHubManager(ctx context.Context) (err error) {
 			}
 
 			// success!
-			module.Hint("primary-hub-connected", fmt.Sprintf("Connected to %s", primaryPort.Hub.Info.IPv4))
+			module.Hint(
+				"spn:connected-to-primary-hub",
+				"SPN Online",
+				fmt.Sprintf("You are connected to the SPN network with the Hub at %s. This notification is for awareness that the SPN is active during the alpha testing phase.", primaryPort.Hub.Info.IPv4),
+			)
 			ready.Set()
 			log.Infof("spn/captain: established new primary %s", primaryPort.Hub)
 			log.Infof("spn/captain: client is ready")

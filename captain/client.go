@@ -25,9 +25,7 @@ func clientManager(ctx context.Context) error {
 		// wait / try again
 		select {
 		case <-ctx.Done():
-			// workaround to clear any status
-			module.Hint("reset", "Stopping.")
-			module.Resolve("reset")
+			module.Resolve("")
 			return nil
 		case <-time.After(1 * time.Second):
 		}
@@ -55,10 +53,14 @@ func preFlightCheck(ctx context.Context) error {
 
 	// 1) Check access code config
 	if cfgOptionSpecialAccessCode() == cfgOptionSpecialAccessCodeDefault {
-		module.Warning("no-access-code", "Please enter your special access code in the settings.")
+		module.Warning(
+			"spn:no-access-code",
+			"SPN Requires Access Code",
+			"Please enter your special access code for the testing phase in the settings.",
+		)
 		return errors.New("no access code configured")
 	}
-	module.Resolve("no-access-code")
+	module.Resolve("spn:no-access-code")
 
 	// 2) Parse and import access code
 	code, err := access.ParseCode(cfgOptionSpecialAccessCode())
@@ -66,18 +68,26 @@ func preFlightCheck(ctx context.Context) error {
 		err = access.Import(code)
 	}
 	if err != nil {
-		module.Warning("invalid-access-code", "Your special access code is invalid: "+err.Error())
+		module.Warning(
+			"spn:invalid-access-code",
+			"SPN Access Code Invalid",
+			"Your special access code is invalid: "+err.Error(),
+		)
 		return errors.New("invalid access code")
 	}
-	module.Resolve("invalid-access-code")
+	module.Resolve("spn:invalid-access-code")
 
 	// 3) Get access code
 	_, err = access.Get()
 	if err != nil {
-		module.Warning("internal-code-error", "Internal access code error: "+err.Error())
+		module.Warning(
+			"spn:internal-access-code-error",
+			"SPN Access Code Invalid",
+			"Internal access code error: "+err.Error(),
+		)
 		return fmt.Errorf("failed to get access code: %s", err)
 	}
-	module.Resolve("internal-code-error")
+	module.Resolve("spn:internal-access-code-error")
 
 	// looking good so far!
 	return nil
