@@ -1,4 +1,4 @@
-package docks
+package terminal
 
 import (
 	"sync/atomic"
@@ -9,43 +9,73 @@ import (
 
 /*
 
+Init Message Format:
 
+- Version
+- Letter
 
+Encrypted Message:
 
+- Version
+- 
+
+Message Format (Encrypted):
+
+- AddAvailableSpace
+- MsgType
+- AssignmentID
+- AssignmentData
+	- Init: CmdID, Data
+	- Data: Data
+	- Error: string
 
 */
 
 
-// Terminal Message Types.
 const (
-	// Informational
-	TerminalMsgTypeInfo          uint8 = 1
-	TerminalMsgTypeLoad          uint8 = 2
-	TerminalMsgTypeStats         uint8 = 3
-	TerminalMsgTypePublicHubFeed uint8 = 4
+	// MsgTypeNone is used for metadata only messages.
+	// For example to add to the available sending space.
+	MsgTypeNone uint8 = iota
 
-	// Diagnostics
-	TerminalMsgTypeEcho      uint8 = 16
-	TerminalMsgTypeSpeedtest uint8 = 17
+	// MsgTypeInit is used to create a new assignment.
+	MsgTypeInit
 
-	// User Access
-	TerminalMsgTypeUserAuth uint8 = 32
+	// MsgTypeData signifies a data packet and is used in both directions.
+	MsgTypeData
+	
+	// MsgTypeError signifies that there was an error during execution of the assignment.
+	// Only sent by the server.
+	MsgTypeError
 
-	// Tunneling
-	TerminalMsgTypeHop    uint8 = 40
-	TerminalMsgTypeTunnel uint8 = 41
-	TerminalMsgTypePing   uint8 = 42
+	// MsgTypeDone signifies that the assignment was completed successfully.
+	// Normally only sent by the server.
+	// If sent by the client, it cancels the operation silently.
+	MsgTypeDone
+)
 
-	// Admin/Mod Access
-	TerminalMsgTypeAdminAuth uint8 = 128
+const (
+	// ErrMalformedData is returned when the request data was malformed and could not be parsed.
+	ErrMalformedData = errors.New("malformed data")
 
-	// Mgmt
-	TerminalMsgTypeEstablishRoute uint8 = 144
-	TerminalMsgTypeShutdown       uint8 = 145
+	// ErrUnknownAssignment is returned when a requested assignment cannot be found.
+	ErrUnknownAssignment = errors.New("unknown assignment")
+
+	// ErrUnknownAssignment is returned when a requested command cannot be found.
+	ErrUnknownCommand = errors.New("unknown command")
+
+	// ErrPermissinDenied is returned when calling a command with insufficient permissions.
+	ErrPermissinDenied = erros.New("permission denied")
+
+	// ErrQueueFull is returned when a full queue is encountered.
+	ErrQueueFull = errors.New("queue full")
+)
+
+const (
+	defaultMsgQueueSize = 100
 )
 
 type Terminal struct {
-	ID uint32
+	ID uint64
 
 	// queue holds containers that need processing and is the terminal "space".
 	queue chan *container.Container
@@ -65,6 +95,22 @@ type Terminal struct {
 	// the terminal already took care of notifying everyone, so a silent fail is
 	// normally the best response.
 	abandoned *abool.AtomicBool
+
+	// assignments holds references to all assignments that require persistence.
+	assignments map[uint64]*Assignment
+	// nextAssignmedID holds the next assignmentID
+	nextAssignmedID uint64
+
+	// Encryption
+
+
+	// Grouping
+	// Terminals can be grouped together in order to multiplex a connection.
+
+	groupNeighborUp *Terminal
+	groupNeighborDown *Terminal
+
+	Permission TerminalPermission
 }
 
 type TerminalManager struct {
@@ -74,7 +120,10 @@ type TerminalManager struct {
 	isAdmin bool
 }
 
-func NewTerminal(id uint32) (*Terminal, error) {
+// N
+func NewBaseTerminal()
+
+func NewBranchTerminal(id uint32, ) (*Terminal, error) {
 	t := &Terminal{
 		ID: id,
 		queue: make(chan *container.Container, 100),

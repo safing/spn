@@ -3,6 +3,8 @@ module github.com/safing/spn
 go 1.15
 
 require (
+	github.com/brianvoe/gofakeit v3.18.0+incompatible
+	github.com/mr-tron/base58 v1.2.0
 	github.com/safing/jess v0.2.1
 	github.com/safing/portbase v0.10.0
 	github.com/safing/portmaster v0.6.13

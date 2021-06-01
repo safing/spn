@@ -4,14 +4,12 @@ go 1.15
 
 require (
 	github.com/brianvoe/gofakeit v3.18.0+incompatible
-	github.com/google/renameio v1.0.0 // indirect
 	github.com/mr-tron/base58 v1.2.0
 	github.com/safing/jess v0.2.1
-	github.com/safing/portbase v0.9.7
-	github.com/safing/portmaster v0.6.12
+	github.com/safing/portbase v0.10.0
+	github.com/safing/portmaster v0.6.13
 	github.com/stretchr/testify v1.6.1
 	github.com/tevino/abool v1.2.0
-	github.com/ugorji/go v1.1.4 // indirect
 	github.com/xtaci/kcp-go/v5 v5.6.1
 )
 
