@@ -1,279 +1,469 @@
 package terminal
 
 import (
-	"sync/atomic"
+	"context"
+	"sync"
+	"time"
+
+	"github.com/safing/portbase/rng"
+
 	"github.com/safing/portbase/container"
+	"github.com/safing/portbase/formats/varint"
+	"github.com/safing/portbase/log"
 	"github.com/tevino/abool"
 )
 
+type TerminalExtension interface {
+	ReadyToSend() <-chan struct{}
+	Send(c *container.Container) Error
+	Receive() <-chan *container.Container
+	Abandon(action string, err Error)
+}
 
-/*
+type TerminalInterface interface {
+	ID() uint32
+	Ctx() context.Context
+	Deliver(c *container.Container) Error
+	End(action string, err Error)
+}
 
-Init Message Format:
+// TerminalBase contains the basic functions of a terminal.
+type TerminalBase struct {
+	lock sync.RWMutex
 
-- Version
-- Letter
+	// id is the underlying id of the Terminal.
+	id uint32
+	// id of the parent component.
+	parentID string
 
-Encrypted Message:
+	// ext holds the extended Terminal to supply the communciation interface and
+	// override behavior.
+	ext TerminalExtension
 
-- Version
-- 
+	// ctx is the context of the Terminal.
+	ctx context.Context
+	// cancelCtx cancels ctx.
+	cancelCtx context.CancelFunc
 
-Message Format (Encrypted):
+	// connector is the interface to the underlying communication channel.
+	opMsgQueue chan *container.Container
+	// waitForFlush signifies if sending should be delayed until the next call
+	// to Flush()
+	waitForFlush *abool.AtomicBool
+	// flush is used to send a finish function to the handler, which will write
+	// all pending messages and then call the received function.
+	flush chan func()
 
-- AddAvailableSpace
-- MsgType
-- AssignmentID
-- AssignmentData
-	- Init: CmdID, Data
-	- Data: Data
-	- Error: string
+	// Encryption
+	// FIXME
 
-*/
-
-
-const (
-	// MsgTypeNone is used for metadata only messages.
-	// For example to add to the available sending space.
-	MsgTypeNone uint8 = iota
-
-	// MsgTypeInit is used to create a new assignment.
-	MsgTypeInit
-
-	// MsgTypeData signifies a data packet and is used in both directions.
-	MsgTypeData
-	
-	// MsgTypeError signifies that there was an error during execution of the assignment.
-	// Only sent by the server.
-	MsgTypeError
-
-	// MsgTypeDone signifies that the assignment was completed successfully.
-	// Normally only sent by the server.
-	// If sent by the client, it cancels the operation silently.
-	MsgTypeDone
-)
-
-const (
-	// ErrMalformedData is returned when the request data was malformed and could not be parsed.
-	ErrMalformedData = errors.New("malformed data")
-
-	// ErrUnknownAssignment is returned when a requested assignment cannot be found.
-	ErrUnknownAssignment = errors.New("unknown assignment")
-
-	// ErrUnknownAssignment is returned when a requested command cannot be found.
-	ErrUnknownCommand = errors.New("unknown command")
-
-	// ErrPermissinDenied is returned when calling a command with insufficient permissions.
-	ErrPermissinDenied = erros.New("permission denied")
-
-	// ErrQueueFull is returned when a full queue is encountered.
-	ErrQueueFull = errors.New("queue full")
-)
-
-const (
-	defaultMsgQueueSize = 100
-)
-
-type Terminal struct {
-	ID uint64
-
-	// queue holds containers that need processing and is the terminal "space".
-	queue chan *container.Container
-	// space indicates the amount of free slots in the queue.
-	space         *int32
-	// reportedSpace indicates the reported amount of free slots in the queue.
-	reportedSpace *int32
-
-	// send holds containers that are waiting for shipping.
-	send chan *container.Container
-	// sendSpace indicates the amount of free slots in the send queue.
-	sendSpace *int32
-	// wakeSender wakes the sender in case the sending space was depleted.
-	wakeSender chan struct{}
+	// operations holds references to all active operations that require persistence.
+	operations map[uint32]Operation
+	// nextOpID holds the next operation ID.
+	nextOpID *uint32
+	// permission holds the permissions of the terminal.
+	permission Permission
 
 	// abandoned indicates if the Terminal has been abandoned. Whoever abandoned
 	// the terminal already took care of notifying everyone, so a silent fail is
 	// normally the best response.
 	abandoned *abool.AtomicBool
 
-	// assignments holds references to all assignments that require persistence.
-	assignments map[uint64]*Assignment
-	// nextAssignmedID holds the next assignmentID
-	nextAssignmedID uint64
-
-	// Encryption
-
-
-	// Grouping
-	// Terminals can be grouped together in order to multiplex a connection.
-
-	groupNeighborUp *Terminal
-	groupNeighborDown *Terminal
-
-	Permission TerminalPermission
+	// server signifies if this Terminal is remote. This controls in which
+	// direction errors are forwarded.
+	// server bool
 }
 
-type TerminalManager struct {
-	t *Terminal
-
-	isUser bool
-	isAdmin bool
-}
-
-// N
-func NewBaseTerminal()
-
-func NewBranchTerminal(id uint32, ) (*Terminal, error) {
-	t := &Terminal{
-		ID: id,
-		queue: make(chan *container.Container, 100),
-		reportedSpace: new(int(0)),
-		send: make(chan *container.Container, 100),
-		sendSpace: new(int(0)),
-		wakeSender: make(chan struct{}, 1)
-		abandoned: abool.NewBool(false),
+func NewTerminalBase(ctx context.Context, id uint32, parentID string, initialData *container.Container) *TerminalBase {
+	t := &TerminalBase{
+		id:           id,
+		parentID:     parentID,
+		opMsgQueue:   make(chan *container.Container),
+		waitForFlush: abool.New(),
+		flush:        make(chan func()),
+		operations:   make(map[uint32]Operation),
+		nextOpID:     new(uint32),
+		abandoned:    abool.New(),
 	}
-	t.space = &cap(t.queue)
-
-	return t, nil
+	t.ctx, t.cancelCtx = context.WithCancel(ctx)
+	return t
 }
 
-func (t *Terminal) QueueContainer(c *container.Container) (reportSpace uint32) {
-	select {
-	case t.queue <- c:
-			// Decrease space and reportedSpace
-	space = atomic.AddInt32(t.space, -1)
-	reportedSpace := atomic.AddInt32(t.reportedSpace, -1)
+// ID returns the Terminal's ID.
+func (t *TerminalBase) ID() uint32 {
+	return t.id
+}
 
-	// If the reported space is under 20% of the capacity, report available space.
-	if reportedSpace == 0 || cap(queue)/reportedSpace >= 20 {
-		reportSpace = space - reportedSpace
-		atomic.AddInt32(t.reportedSpace, reportSpace)
-		return reportSpace
+// Ctx returns the Terminal's context.
+func (t *TerminalBase) Ctx() context.Context {
+	return t.ctx
+}
+
+// Deliver on TerminalBase only exists to conform to the interface. It must be
+// overridden by an actual implementation.
+func (t *TerminalBase) Deliver(c *container.Container) Error {
+	return ErrInvalidConfiguration
+}
+
+// End shuts down the Terminal with the given error.
+func (t *TerminalBase) End(action string, err Error) {
+	t.ext.Abandon(action, err)
+}
+
+const (
+	sendThresholdLength  = 100  // bytes
+	sendMaxLength        = 4000 // bytes
+	sendThresholdMaxWait = 20 * time.Millisecond
+)
+
+var addPaddingTo = 100 // bytes
+
+func (t *TerminalBase) handler(_ context.Context) error {
+	defer t.ext.Abandon("internal error", ErrUnknownError)
+
+	msgBuffer := container.New()
+	var msgBufferLen int
+	var msgBufferLimitReached bool
+	var sendMsgs bool
+	var sendMaxWait *time.Timer
+	var flushFinished func()
+
+	// Only receive message when not sending the current msg buffer.
+	recvOpMsgs := func() <-chan *container.Container {
+		if !msgBufferLimitReached {
+			return t.opMsgQueue
+		}
+		return nil
 	}
+
+	// Only wait for sending slot when the current msg buffer is ready to be sent.
+	readyToSend := func() <-chan struct{} {
+		if sendMsgs {
+			return t.ext.ReadyToSend()
+		}
+		return nil
+	}
+
+	// Calculate current max wait time to send the msg buffer.
+	getSendMaxWait := func() <-chan time.Time {
+		if sendMaxWait != nil {
+			return sendMaxWait.C
+		}
+		return nil
+	}
+
+	for {
+		select {
+		case <-t.ctx.Done():
+			t.ext.Abandon("", ErrNil)
+			return nil // Controlled worker exit.
+
+		case <-time.After(10 * time.Second):
+			// If nothing happens for 10 seconds, end the session.
+			log.Debugf("terminal: %s#%d timed out: shutting down", t.parentID, t.id)
+			t.ext.Abandon("", ErrNil)
+			return nil // Controlled worker exit.
+
+		case c := <-t.ext.Receive():
+			for c.HoldsData() {
+				err := t.handleReceive(c)
+				switch err {
+				case ErrNil:
+					// Continue.
+				case ErrAbandoning:
+					return nil // Controlled worker exit.
+				default:
+					t.ext.Abandon("failed to receive", err)
+					return nil // Controlled worker exit.
+				}
+			}
+
+		case c := <-recvOpMsgs():
+			// Add container to current buffer.
+			msgBufferLen += c.Length()
+			msgBuffer.AppendContainer(c)
+
+			// Check if there is enough data to hit the sending threshold.
+			if msgBufferLen >= sendThresholdLength {
+				sendMsgs = true
+			} else if sendMaxWait == nil && t.waitForFlush.IsNotSet() {
+				sendMaxWait = time.NewTimer(sendThresholdMaxWait)
+			}
+
+			if msgBufferLen >= sendMaxLength {
+				msgBufferLimitReached = true
+			}
+
+		case <-getSendMaxWait():
+			// The timer for waiting for more data has ended.
+			// Send all available data if not forced to wait for a flush.
+			if t.waitForFlush.IsNotSet() {
+				sendMsgs = true
+			}
+
+		case newFlushFinishedFn := <-t.flush:
+			// We are flushing - stop waiting.
+			t.waitForFlush.UnSet()
+			// If there already is a flush finished function, stack them.
+			if flushFinished != nil {
+				stackedFlushFinishFn := flushFinished
+				flushFinished = func() {
+					stackedFlushFinishFn()
+					newFlushFinishedFn()
+				}
+			} else {
+				flushFinished = newFlushFinishedFn
+			}
+			// Force sending data now.
+			sendMsgs = true
+
+		case <-readyToSend():
+			// Reset sending flags.
+			sendMsgs = false
+			msgBufferLimitReached = false
+
+			// Send if there is anything to send.
+			if msgBufferLen > 0 {
+				err := t.sendOpMsgs(msgBuffer)
+				if err != ErrNil {
+					t.ext.Abandon("failed to send", err)
+					return nil // Controlled worker exit.
+				}
+			}
+
+			// Reset buffer.
+			msgBuffer = container.New()
+			msgBufferLen = 0
+
+			// Reset send wait timer.
+			if sendMaxWait != nil {
+				sendMaxWait.Stop()
+				sendMaxWait = nil
+			}
+
+			// Check if we are flushing and need to notify.
+			if flushFinished != nil {
+				flushFinished()
+				flushFinished = nil
+			}
+		}
+	}
+}
+
+// WaitForFlush makes the terminal pause all sending until the next call to
+// Flush().
+func (t *TerminalBase) WaitForFlush() {
+	t.waitForFlush.Set()
+}
+
+// Flush sends all data waiting to be sent.
+func (t *TerminalBase) Flush() {
+	// Create channel for notifying.
+	wait := make(chan struct{})
+	// Request flush and send close function.
+	t.flush <- func() {
+		close(wait)
+	}
+	// Wait for handler to finish flushing.
+	<-wait
+}
+
+func (t *TerminalBase) handleReceive(c *container.Container) Error {
+	msgType, err := ParseTerminalMsgType(c)
+	if err != nil {
+		return ErrMalformedData
+	}
+
+	switch msgType {
+	case MsgTypeNone:
+		// Message was just for updating the flow queue.
+		return ErrNil
+
+	case MsgTypeOperativeData:
+
+		// FIXME: Decrypt
+
+		for c.HoldsData() {
+			// Handle operative message.
+			if handleErr := t.handleOpMsg(c); handleErr != ErrNil {
+				return handleErr
+			}
+		}
+
+	case MsgTypeAbandon:
+		tErr := Error(c.CompileData())
+		switch err {
+		case ErrNil:
+			t.ext.Abandon("", ErrNil)
+		default:
+			t.ext.Abandon("received error", tErr)
+		}
+		return ErrAbandoning
 
 	default:
-		// The queue should never be full, there is something amiss.
-		t.Abandon(
-			fmt.Errorf(
-				"queue with cap=%d overflowed with space=%s and reportedSpace=%d",
-				cap(t.queue),
-				atomic.LoadInt32(t.space),
-				atomic.LoadInt32(t.reportedSpace),
-			),
-			"queue overflow",
+		return ErrUnexpectedMsgType
+	}
+
+	return ErrNil
+}
+
+func (t *TerminalBase) handleOpMsg(c *container.Container) Error {
+	// Parse message type, operation id and data.
+	msgType, err := ParseOpMsgType(c)
+	if err != nil {
+		return ErrMalformedData
+	}
+	// Check if this is a padding message and handle it specially.
+	if msgType == MsgTypePadding {
+		t.handlePaddingMsg(c)
+		return ErrNil
+	}
+
+	// Parse operation id and data.
+	opID, err := c.GetNextN32()
+	if err != nil {
+		return ErrMalformedData
+	}
+	data, err := c.GetNextBlockAsContainer()
+	if err != nil {
+		return ErrMalformedData
+	}
+
+	switch OpMsgType(msgType) {
+	case MsgTypeInit:
+		t.runOperation(t.ctx, t, opID, data)
+
+	case MsgTypeData:
+		op, ok := t.GetActiveOp(opID)
+		if ok {
+			err := op.Deliver(data)
+			if err != ErrNil {
+				t.OpEnd(op, "data delivery failed", err)
+			}
+		} else {
+			// If an active op is not found, this is likely just left-overs from a
+			// ended or failed operation.
+			log.Tracef("terminal: received msg for unknown op %d", opID)
+		}
+
+	case MsgTypeEnd:
+		op, ok := t.DeleteActiveOp(opID)
+		if ok {
+			err := Error(data.CompileData())
+			switch err {
+			case ErrNil:
+				op.End("", ErrNil)
+			default:
+				op.End("received error", err)
+			}
+		} else {
+			log.Tracef("terminal: received end msg for unknown op %d", opID)
+		}
+
+	default:
+		return ErrUnexpectedMsgType
+	}
+
+	return ErrNil
+}
+
+func (t *TerminalBase) handlePaddingMsg(c *container.Container) {
+	padding := c.GetAll()
+	if len(padding) > 0 {
+		rngFeeder.SupplyEntropyIfNeeded(padding, len(padding))
+	}
+}
+
+func (t *TerminalBase) sendOpMsgs(c *container.Container) Error {
+	if addPaddingTo > 0 {
+		// Add Padding if needed.
+		paddingNeeded := (addPaddingTo - c.Length()) % addPaddingTo
+		if paddingNeeded > 0 {
+			// Add padding message header.
+			c.Append(MsgTypePadding.Pack())
+			paddingNeeded--
+
+			// Add needed padding data.
+			if paddingNeeded > 0 {
+				padding, err := rng.Bytes(paddingNeeded)
+				if err != nil {
+					log.Debugf("terminal: failed to get random data, using zeros instead")
+					padding = make([]byte, paddingNeeded)
+				}
+				c.Append(padding)
+			}
+		}
+	}
+
+	// FIXME: Encrypt
+
+	// Add Terminal Message type.
+	c.Prepend(MsgTypeOperativeData.Pack())
+
+	// Send data.
+	return t.ext.Send(c)
+}
+
+func (t *TerminalBase) sendTerminalMsg(
+	msgType TerminalMsgType,
+	data *container.Container,
+) Error {
+	if data != nil {
+		data.Prepend(msgType.Pack())
+	} else {
+		data = container.New(msgType.Pack())
+	}
+
+	return t.ext.Send(data)
+}
+
+func (t *TerminalBase) addToOpMsgSendBuffer(
+	opID uint32,
+	msgType OpMsgType,
+	data *container.Container,
+	async bool,
+) Error {
+	if data != nil {
+		// Add message metadata.
+		data.PrependLength()
+		data.Prepend(varint.Pack32(opID))
+		data.Prepend(msgType.Pack())
+	} else {
+		// Or create new message
+		data = container.New(
+			msgType.Pack(),
+			varint.Pack32(opID),
+			varint.Pack8(0),
 		)
 	}
 
-	return 0
-}
-
-func (t *Terminal) SpaceToReport() {}
-
-func (t *Terminl) Abandon(internalError error, externalMsg string) {
-	if t.abandoned.SetToIf(false, true) {
-		// FIXME
-	}
-}
-
-func (line *ConveyorLine) notifyOfNewContainer() (report bool, space int32) {
-	// decrease shoreSpace and reportedShoreSpace
-	space = atomic.AddInt32(line.shoreSpace, -1)
-	reported := atomic.AddInt32(line.reportedShoreSpace, -1)
-	// log.Debugf("crane: %s: line %d: space=%d, reported=%d", line.crane.ID, line.ID, space, reported)
-	// if reported shore space under 10% of available shorespace, report
-	if reported == 0 || line.shoreCap/reported >= 10 {
-		if space <= 0 {
-			return false, 0
+	// Submit message to buffer and fall back to async.
+	select {
+	case t.opMsgQueue <- data:
+		return ErrNil
+	case <-t.ctx.Done():
+		return ErrAbandoning
+	default:
+		if async {
+			// Operative Message Queue is full, delay sending.
+			// TODO: Find better way of handling this.
+			module.StartWorker("delayed operative message queuing", func(ctx context.Context) error {
+				select {
+				case t.opMsgQueue <- data:
+				case <-t.ctx.Done():
+				case <-ctx.Done():
+				}
+				return nil
+			})
+			return ErrNil
 		}
-		atomic.StoreInt32(line.reportedShoreSpace, space)
-		return true, space - reported
-	}
-	return false, 0
-}
-
-func (line *ConveyorLine) getShoreSpaceForReport() (report bool, space int32) {
-	// get shoreSpace and reportedShoreSpace
-	space = atomic.LoadInt32(line.shoreSpace)
-	reported := atomic.LoadInt32(line.reportedShoreSpace)
-	// if reported shore space under 50% of available shorespace, report
-	if reported == 0 || line.shoreCap/reported >= 2 {
-		if space <= 0 {
-			return false, 0
-		}
-		atomic.StoreInt32(line.reportedShoreSpace, space)
-		return true, space - reported
-	}
-	return false, 0
-}
-
-func (line *ConveyorLine) increaseShoreSpace() {
-	atomic.AddInt32(line.shoreSpace, 1)
-}
-
-func (line *ConveyorLine) availableShipSpace() int32 {
-	return atomic.LoadInt32(line.shipSpace)
-}
-
-func (line *ConveyorLine) addAvailableShipSpace(space int32) {
-	atomic.AddInt32(line.shipSpace, space)
-}
-
-func (line *ConveyorLine) decreaseAvailableShipSpace() {
-	atomic.AddInt32(line.shipSpace, -1)
-}
-
-
-func (t )
-
-func NewConveyorLine(crane *Crane, lineID uint32) (*ConveyorLine, error) {
-
-
-type ConveyorLine struct {
-	crane *Crane
-	ID    uint32
-
-	toShore       chan *container.Container
-	fromShore     chan *container.Container
-	nextToShore   chan *container.Container
-	nextFromShore chan *container.Container
-
-	fromShip chan *container.Container
-
-	// represets space of this node
-	shoreCap           int32
-	shoreSpace         *int32
-	reportedShoreSpace *int32
-
-	// represents space of the connected node
-	shipSpace *int32
-
-	abandoned *abool.AtomicBool
-}
-
-func NewConveyorLine(crane *Crane, lineID uint32) (*ConveyorLine, error) {
-	var shoreSpace int32 = 100
-	var reportedShoreSpace int32 = 100
-	var shipSpace int32 = 100
-
-	new := &ConveyorLine{
-		crane:              crane,
-		ID:                 lineID,
-		toShore:            make(chan *container.Container),
-		fromShore:          make(chan *container.Container),
-		fromShip:           make(chan *container.Container, 101),
-		shoreCap:           100,
-		shoreSpace:         &shoreSpace,
-		reportedShoreSpace: &reportedShoreSpace,
-		shipSpace:          &shipSpace,
-		abandoned:          abool.NewBool(false),
 	}
 
-	new.nextToShore = new.toShore
-	new.nextFromShore = new.fromShore
-
-	go new.handler()
-	go new.dispatcher()
-
-	return new, nil
+	// Submit message to buffer and, and wait forever.
+	select {
+	case t.opMsgQueue <- data:
+		return ErrNil
+	case <-t.ctx.Done():
+		return ErrAbandoning
+	}
 }
