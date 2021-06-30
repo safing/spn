@@ -3,6 +3,7 @@ package terminal
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 
 	"github.com/safing/portbase/formats/varint"
 
@@ -24,7 +25,7 @@ type DuplexFlowQueue struct {
 	// sendQueue holds the containers that are waiting to be sent.
 	sendQueue chan *container.Container
 	// sendSpace indicates the amount free slots in the recvQueue on the other end.
-	sendSpace uint16
+	sendSpace *int32
 	// readyToSend is used to notify sending components that there is free space.
 	readyToSend chan struct{}
 	// wakeSender is used to wake a sender in case the sendSpace was zero and the
@@ -33,14 +34,11 @@ type DuplexFlowQueue struct {
 
 	// recvQueue holds the containers that are waiting to be processed.
 	recvQueue chan *container.Container
-	// recvQueueSpace indicates the amount of free slots in the recvQueue.
-	recvQueueSpace uint16
 	// reportedSpace indicates the amount of free slots that the other end knows
 	// about.
-	reportedSpace uint16
-
-	// spaceLock locks  of space to report.
-	spaceLock sync.Mutex
+	reportedSpace *int32
+	// spaceReportLock locks the calculation of space to report.
+	spaceReportLock sync.Mutex
 	// forceSpaceReport forces the sender to send a space report.
 	forceSpaceReport chan struct{}
 }
@@ -54,14 +52,15 @@ func NewDuplexFlowQueue(
 		ti:               ti,
 		submitUpstream:   submitUpstream,
 		sendQueue:        make(chan *container.Container, queueSize),
-		sendSpace:        queueSize,
+		sendSpace:        new(int32),
 		readyToSend:      make(chan struct{}),
 		wakeSender:       make(chan struct{}, 1),
 		recvQueue:        make(chan *container.Container, queueSize),
-		recvQueueSpace:   queueSize,
-		reportedSpace:    queueSize,
+		reportedSpace:    new(int32),
 		forceSpaceReport: make(chan struct{}),
 	}
+	atomic.StoreInt32(dfq.sendSpace, int32(queueSize))
+	atomic.StoreInt32(dfq.reportedSpace, int32(queueSize))
 
 	// Start worker.
 	module.StartWorker("dfq sender", dfq.sender)
@@ -69,35 +68,21 @@ func NewDuplexFlowQueue(
 	return dfq
 }
 
-// decrementRecvSpace decreases the recv queue space and reported recv space by
-// one and returns if the receive space should be reported.
-func (dfq *DuplexFlowQueue) decrementRecvSpace() (shouldReportRecvSpace bool) {
-	dfq.spaceLock.Lock()
-	defer dfq.spaceLock.Unlock()
-
-	dfq.recvQueueSpace--
-	dfq.reportedSpace--
-	return dfq.reportedSpace < uint16(cap(dfq.recvQueue)/forceReportFraction)
+// decrementReportedRecvSpace decreases the reported recv space by 1 and
+// returns if the receive space should be reported.
+func (dfq *DuplexFlowQueue) decrementReportedRecvSpace() (shouldReportRecvSpace bool) {
+	return atomic.AddInt32(dfq.reportedSpace, -1) < int32(cap(dfq.recvQueue)/forceReportFraction)
 }
 
 // decrementSendSpace decreases the send space by 1 and returns it.
-func (dfq *DuplexFlowQueue) decrementSendSpace() uint16 {
-	dfq.spaceLock.Lock()
-	defer dfq.spaceLock.Unlock()
-
-	dfq.sendSpace--
-	return dfq.sendSpace
+func (dfq *DuplexFlowQueue) decrementSendSpace() int32 {
+	return atomic.AddInt32(dfq.sendSpace, -1)
 }
 
-func (dfq *DuplexFlowQueue) addToSendSpace(n uint16) {
-	dfq.spaceLock.Lock()
-	defer dfq.spaceLock.Unlock()
-
-	// Add new space to send space.
-	dfq.sendSpace += n
-
-	// Wake the sender if the send space was zero.
-	if dfq.sendSpace == n {
+func (dfq *DuplexFlowQueue) addToSendSpace(n int32) {
+	// Add new space to send space and check if it was zero.
+	if atomic.AddInt32(dfq.sendSpace, n) == n {
+		// Wake the sender if the send space was zero.
 		select {
 		case dfq.wakeSender <- struct{}{}:
 		default:
@@ -108,14 +93,27 @@ func (dfq *DuplexFlowQueue) addToSendSpace(n uint16) {
 // reportableRecvSpace returns how much free space can be reported to the other
 // end. The returned number must be communicated to the other end and must not
 // be ignored.
-func (dfq *DuplexFlowQueue) reportableRecvSpace() uint16 {
-	dfq.spaceLock.Lock()
-	defer dfq.spaceLock.Unlock()
+func (dfq *DuplexFlowQueue) reportableRecvSpace() int32 {
+	// Changes to the recvQueue during calculation are no problem.
+	// We don't want to report space twice though!
+	dfq.spaceReportLock.Lock()
+	defer dfq.spaceReportLock.Unlock()
 
 	// Calculate reportable receive space and add it to the reported space.
-	toReport := dfq.recvQueueSpace - dfq.reportedSpace
-	dfq.reportedSpace += toReport
+	reportedSpace := atomic.LoadInt32(dfq.reportedSpace)
+	toReport := int32(cap(dfq.recvQueue)-len(dfq.recvQueue)) - reportedSpace
 
+	// Never report values below zero.
+	// This can happen, as dfq.reportedSpace is decreased after a container is
+	// submitted to dfq.recvQueue by dfq.Deliver(). This race condition can only
+	// lower the space to report, not increase it. A simple check here solved
+	// this problem and keeps performance high.
+	if toReport <= 0 {
+		return 0
+	}
+
+	// Add space to report to dfq.reportedSpace and return it.
+	atomic.AddInt32(dfq.reportedSpace, toReport)
 	return toReport
 }
 
@@ -142,7 +140,7 @@ sending:
 				// no data included.
 				dfq.submitUpstream(container.New(
 					varint.Pack32(dfq.ti.ID()),
-					varint.Pack16(dfq.reportableRecvSpace()),
+					varint.Pack64(uint64(dfq.reportableRecvSpace())),
 					MsgTypeNone.Pack(),
 				))
 
@@ -172,7 +170,7 @@ sending:
 			}
 
 			// Prepend available receiving space and flow ID.
-			c.Prepend(varint.Pack16(dfq.reportableRecvSpace()))
+			c.Prepend(varint.Pack64(uint64(dfq.reportableRecvSpace())))
 			c.Prepend(varint.Pack32(dfq.ti.ID()))
 
 			// Submit for sending upstream.
@@ -189,7 +187,7 @@ sending:
 			// no data included.
 			dfq.submitUpstream(container.New(
 				varint.Pack32(dfq.ti.ID()),
-				varint.Pack16(dfq.reportableRecvSpace()),
+				varint.Pack64(uint64(dfq.reportableRecvSpace())),
 				MsgTypeNone.Pack(),
 			))
 
@@ -212,10 +210,7 @@ func init() {
 
 // Send adds the given container to the send queue.
 func (dfq *DuplexFlowQueue) ReadyToSend() <-chan struct{} {
-	dfq.spaceLock.Lock()
-	defer dfq.spaceLock.Unlock()
-
-	if dfq.sendSpace > 0 {
+	if atomic.LoadInt32(dfq.sendSpace) > 0 {
 		return ready
 	}
 	return dfq.readyToSend
@@ -250,13 +245,13 @@ func (dfq *DuplexFlowQueue) Deliver(c *container.Container) Error {
 		return ErrMalformedData
 	}
 	if addSpace > 0 {
-		dfq.addToSendSpace(addSpace)
+		dfq.addToSendSpace(int32(addSpace))
 	}
 
 	select {
 	case dfq.recvQueue <- c:
 		// If the recv queue accepted the Container, decrement the recv space.
-		shouldReportRecvSpace := dfq.decrementRecvSpace()
+		shouldReportRecvSpace := dfq.decrementReportedRecvSpace()
 		// If the reported recv space is nearing its end, force a report, if the
 		// sender worker is idle.
 		if shouldReportRecvSpace {

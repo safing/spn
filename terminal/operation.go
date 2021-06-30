@@ -33,7 +33,7 @@ type OpParams struct {
 	RunOp OpRunner
 }
 
-type OpRunner func(t OpTerminal, opID uint32, initialData *container.Container) Operation
+type OpRunner func(t OpTerminal, opID uint32, initialData *container.Container) (Operation, Error)
 
 var (
 	opRegistry       = make(map[string]*OpParams)
@@ -84,18 +84,30 @@ func (t *TerminalBase) runOperation(ctx context.Context, opTerminal OpTerminal, 
 
 	// Check if the Terminal has the required permission to run the operation.
 	if !t.HasPermission(params.Requires) {
-		t.OpEnd(&unknownOp{
+		t.endOperation(&unknownOp{
 			id:     opID,
 			opType: params.Type,
-		}, "run op", ErrPermissinDenied)
+		}, "run op", ErrPermissinDenied, false, true)
 		return
 	}
 
 	// Run the operation.
-	// If the operation requires persistence, it will be returned.
-	op := params.RunOp(opTerminal, opID, initialData)
+	op, opErr := params.RunOp(opTerminal, opID, initialData)
+	if opErr != ErrNil {
+		t.endOperation(&unknownOp{
+			id:     opID,
+			opType: params.Type,
+		}, "run op", opErr, false, true)
+		return
+	}
+
 	if op != nil {
+		// If the operation started successfully and requires persistence, add it to the active ops.
 		t.SetActiveOp(opID, op)
+		log.Debugf("terminal: operation %s %s started", params.Type, fmtOperationID(t.parentID, t.id, opID))
+	} else {
+		// If the operation was a just single function call, log that it was executed.
+		log.Debugf("terminal: operation %s %s executed", op.Type(), fmtOperationID(t.parentID, t.id, op.ID()))
 	}
 }
 
@@ -122,6 +134,8 @@ func (t *TerminalBase) OpInit(op Operation, data *container.Container) Error {
 	// reply in any case.
 	t.SetActiveOp(op.ID(), op)
 
+	log.Debugf("terminal: operation %s %s started", op.Type(), fmtOperationID(t.parentID, t.id, op.ID()))
+
 	// Add or create the operation type block.
 	if data == nil {
 		opTypeData := []byte(op.Type())
@@ -144,17 +158,32 @@ func (t *TerminalBase) OpSend(op Operation, data *container.Container) Error {
 // OpEnd sends the end signal with an optional error and then deletes the
 // operation from the Terminal state and calls End(ErrNil) on the Operation.
 // The Operation should cease operation after calling this function.
+// Should only be called by an operation.
 func (t *TerminalBase) OpEnd(op Operation, action string, err Error) {
-	log.Warningf("terminal: operation %s %s#%d>%d %s: %s", op.Type(), t.parentID, t.id, op.ID(), action, err)
+	t.endOperation(op, action, err, false, true)
+}
 
-	// Send error to connected Operation.
-	t.addToOpMsgSendBuffer(op.ID(), MsgTypeEnd, container.New([]byte(err)), true)
+func (t *TerminalBase) endOperation(op Operation, action string, err Error, reportToOp, sendError bool) {
+	if err == ErrNil {
+		log.Debugf("terminal: operation %s %s ended", op.Type(), fmtOperationID(t.parentID, t.id, op.ID()))
+	} else {
+		log.Warningf("terminal: operation %s %s %s: %s", op.Type(), fmtOperationID(t.parentID, t.id, op.ID()), action, err)
+	}
+
+	if sendError {
+		// Send error to connected Operation.
+		t.addToOpMsgSendBuffer(op.ID(), MsgTypeEnd, container.New([]byte(err)), true)
+	}
 
 	if op, ok := t.DeleteActiveOp(op.ID()); ok {
-		// The operation reported an error, but the error is meant for the other
-		// side, not the operation itself. Else, the operation would not be able
-		// to differentiate if an error came from itself or the other side.
-		op.End(action, ErrNil)
+		if reportToOp {
+			op.End(action, err)
+		} else {
+			// The operation reported an error, but the error is meant for the other
+			// side, not the operation itself. Else, the operation would not be able
+			// to differentiate if an error came from itself or the other side.
+			op.End("", ErrNil)
+		}
 	}
 }
 

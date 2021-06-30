@@ -1,6 +1,8 @@
 package terminal
 
 import (
+	"fmt"
+
 	"github.com/safing/portbase/modules"
 	"github.com/safing/portbase/rng"
 )
@@ -17,4 +19,12 @@ func init() {
 func start() error {
 	rngFeeder = rng.NewFeeder()
 	return nil
+}
+
+func fmtTerminalID(craneID string, terminalID uint32) string {
+	return fmt.Sprintf("%s#%d", craneID, terminalID)
+}
+
+func fmtOperationID(craneID string, terminalID, operationID uint32) string {
+	return fmt.Sprintf("%s#%d>%d", craneID, terminalID, operationID)
 }

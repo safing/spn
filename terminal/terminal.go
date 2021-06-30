@@ -338,26 +338,20 @@ func (t *TerminalBase) handleOpMsg(c *container.Container) Error {
 		if ok {
 			err := op.Deliver(data)
 			if err != ErrNil {
-				t.OpEnd(op, "data delivery failed", err)
+				t.endOperation(op, "data delivery failed", err, true, true)
 			}
 		} else {
 			// If an active op is not found, this is likely just left-overs from a
 			// ended or failed operation.
-			log.Tracef("terminal: received msg for unknown op %d", opID)
+			log.Tracef("terminal: %s received msg for unknown op %d", fmtTerminalID(t.parentID, t.id), opID)
 		}
 
 	case MsgTypeEnd:
-		op, ok := t.DeleteActiveOp(opID)
+		op, ok := t.GetActiveOp(opID)
 		if ok {
-			err := Error(data.CompileData())
-			switch err {
-			case ErrNil:
-				op.End("", ErrNil)
-			default:
-				op.End("received error", err)
-			}
+			t.endOperation(op, "received error", Error(data.CompileData()), true, false)
 		} else {
-			log.Tracef("terminal: received end msg for unknown op %d", opID)
+			log.Tracef("terminal: %s received end msg for unknown op %d", fmtTerminalID(t.parentID, t.id), opID)
 		}
 
 	default:

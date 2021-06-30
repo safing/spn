@@ -1,6 +1,7 @@
 package terminal
 
 import (
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -12,6 +13,9 @@ func init() {
 }
 
 func TestCraneTerminal(t *testing.T) {
+	testQueueSize := defaultQueueSize
+	countToQueueSize := uint64(testQueueSize)
+
 	var term1 *CraneTerminal
 	term1Submit := func(c *container.Container) {
 		// Fast track nil containers.
@@ -63,7 +67,9 @@ func TestCraneTerminal(t *testing.T) {
 	}
 
 	term1 = NewCraneTerminal(module.Ctx, "c1", 127, nil, term2Submit)
+	atomic.StoreUint32(term1.nextOpID, 0)
 	term2 = NewCraneTerminal(module.Ctx, "c2", 127, nil, term1Submit)
+	atomic.StoreUint32(term2.nextOpID, 1)
 
 	// Start testing with counters.
 
@@ -71,44 +77,63 @@ func TestCraneTerminal(t *testing.T) {
 		testName:        "oneway-flushing-waiting",
 		oneWay:          true,
 		flush:           true,
-		countTo:         100,
+		countTo:         countToQueueSize * 2,
 		waitBetweenMsgs: sendThresholdMaxWait * 2,
 	})
 
 	testTerminalWithCounters(t, term1, term2, &testWithCounterOpts{
-		testName: "oneway-flushing",
-		oneWay:   true,
-		flush:    true,
-		countTo:  100,
+		testName:        "oneway-waiting",
+		oneWay:          true,
+		countTo:         10,
+		waitBetweenMsgs: sendThresholdMaxWait * 2,
 	})
 
 	testTerminalWithCounters(t, term1, term2, &testWithCounterOpts{
-		testName: "oneway",
-		oneWay:   true,
-		countTo:  100,
+		testName:        "oneway-flushing",
+		oneWay:          true,
+		flush:           true,
+		countTo:         countToQueueSize * 2,
+		waitBetweenMsgs: time.Millisecond,
+	})
+
+	testTerminalWithCounters(t, term1, term2, &testWithCounterOpts{
+		testName:        "oneway",
+		oneWay:          true,
+		countTo:         countToQueueSize * 2,
+		waitBetweenMsgs: time.Millisecond,
 	})
 
 	testTerminalWithCounters(t, term1, term2, &testWithCounterOpts{
 		testName:        "twoway-flushing-waiting",
 		flush:           true,
-		countTo:         100,
+		countTo:         defaultQueueSize * 2,
 		waitBetweenMsgs: sendThresholdMaxWait * 2,
 	})
 
 	testTerminalWithCounters(t, term1, term2, &testWithCounterOpts{
-		testName: "twoway-flushing",
-		flush:    true,
-		countTo:  100,
+		testName:        "twoway-waiting",
+		flush:           true,
+		countTo:         10,
+		waitBetweenMsgs: sendThresholdMaxWait * 2,
 	})
 
 	testTerminalWithCounters(t, term1, term2, &testWithCounterOpts{
-		testName: "twoway",
-		countTo:  100,
+		testName:        "twoway-flushing",
+		flush:           true,
+		countTo:         countToQueueSize * 2,
+		waitBetweenMsgs: time.Millisecond,
 	})
 
 	testTerminalWithCounters(t, term1, term2, &testWithCounterOpts{
-		testName: "stresstest",
-		countTo:  1000000,
+		testName:        "twoway",
+		countTo:         countToQueueSize * 2,
+		waitBetweenMsgs: time.Millisecond,
+	})
+
+	testTerminalWithCounters(t, term1, term2, &testWithCounterOpts{
+		testName:        "stresstest",
+		countTo:         1000000,
+		waitBetweenMsgs: time.Microsecond,
 	})
 
 }
@@ -123,6 +148,9 @@ type testWithCounterOpts struct {
 
 func testTerminalWithCounters(t *testing.T, term1, term2 *CraneTerminal, opts *testWithCounterOpts) {
 	var counter1, counter2 *CounterOp
+
+	t.Logf("starting terminal counter test %s", opts.testName)
+	defer t.Logf("stopping terminal counter test %s", opts.testName)
 
 	// Start counters.
 	counter1 = runTerminalCounter(t, term1, opts)
@@ -177,7 +205,7 @@ func runTerminalCounter(t *testing.T, term *CraneTerminal, opts *testWithCounter
 				// Wait shortly.
 				// In order for the test to succeed, this should be roughly the same as
 				// the sendThresholdMaxWait.
-				time.Sleep(sendThresholdMaxWait)
+				time.Sleep(opts.waitBetweenMsgs)
 			}
 
 			// Endless loop check
@@ -185,6 +213,11 @@ func runTerminalCounter(t *testing.T, term *CraneTerminal, opts *testWithCounter
 			if round > counter.CountTo*2 {
 				t.Errorf("%s: %s: looping more than it should", opts.testName, term.parentID)
 				return
+			}
+
+			// Log progress
+			if round%100000 == 0 {
+				t.Logf("%s: %s: sent %d messages", opts.testName, term.parentID, round)
 			}
 		}
 	}()
@@ -194,14 +227,13 @@ func runTerminalCounter(t *testing.T, term *CraneTerminal, opts *testWithCounter
 
 func printCTStats(t *testing.T, testName, name string, term *CraneTerminal) {
 	t.Logf(
-		"%s: %s: sq=%d rq=%d sends=%d recvqs=%d reps=%d opq=%d",
+		"%s: %s: sq=%d rq=%d sends=%d reps=%d opq=%d",
 		testName,
 		name,
 		len(term.DuplexFlowQueue.sendQueue),
 		len(term.DuplexFlowQueue.recvQueue),
-		term.DuplexFlowQueue.sendSpace,
-		term.DuplexFlowQueue.recvQueueSpace,
-		term.DuplexFlowQueue.reportedSpace,
+		atomic.LoadInt32(term.DuplexFlowQueue.sendSpace),
+		atomic.LoadInt32(term.DuplexFlowQueue.reportedSpace),
 		len(term.opMsgQueue),
 	)
 }

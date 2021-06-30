@@ -43,7 +43,7 @@ func init() {
 	})
 }
 
-func runCounterOp(t OpTerminal, opID uint32, data *container.Container) Operation {
+func runCounterOp(t OpTerminal, opID uint32, data *container.Container) (Operation, Error) {
 	// Create operation.
 	op := &CounterOp{
 		t:     t,
@@ -56,12 +56,11 @@ func runCounterOp(t OpTerminal, opID uint32, data *container.Container) Operatio
 	countTo, err := data.GetNextN64()
 	if err != nil {
 		log.Warningf("terminal: failed to set up counter op: %s", err)
-		t.OpEnd(op, "run op", ErrMalformedData)
-		return nil
+		return nil, ErrMalformedData
 	}
 	op.CountTo = countTo
 
-	return op
+	return op, ErrNil
 }
 
 func (op *CounterOp) ID() uint32 {
