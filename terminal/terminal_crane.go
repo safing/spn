@@ -2,10 +2,11 @@ package terminal
 
 import (
 	"context"
-	"sync/atomic"
 
 	"github.com/safing/portbase/container"
 	"github.com/safing/portbase/log"
+	"github.com/safing/spn/cabin"
+	"github.com/safing/spn/hub"
 )
 
 type CraneTerminal struct {
@@ -13,19 +14,22 @@ type CraneTerminal struct {
 	*DuplexFlowQueue
 }
 
-func NewCraneTerminal(
+func NewLocalCraneTerminal(
 	ctx context.Context,
-	craneID string,
 	id uint32,
-	initialData *container.Container,
+	parentID string,
+	remoteHub *hub.Hub,
+	initMsg *TerminalInitMsg,
 	submitUpstream func(*container.Container),
-) *CraneTerminal {
+) (*CraneTerminal, *container.Container, Error) {
 	// Create Terminal Base.
-	t := NewTerminalBase(ctx, id, craneID, initialData)
-	atomic.StoreUint32(t.nextOpID, 1)
+	t, initData, err := NewLocalBaseTerminal(ctx, id, parentID, remoteHub, initMsg)
+	if err != ErrNil {
+		return nil, nil, err
+	}
 
 	// Create Flow Queue.
-	dfq := NewDuplexFlowQueue(t, defaultQueueSize, submitUpstream)
+	dfq := NewDuplexFlowQueue(t, initMsg.QueueSize, submitUpstream)
 
 	// Create Crane Terminal and assign it as the extended Terminal.
 	ct := &CraneTerminal{
@@ -34,9 +38,42 @@ func NewCraneTerminal(
 	}
 	t.ext = ct
 
-	module.StartWorker("crane terminal", t.handler)
+	// Start workers.
+	module.StartWorker("crane terminal", ct.Handler)
+	module.StartWorker("crane terminal flow queue", ct.FlowHandler)
 
-	return ct
+	return ct, initData, ErrNil
+}
+
+func NewRemoteCraneTerminal(
+	ctx context.Context,
+	id uint32,
+	parentID string,
+	identity *cabin.Identity,
+	initData *container.Container,
+	submitUpstream func(*container.Container),
+) (*CraneTerminal, *TerminalInitMsg, Error) {
+	// Create Terminal Base.
+	t, initMsg, err := NewRemoteBaseTerminal(ctx, id, parentID, identity, initData)
+	if err != ErrNil {
+		return nil, nil, err
+	}
+
+	// Create Flow Queue.
+	dfq := NewDuplexFlowQueue(t, initMsg.QueueSize, submitUpstream)
+
+	// Create Crane Terminal and assign it as the extended Terminal.
+	ct := &CraneTerminal{
+		TerminalBase:    t,
+		DuplexFlowQueue: dfq,
+	}
+	t.ext = ct
+
+	// Start workers.
+	module.StartWorker("crane terminal", ct.Handler)
+	module.StartWorker("crane terminal flow queue", ct.FlowHandler)
+
+	return ct, initMsg, ErrNil
 }
 
 func (t *CraneTerminal) Abandon(action string, err Error) {
@@ -44,10 +81,10 @@ func (t *CraneTerminal) Abandon(action string, err Error) {
 		switch err {
 		case ErrNil:
 			// ErrNil means that the Terminal is being shutdown by the owner.
-			log.Tracef("terminal: %s#%d is closing", t.parentID, t.id)
+			log.Tracef("terminal: %s is closing", fmtTerminalID(t.parentID, t.id))
 		default:
 			// All other errors are faults.
-			log.Warningf("terminal: %s#%d %s: %s", t.parentID, t.id, action, err)
+			log.Warningf("terminal: %s %s: %s", fmtTerminalID(t.parentID, t.id), action, err)
 		}
 
 		// Report back.
@@ -56,7 +93,7 @@ func (t *CraneTerminal) Abandon(action string, err Error) {
 				MsgTypeAbandon,
 				container.New([]byte(err)),
 			); err != ErrNil {
-				log.Warningf("terminal: %s#%d failed to send terminal error: %s", t.parentID, t.id, err)
+				log.Warningf("terminal: %s failed to send terminal error: %s", fmtTerminalID(t.parentID, t.id), err)
 			}
 		}
 

@@ -33,7 +33,7 @@ type OpParams struct {
 	RunOp OpRunner
 }
 
-type OpRunner func(t OpTerminal, opID uint32, initialData *container.Container) (Operation, Error)
+type OpRunner func(t OpTerminal, opID uint32, initData *container.Container) (Operation, Error)
 
 var (
 	opRegistry       = make(map[string]*OpParams)
@@ -67,9 +67,9 @@ func lockOpRegistry() {
 	opRegistryLocked.Set()
 }
 
-func (t *TerminalBase) runOperation(ctx context.Context, opTerminal OpTerminal, opID uint32, initialData *container.Container) {
+func (t *TerminalBase) runOperation(ctx context.Context, opTerminal OpTerminal, opID uint32, initData *container.Container) {
 	// Extract the requested operation name.
-	opType, err := initialData.GetNextBlock()
+	opType, err := initData.GetNextBlock()
 	if err != nil {
 		t.OpEnd(&unknownOp{id: opID}, "run op", ErrMalformedData)
 		return
@@ -92,7 +92,7 @@ func (t *TerminalBase) runOperation(ctx context.Context, opTerminal OpTerminal, 
 	}
 
 	// Run the operation.
-	op, opErr := params.RunOp(opTerminal, opID, initialData)
+	op, opErr := params.RunOp(opTerminal, opID, initData)
 	if opErr != ErrNil {
 		t.endOperation(&unknownOp{
 			id:     opID,

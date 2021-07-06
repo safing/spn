@@ -3,7 +3,10 @@ package terminal
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 	"time"
+
+	"github.com/safing/jess"
 
 	"github.com/safing/portbase/rng"
 
@@ -36,7 +39,7 @@ type TerminalBase struct {
 	// id of the parent component.
 	parentID string
 
-	// ext holds the extended Terminal to supply the communciation interface and
+	// ext holds the extended Terminal to supply the communication interface and
 	// override behavior.
 	ext TerminalExtension
 
@@ -54,8 +57,8 @@ type TerminalBase struct {
 	// all pending messages and then call the received function.
 	flush chan func()
 
-	// Encryption
-	// FIXME
+	// jession is the jess session used for encryption.
+	jession *jess.Session
 
 	// operations holds references to all active operations that require persistence.
 	operations map[uint32]Operation
@@ -68,13 +71,15 @@ type TerminalBase struct {
 	// the terminal already took care of notifying everyone, so a silent fail is
 	// normally the best response.
 	abandoned *abool.AtomicBool
-
-	// server signifies if this Terminal is remote. This controls in which
-	// direction errors are forwarded.
-	// server bool
 }
 
-func NewTerminalBase(ctx context.Context, id uint32, parentID string, initialData *container.Container) *TerminalBase {
+func createTerminalBase(
+	ctx context.Context,
+	id uint32,
+	parentID string,
+	remote bool,
+	initMsg *TerminalInitMsg,
+) *TerminalBase {
 	t := &TerminalBase{
 		id:           id,
 		parentID:     parentID,
@@ -85,6 +90,10 @@ func NewTerminalBase(ctx context.Context, id uint32, parentID string, initialDat
 		nextOpID:     new(uint32),
 		abandoned:    abool.New(),
 	}
+	if remote {
+		atomic.AddUint32(t.nextOpID, 1)
+	}
+
 	t.ctx, t.cancelCtx = context.WithCancel(ctx)
 	return t
 }
@@ -97,6 +106,12 @@ func (t *TerminalBase) ID() uint32 {
 // Ctx returns the Terminal's context.
 func (t *TerminalBase) Ctx() context.Context {
 	return t.ctx
+}
+
+// SetTerminalExtension sets the Terminal's extension. This function is not
+// guarded and may only be used during initialization.
+func (t *TerminalBase) SetTerminalExtension(ext TerminalExtension) {
+	t.ext = ext
 }
 
 // Deliver on TerminalBase only exists to conform to the interface. It must be
@@ -118,7 +133,9 @@ const (
 
 var addPaddingTo = 100 // bytes
 
-func (t *TerminalBase) handler(_ context.Context) error {
+// Handler handles all Terminal internals and must be started as a worker in
+// the module where the Terminal is used.
+func (t *TerminalBase) Handler(_ context.Context) error {
 	defer t.ext.Abandon("internal error", ErrUnknownError)
 
 	msgBuffer := container.New()
@@ -160,7 +177,7 @@ func (t *TerminalBase) handler(_ context.Context) error {
 
 		case <-time.After(10 * time.Second):
 			// If nothing happens for 10 seconds, end the session.
-			log.Debugf("terminal: %s#%d timed out: shutting down", t.parentID, t.id)
+			log.Debugf("terminal: %s timed out: shutting down", fmtTerminalID(t.parentID, t.id))
 			t.ext.Abandon("", ErrNil)
 			return nil // Controlled worker exit.
 

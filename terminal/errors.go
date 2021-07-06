@@ -43,6 +43,10 @@ const (
 	// incorrectly.
 	ErrInvalidConfiguration Error = "config"
 
+	// ErrUnsupportedTerminalVersion is returned when an unsupported terminal
+	// version is requested.
+	ErrUnsupportedTerminalVersion Error = "terminal-version"
+
 	// ErrInternalError is returned when an unspecified internal error occured.
 	ErrInternalError Error = "internal"
 )
@@ -76,13 +80,11 @@ func (e Error) Error() string {
 		return "cascading error"
 	case ErrInvalidConfiguration:
 		return "invalid configuration"
+	case ErrUnsupportedTerminalVersion:
+		return "unsupported terminal version"
 	case ErrInternalError:
 		return "internal error"
 	default:
 		return string(e) + " (no description)"
 	}
-}
-
-func ParseError(err string) Error {
-	return Error(err)
 }

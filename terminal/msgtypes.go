@@ -7,30 +7,24 @@ import (
 
 /*
 
-Terminal Init Message Format:
-
-- Version
--
-
 Terminal Message Format:
 
-- ID [Crane]
-- AddAvailableSpace [Flow Queue]
-- MsgType (None, Failure, Shutdown, OperativeData) [Terminal]
-- Data (only Failure, OperativeData)
+- ID [varint; by Crane]
+- AddAvailableSpace [varint; by Flow Queue]
+- MsgType [varint; by Terminal; one of None, Failure, Shutdown, OperativeData]
+- Data [bytes; by Terminal; only when MsgType is Failure or OperativeData]
 	- Shutdown: string
 	- OperativeData (encrypted): Blocks of Operative Messages
 
-Operative Message Format:
+Operative Message Format [by Terminal]:
 
-- MsgType (Init, Data, Error, End, Padding)
-	- Padding only consists of MsgType and optional data (not blocked)
-- OpID
+- MsgType [varint; one of Init, Data, Error, End, Padding]
+	- Padding only consists of MsgType and optional data [bytes; not blocked!]
+- OpID [varint]
 - Data Block (only Init, Data, Error)
 	- Init: OpType, Initial Data
 	- Data: Data
 	- Error: String
-
 
 */
 

@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	defaultQueueSize    = 100
+	DefaultQueueSize    = 100
 	forceReportFraction = 4
 )
 
@@ -61,9 +61,6 @@ func NewDuplexFlowQueue(
 	}
 	atomic.StoreInt32(dfq.sendSpace, int32(queueSize))
 	atomic.StoreInt32(dfq.reportedSpace, int32(queueSize))
-
-	// Start worker.
-	module.StartWorker("dfq sender", dfq.sender)
 
 	return dfq
 }
@@ -117,7 +114,9 @@ func (dfq *DuplexFlowQueue) reportableRecvSpace() int32 {
 	return toReport
 }
 
-func (dfq *DuplexFlowQueue) sender(_ context.Context) error {
+// FlowHandler handles all flow queue internals and must be started as a worker
+// in the module where it is used.
+func (dfq *DuplexFlowQueue) FlowHandler(_ context.Context) error {
 	// The upstreamSender is started by the terminal module, but is tied to the
 	// flow owner instead. Make sure that the flow owner's module depends on the
 	// terminal module so that it is shut down earlier.

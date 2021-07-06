@@ -23,7 +23,7 @@ type HomeCraneTerminal struct {
 /*
 func NewHomeTerminal(hubID string) *HomeTerminal {
 	// Create Terminal Base.
-	t := NewTerminalBase(id, initialData)
+	t := NewTerminalBase(id, initData)
 
 	// Create Home Terminal and assign it as the extended Terminal.
 	ht := &HomeTerminal{
@@ -38,11 +38,11 @@ func NewHomeTerminal(hubID string) *HomeTerminal {
 func NewHomeCraneTerminal(
 	ctx context.Context,
 	id uint32,
-	initialData *container.Container,
+	initData *container.Container,
 	submitUpstream func(*container.Container),
 ) *HomeCraneTerminal {
 	// Create Terminal Base.
-	t := NewTerminalBase(id, initialData)
+	t := NewTerminalBase(id, initData)
 	atomic.StoreUint32(t.nextOpID, 0)
 
 	// Create Flow Queue.
@@ -82,10 +82,10 @@ func (t *HomeTerminal) Abandon(action string, err Error) {
 		switch err {
 		case ErrNil:
 			// ErrNil means that the Terminal is being shutdown by the owner.
-			log.Tracef("terminal: %s#%d is closing", t.parentID, t.id)
+			log.Tracef("terminal: %s is closing", fmtTerminalID(t.parentID, t.id))
 		default:
 			// All other errors are faults.
-			log.Warningf("terminal: %s#%d %s: %s", t.parentID, t.id, action, err)
+			log.Warningf("terminal: %s %s: %s", fmtTerminalID(t.parentID, t.id), action, err)
 		}
 
 		// Notify other components of failure.
@@ -97,7 +97,7 @@ func (t *HomeTerminal) Abandon(action string, err Error) {
 				MsgTypeAbandon,
 				container.New([]byte(err)),
 			); err != ErrNil {
-				log.Warningf("terminal: %s#%d failed to send terminal error: %s", t.parentID, t.id, err)
+				log.Warningf("terminal: %s failed to send terminal error: %s", fmtTerminalID(t.parentID, t.id), err)
 			}
 		}
 

@@ -5,6 +5,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/safing/spn/hub"
+
+	"github.com/safing/spn/cabin"
+
 	"github.com/safing/portbase/container"
 )
 
@@ -13,8 +17,12 @@ func init() {
 }
 
 func TestCraneTerminal(t *testing.T) {
-	testQueueSize := defaultQueueSize
+	var testQueueSize uint16 = DefaultQueueSize
 	countToQueueSize := uint64(testQueueSize)
+
+	initMsg := &TerminalInitMsg{
+		QueueSize: testQueueSize,
+	}
 
 	var term1 *CraneTerminal
 	term1Submit := func(c *container.Container) {
@@ -66,10 +74,16 @@ func TestCraneTerminal(t *testing.T) {
 		}
 	}
 
-	term1 = NewCraneTerminal(module.Ctx, "c1", 127, nil, term2Submit)
-	atomic.StoreUint32(term1.nextOpID, 0)
-	term2 = NewCraneTerminal(module.Ctx, "c2", 127, nil, term1Submit)
-	atomic.StoreUint32(term2.nextOpID, 1)
+	var err Error
+	var initData *container.Container
+	term1, initData, err = NewLocalCraneTerminal(module.Ctx, 127, "c1", nil, initMsg, term2Submit)
+	if err != ErrNil {
+		t.Fatalf("failed to create local terminal: %s", err)
+	}
+	term2, _, err = NewRemoteCraneTerminal(module.Ctx, 127, "c2", nil, initData, term1Submit)
+	if err != ErrNil {
+		t.Fatalf("failed to create remote terminal: %s", err)
+	}
 
 	// Start testing with counters.
 
@@ -106,7 +120,7 @@ func TestCraneTerminal(t *testing.T) {
 	testTerminalWithCounters(t, term1, term2, &testWithCounterOpts{
 		testName:        "twoway-flushing-waiting",
 		flush:           true,
-		countTo:         defaultQueueSize * 2,
+		countTo:         countToQueueSize * 2,
 		waitBetweenMsgs: sendThresholdMaxWait * 2,
 	})
 
@@ -136,6 +150,33 @@ func TestCraneTerminal(t *testing.T) {
 		waitBetweenMsgs: time.Microsecond,
 	})
 
+	// Recreate and test the cranes with encryption enabled.
+
+	// FIXME: recreating is a bad idea -> move to separate test!
+
+	identity, erro := cabin.CreateIdentity(module.Ctx, hub.ScopeTest)
+	if erro != nil {
+		t.Fatalf("failed to create identity: %s", err)
+	}
+	_, erro = identity.MaintainExchKeys(time.Now())
+	if erro != nil {
+		t.Fatalf("failed to maintain exchange keys: %s", err)
+	}
+
+	term1, initData, err = NewLocalCraneTerminal(module.Ctx, 127, "c1", identity.Hub(), initMsg, term2Submit)
+	if err != ErrNil {
+		t.Fatalf("failed to create encrypting local terminal: %s", err)
+	}
+	term2, _, err = NewRemoteCraneTerminal(module.Ctx, 127, "c2", identity, initData, term1Submit)
+	if err != ErrNil {
+		t.Fatalf("failed to create encrypting remote terminal: %s", err)
+	}
+
+	testTerminalWithCounters(t, term1, term2, &testWithCounterOpts{
+		testName:        "twoway-encrypting",
+		countTo:         countToQueueSize * 2,
+		waitBetweenMsgs: time.Millisecond,
+	})
 }
 
 type testWithCounterOpts struct {
