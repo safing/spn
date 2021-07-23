@@ -44,7 +44,7 @@ func TestConnections(t *testing.T) {
 			}
 
 			// create listener
-			pier, err := builder.EstablishPier(ctx, transport, requests)
+			pier, err := builder.EstablishPier(transport, requests)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -64,12 +64,9 @@ func TestConnections(t *testing.T) {
 			}
 
 			// client send
-			ok, err := ship.Load(testData)
+			err = ship.Load(testData)
 			if err != nil {
 				t.Fatalf("%s failed: %s", ship, err)
-			}
-			if !ok {
-				t.Fatalf("%s sunk", ship)
 			}
 
 			// dock client
@@ -81,12 +78,9 @@ func TestConnections(t *testing.T) {
 
 			// server recv
 			buf := getTestBuf()
-			_, ok, err = srvShip.UnloadTo(buf)
+			_, err = srvShip.UnloadTo(buf)
 			if err != nil {
 				t.Fatalf("%s failed: %s", ship, err)
-			}
-			if !ok {
-				t.Fatalf("%s sunk", ship)
 			}
 
 			// check data
@@ -95,22 +89,16 @@ func TestConnections(t *testing.T) {
 
 			for i := 0; i < 100; i++ {
 				// server send
-				ok, err = srvShip.Load(testData)
+				err = srvShip.Load(testData)
 				if err != nil {
 					t.Fatalf("%s failed: %s", ship, err)
-				}
-				if !ok {
-					t.Fatalf("%s sunk", ship)
 				}
 
 				// client recv
 				buf = getTestBuf()
-				_, ok, err = ship.UnloadTo(buf)
+				_, err = ship.UnloadTo(buf)
 				if err != nil {
 					t.Fatalf("%s failed: %s", ship, err)
-				}
-				if !ok {
-					t.Fatalf("%s sunk", ship)
 				}
 
 				// check data
@@ -118,22 +106,16 @@ func TestConnections(t *testing.T) {
 				fmt.Print(".")
 
 				// client send
-				ok, err = ship.Load(testData)
+				err = ship.Load(testData)
 				if err != nil {
 					t.Fatalf("%s failed: %s", ship, err)
-				}
-				if !ok {
-					t.Fatalf("%s sunk", ship)
 				}
 
 				// server recv
 				buf = getTestBuf()
-				_, ok, err = srvShip.UnloadTo(buf)
+				_, err = srvShip.UnloadTo(buf)
 				if err != nil {
 					t.Fatalf("%s failed: %s", ship, err)
-				}
-				if !ok {
-					t.Fatalf("%s sunk", ship)
 				}
 
 				// check data
@@ -145,7 +127,6 @@ func TestConnections(t *testing.T) {
 			srvShip.Sink()
 			pier.Abolish()
 			wg.Wait() // wait for docking procedure to end
-
 		})
 	}
 }

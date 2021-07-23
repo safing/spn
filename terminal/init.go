@@ -22,7 +22,7 @@ Terminal Init Message Format:
 	- 0x01 - Encrypted
 - Data Block [bytes; not blocked]
 	- Letter (if Encrypted Flag is set)
-		- TerminalInitMsg as DSD
+		- TerminalOpts as DSD
 
 */
 
@@ -31,10 +31,11 @@ const (
 	maxSupportedTerminalVersion = 1
 )
 
-// TerminalInitMsg holds initialization data for the terminal.
-type TerminalInitMsg struct {
+// TerminalOpts holds configuration for the terminal.
+type TerminalOpts struct {
 	Version   uint8  `json:"-"`
 	QueueSize uint16 `json:"qs,omitempty"`
+	Padding   uint16 `json:"p"`
 }
 
 func NewLocalBaseTerminal(
@@ -42,7 +43,7 @@ func NewLocalBaseTerminal(
 	id uint32,
 	parentID string,
 	remoteHub *hub.Hub,
-	initMsg *TerminalInitMsg,
+	initMsg *TerminalOpts,
 ) (
 	t *TerminalBase,
 	initData *container.Container,
@@ -125,7 +126,7 @@ func NewRemoteBaseTerminal(
 	initData *container.Container,
 ) (
 	t *TerminalBase,
-	initMsg *TerminalInitMsg,
+	initMsg *TerminalOpts,
 	tErr Error,
 ) {
 	var initMsgData []byte
@@ -162,7 +163,7 @@ func NewRemoteBaseTerminal(
 			log.Warningf("failed to parse encryption letter: %s", err)
 			return nil, nil, ErrMalformedData
 		}
-		jession, err := letter.WireCorrespondence(identity)
+		jession, err = letter.WireCorrespondence(identity)
 		if err != nil {
 			log.Warningf("failed to initialize encryption: %s", err)
 			return nil, nil, ErrIntegrity
@@ -180,7 +181,7 @@ func NewRemoteBaseTerminal(
 	}
 
 	// Parse init message.
-	initMsg = &TerminalInitMsg{}
+	initMsg = &TerminalOpts{}
 	_, err = dsd.Load(initMsgData, initMsg)
 	if err != nil {
 		log.Warningf("failed to parse init message: %s", err)

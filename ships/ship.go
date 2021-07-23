@@ -1,17 +1,21 @@
 package ships
 
 import (
-	"context"
+	"errors"
 	"fmt"
 	"net"
-	"time"
 
+	"github.com/safing/portbase/log"
 	"github.com/safing/spn/hub"
 	"github.com/tevino/abool"
 )
 
 const (
-	defaultBufSize = 4096
+	defaultLoadSize = 4096
+)
+
+var (
+	ErrSunk = errors.New("ship sunk")
 )
 
 // Ship represents a network layer connection.
@@ -25,11 +29,23 @@ type Ship interface {
 	// IsMine returns whether the ship was launched from here.
 	IsMine() bool
 
-	// Load loads data into the ship - ie. sends the data via the connection. It returns the amount of data written, a boolean if everything is ok and an optional error if something is not okay and needs to be reported. If ok is false, stop using the ship.
-	Load(data []byte) (ok bool, err error)
+	// IsSecure returns whether the ship provides transport security.
+	IsSecure() bool
 
-	// UnloadTo unloads data from the ship - ie. receives data from the connection - puts it into the buf. It returns the amount of data written, a boolean if everything is ok and an optional error if something is not okay and needs to be reported. If ok is false, stop using the ship.
-	UnloadTo(buf []byte) (n int, ok bool, err error)
+	// LoadSize returns the recommended data size that should be handed to Load().
+	// This value will be most likely somehow related to the connection's MTU.
+	// Alternatively, using a multiple of LoadSize is also recommended.
+	LoadSize() int
+
+	// Load loads data into the ship - ie. sends the data via the connection.
+	// Returns ErrSunk if the ship has already sunk earlier.
+	Load(data []byte) error
+
+	// UnloadTo unloads data from the ship - ie. receives data from the
+	// connection - puts it into the buf. It returns the amount of data
+	// written and an optional error.
+	// Returns ErrSunk if the ship has already sunk earlier.
+	UnloadTo(buf []byte) (n int, err error)
 
 	// LocalAddr returns the underlying local net.Addr of the connection.
 	LocalAddr() net.Addr
@@ -43,35 +59,36 @@ type Ship interface {
 
 // ShipBase implements common functions to comply with the Ship interface.
 type ShipBase struct {
-	ctx          context.Context
-	transport    *hub.Transport
-	mine         bool
-	conn         net.Conn
-	bufSize      int
-	sinking      *abool.AtomicBool
-	initial      []byte
-	unloadErrCnt int
-	loadErrCnt   int
+	// conn is the actual underlying connection.
+	conn net.Conn
+	// transport holds the transport definition of the ship.
+	transport *hub.Transport
+
+	// mine specifies whether the ship was launched from here.
+	mine bool
+	// secure specifies whether the ship provides transport security.
+	secure bool
+	// bufSize specifies the size of the receive buffer.
+	bufSize int
+	// loadSize specifies the recommended data size that should be handed to Load().
+	loadSize int
+
+	// initial holds initial data from setting up the ship.
+	initial []byte
+	// sinking specifies if the connection is being closed.
+	sinking *abool.AtomicBool
 }
 
-func (ship *ShipBase) initBase(
-	ctx context.Context,
-	transport *hub.Transport,
-	mine bool,
-	conn net.Conn,
-) {
-	// populate
-	ship.ctx = ctx
-	ship.transport = transport
-	ship.mine = mine
-	ship.conn = conn
-
+func (ship *ShipBase) initBase() {
 	// init
 	ship.sinking = abool.New()
 
-	// check buf size
+	// set default
+	if ship.loadSize == 0 {
+		ship.loadSize = defaultLoadSize
+	}
 	if ship.bufSize == 0 {
-		ship.bufSize = defaultBufSize
+		ship.bufSize = ship.loadSize
 	}
 }
 
@@ -93,77 +110,101 @@ func (ship *ShipBase) IsMine() bool {
 	return ship.mine
 }
 
-// Load loads data into the ship - ie. sends the data via the connection. It returns the amount of data written, a boolean if everything is ok and an optional error if something is not okay and needs to be reported. If ok is false, stop using the ship.
-func (ship *ShipBase) Load(data []byte) (ok bool, err error) {
+// IsSecure returns whether the ship provides transport security.
+func (ship *ShipBase) IsSecure() bool {
+	return ship.secure
+}
+
+// LoadSize returns the recommended data size that should be handed to Load().
+// This value will be most likely somehow related to the connection's MTU.
+// Alternatively, using a multiple of LoadSize is also recommended.
+func (ship *ShipBase) LoadSize() int {
+	return ship.loadSize
+}
+
+// Load loads data into the ship - ie. sends the data via the connection.
+// Returns ErrSunk if the ship has already sunk earlier.
+func (ship *ShipBase) Load(data []byte) error {
 	// log.Debugf("ship: loading %s", string(data))
-	// quit
+
+	// Empty load is used as a signal to cease operaetion.
 	if len(data) == 0 {
 		if ship.sinking.SetToIf(false, true) {
 			ship.conn.Close()
 		}
-		return false, nil
+		return nil
 	}
-	// send all data
-	for len(data) != 0 {
-		n, err := ship.conn.Write(data)
-		if err != nil {
-			if ship.sinking.IsSet() {
-				return false, nil
-			}
-			if nerr, ok := err.(net.Error); ok && (nerr.Temporary()) {
-				time.Sleep(time.Millisecond)
-				ship.loadErrCnt += 1
-				if ship.loadErrCnt > 1000 {
-					// fail if temporary error persists
-					return false, err
-				}
-				continue
-			}
-			if ship.sinking.SetToIf(false, true) {
-				ship.conn.Close()
-			}
-			return false, err
-		}
-		data = data[n:]
-	}
-	return true, nil
-}
 
-// UnloadTo unloads data from the ship - ie. receives data from the connection - puts it into the buf. It returns the amount of data written, a boolean if everything is ok and an optional error if something is not okay and needs to be reported. If ok is false, stop using the ship.
-func (ship *ShipBase) UnloadTo(buf []byte) (n int, ok bool, err error) {
-	if ship.initial != nil {
-		// log.Debugf("ship: unloading initial %s", string(ship.initial))
-		copy(buf, ship.initial)
-		if len(buf) < len(ship.initial) {
-			ship.initial = ship.initial[len(buf):]
-			return len(buf), true, nil
-		}
-		defer func() {
-			ship.initial = nil
-		}()
-		return len(ship.initial), true, nil
-	}
-	n, err = ship.conn.Read(buf)
-	// log.Debugf("ship: unloading %v", string(buf[:n]))
-	if err != nil {
-		if ship.sinking.IsSet() {
-			return 0, false, nil
-		}
-		if nerr, ok := err.(net.Error); ok && (nerr.Temporary()) {
-			time.Sleep(time.Millisecond)
-			ship.unloadErrCnt += 1
-			if ship.unloadErrCnt > 1000 {
-				// fail if temporary error persists
-				return 0, false, err
-			}
-			return 0, true, nil
-		}
+	// Send all given data.
+	n, err := ship.conn.Write(data)
+	switch {
+	case err != nil:
 		if ship.sinking.SetToIf(false, true) {
 			ship.conn.Close()
+			return fmt.Errorf("ship is sinking: %w", err)
 		}
-		return 0, false, err
+		return ErrSunk
+	case n == 0:
+		// No error, but no data was written either.
+		if ship.sinking.SetToIf(false, true) {
+			ship.conn.Close()
+			return errors.New("ship failed to load")
+		}
+		return ErrSunk
+	case n < len(data):
+		// If not all data was sent, try again.
+		log.Debugf("spn/ships: %s only loaded %d/%d bytes", ship, n, len(data))
+		data = data[n:]
+		return ship.Load(data)
 	}
-	return n, true, nil
+
+	return nil
+}
+
+// UnloadTo unloads data from the ship - ie. receives data from the
+// connection - puts it into the buf. It returns the amount of data
+// written and an optional error.
+// Returns ErrSunk if the ship has already sunk earlier.
+func (ship *ShipBase) UnloadTo(buf []byte) (n int, err error) {
+	// Process initial data, if there is any.
+	if ship.initial != nil {
+		// log.Debugf("ship: unloading initial %s", string(ship.initial))
+
+		// Copy as much data as possible.
+		copy(buf, ship.initial)
+
+		// If buf was too small, skip the copied section.
+		if len(buf) < len(ship.initial) {
+			ship.initial = ship.initial[len(buf):]
+			return len(buf), nil
+		}
+
+		// If everything was copied, unset the initial data.
+		n := len(ship.initial)
+		ship.initial = nil
+		return n, nil
+	}
+
+	// Receive data.
+	n, err = ship.conn.Read(buf)
+	switch {
+	case err != nil:
+		if ship.sinking.SetToIf(false, true) {
+			ship.conn.Close()
+			return 0, fmt.Errorf("ship is sinking: %w", err)
+		}
+		return 0, ErrSunk
+	case n == 0:
+		// No error, but no data was read either.
+		if ship.sinking.SetToIf(false, true) {
+			ship.conn.Close()
+			return 0, errors.New("ship failed to unload")
+		}
+		return 0, ErrSunk
+	}
+
+	// log.Debugf("ship: unloading %v", string(buf[:n]))
+	return n, nil
 }
 
 // LocalAddr returns the underlying local net.Addr of the connection.

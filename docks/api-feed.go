@@ -1,5 +1,6 @@
 package docks
 
+/*
 import (
 	"fmt"
 
@@ -80,3 +81,4 @@ func hubMsgFeeder(call *api.Call, scope hub.Scope, dataType string, msgType int)
 
 	return true
 }
+*/

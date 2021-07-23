@@ -31,18 +31,21 @@ func GetAssignedCrane(hubID string) *Crane {
 func AssignCrane(hubID string, crane *Crane) {
 	docksLock.Lock()
 	defer docksLock.Unlock()
+
 	docks[hubID] = crane
 }
 
 func RetractCraneByDestination(hubID string) {
 	docksLock.Lock()
 	defer docksLock.Unlock()
+
 	delete(docks, hubID)
 }
 
 func RetractCraneByID(craneID string) (connectedHub *hub.Hub) {
 	docksLock.Lock()
 	defer docksLock.Unlock()
+
 	for hubID, crane := range docks {
 		if crane.ID == craneID {
 			delete(docks, hubID)
@@ -52,10 +55,12 @@ func RetractCraneByID(craneID string) (connectedHub *hub.Hub) {
 	return nil
 }
 
-func GetAllControllers() map[string]*CraneController {
-	new := make(map[string]*CraneController)
+func GetAllControllers() map[string]*CraneControllerTerminal {
+	new := make(map[string]*CraneControllerTerminal)
+
 	docksLock.Lock()
 	defer docksLock.Unlock()
+
 	for destination, crane := range docks {
 		new[destination] = crane.Controller
 	}

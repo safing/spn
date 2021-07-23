@@ -21,6 +21,10 @@ func start() error {
 	return nil
 }
 
+func (t *TerminalBase) FmtID() string {
+	return fmtTerminalID(t.parentID, t.id)
+}
+
 func fmtTerminalID(craneID string, terminalID uint32) string {
 	return fmt.Sprintf("%s#%d", craneID, terminalID)
 }

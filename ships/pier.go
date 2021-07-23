@@ -35,13 +35,13 @@ type DockingRequest struct {
 }
 
 // EstablishPier is shorthand function to get the transport's builder and establish a pier.
-func EstablishPier(ctx context.Context, transport *hub.Transport, dockingRequests chan *DockingRequest) (Pier, error) {
+func EstablishPier(transport *hub.Transport, dockingRequests chan *DockingRequest) (Pier, error) {
 	builder := GetBuilder(transport.Protocol)
 	if builder == nil {
 		return nil, fmt.Errorf("protocol %s not supported", transport.Protocol)
 	}
 
-	pier, err := builder.EstablishPier(ctx, transport, dockingRequests)
+	pier, err := builder.EstablishPier(transport, dockingRequests)
 	if err != nil {
 		return nil, fmt.Errorf("failed to establish pier on %s: %w", transport, err)
 	}
@@ -51,28 +51,22 @@ func EstablishPier(ctx context.Context, transport *hub.Transport, dockingRequest
 
 // PierBase implements common functions to comply with the Pier interface.
 type PierBase struct {
-	ctx             context.Context
-	transport       *hub.Transport
-	listener        net.Listener
-	abolishing      *abool.AtomicBool
-	dockShip        func() (Ship, error)
+	// transport holds the transport definition of the pier.
+	transport *hub.Transport
+	// listener is the actual underlying listener.
+	listener net.Listener
+
+	// dockShip is used to accept new connections from the listener and must be
+	// assigned by Pier implementations.
+	dockShip func() (Ship, error)
+	// dockingRequests is used to report new connections to the higher layer.
 	dockingRequests chan *DockingRequest
+
+	// abolishing specifies if the pier and listener is being closed.
+	abolishing *abool.AtomicBool
 }
 
-func (pier *PierBase) initBase(
-	ctx context.Context,
-	transport *hub.Transport,
-	listener net.Listener,
-	dockShip func() (Ship, error),
-	dockingRequests chan *DockingRequest,
-) {
-	// populate
-	pier.ctx = ctx
-	pier.transport = transport
-	pier.listener = listener
-	pier.dockShip = dockShip
-	pier.dockingRequests = dockingRequests
-
+func (pier *PierBase) initBase() {
 	// init
 	pier.abolishing = abool.New()
 }
@@ -89,22 +83,31 @@ func (pier *PierBase) Transport() *hub.Transport {
 
 // Docking is the blocking (!) procedure that docks new ships and sends docking requests. This should be run as a worker by the caller.
 func (pier *PierBase) Docking(ctx context.Context) error {
+	defer pier.listener.Close()
+
 	for {
 		ship, err := pier.dockShip()
 		if err != nil {
 			if pier.abolishing.SetToIf(false, true) {
-				_ = pier.listener.Close()
-				pier.dockingRequests <- &DockingRequest{
+				// Notify higher layer, if possible.
+				select {
+				case pier.dockingRequests <- &DockingRequest{
 					Pier: pier,
 					Err:  err,
+				}:
+				default:
 				}
 			}
 			return nil
 		}
 
-		pier.dockingRequests <- &DockingRequest{
+		select {
+		case <-ctx.Done():
+			return nil
+		case pier.dockingRequests <- &DockingRequest{
 			Pier: pier,
 			Ship: ship,
+		}:
 		}
 	}
 }

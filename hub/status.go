@@ -42,7 +42,12 @@ func (h *Hub) SelectSignet() *jess.Signet {
 	h.Lock()
 	defer h.Unlock()
 
-	// TODO: select key based preferred alg?
+	// Return no Signet if we don't have a Status.
+	if h.Status == nil {
+		return nil
+	}
+
+	// TODO: select key based on preferred alg?
 	for id, key := range h.Status.Keys {
 		if time.Now().Unix() < key.Expires {
 			return &jess.Signet{

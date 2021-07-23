@@ -1,5 +1,6 @@
 package docks
 
+/*
 import (
 	"github.com/safing/portbase/log"
 	"github.com/safing/spn/api"
@@ -44,3 +45,4 @@ func (pr *HubRelay) Run() {
 		}
 	}
 }
+*/

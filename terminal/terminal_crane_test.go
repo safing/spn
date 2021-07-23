@@ -12,75 +12,38 @@ import (
 	"github.com/safing/portbase/container"
 )
 
-func init() {
-	addPaddingTo = 0
-}
+const logTestCraneMsgs = false
 
 func TestCraneTerminal(t *testing.T) {
 	var testQueueSize uint16 = DefaultQueueSize
 	countToQueueSize := uint64(testQueueSize)
 
-	initMsg := &TerminalInitMsg{
+	initMsg := &TerminalOpts{
 		QueueSize: testQueueSize,
+		Padding:   8,
 	}
 
 	var term1 *CraneTerminal
-	term1Submit := func(c *container.Container) {
-		// Fast track nil containers.
-		if c == nil {
-			term1.DuplexFlowQueue.Deliver(c)
-			return
-		}
-
-		// Log message.
-		// t.Logf("2>1: %v\n", c.CompileData())
-
-		// Strip terminal ID, as we are not multiplexing in this test.
-		_, err := c.GetNextN32()
-		if err != nil {
-			t.Errorf("2>1: failed to strip Terminal ID: %s", err)
-		}
-
-		// Deliver to other terminal.
-		dErr := term1.DuplexFlowQueue.Deliver(c)
-		if dErr != ErrNil {
-			t.Errorf("2>1: failed to deliver to terminal: %s", dErr)
-			term1.End("delivery failed", ErrInternalError)
-		}
-	}
-
 	var term2 *CraneTerminal
-	term2Submit := func(c *container.Container) {
-		// Fast track nil containers.
-		if c == nil {
-			term2.DuplexFlowQueue.Deliver(c)
-			return
-		}
-
-		// Log message.
-		// t.Logf("1>2: %v\n", c.CompileData())
-
-		// Strip terminal ID, as we are not multiplexing in this test.
-		_, err := c.GetNextN32()
-		if err != nil {
-			t.Errorf("1>2: failed to strip Terminal ID: %s", err)
-		}
-
-		// Deliver to other terminal.
-		dErr := term2.DuplexFlowQueue.Deliver(c)
-		if dErr != ErrNil {
-			t.Errorf("1>2: failed to deliver to terminal: %s", dErr)
-			term2.End("delivery failed", ErrInternalError)
-		}
-	}
-
-	var err Error
 	var initData *container.Container
-	term1, initData, err = NewLocalCraneTerminal(module.Ctx, 127, "c1", nil, initMsg, term2Submit)
+	var err Error
+	term1, initData, err = NewLocalCraneTerminal(
+		module.Ctx, 127, "c1", nil, initMsg, createTestForwardingFunc(
+			t, "c1", "c2", func(c *container.Container) Error {
+				return term2.DuplexFlowQueue.Deliver(c)
+			},
+		),
+	)
 	if err != ErrNil {
 		t.Fatalf("failed to create local terminal: %s", err)
 	}
-	term2, _, err = NewRemoteCraneTerminal(module.Ctx, 127, "c2", nil, initData, term1Submit)
+	term2, _, err = NewRemoteCraneTerminal(
+		module.Ctx, 127, "c2", nil, initData, createTestForwardingFunc(
+			t, "c2", "c1", func(c *container.Container) Error {
+				return term1.DuplexFlowQueue.Deliver(c)
+			},
+		),
+	)
 	if err != ErrNil {
 		t.Fatalf("failed to create remote terminal: %s", err)
 	}
@@ -149,34 +112,87 @@ func TestCraneTerminal(t *testing.T) {
 		countTo:         1000000,
 		waitBetweenMsgs: time.Microsecond,
 	})
+}
 
-	// Recreate and test the cranes with encryption enabled.
+func TestCraneTerminalWithEncryption(t *testing.T) {
+	var testQueueSize uint16 = DefaultQueueSize
+	countToQueueSize := uint64(testQueueSize)
 
-	// FIXME: recreating is a bad idea -> move to separate test!
+	initMsg := &TerminalOpts{
+		QueueSize: testQueueSize,
+		Padding:   8,
+	}
 
 	identity, erro := cabin.CreateIdentity(module.Ctx, hub.ScopeTest)
 	if erro != nil {
-		t.Fatalf("failed to create identity: %s", err)
+		t.Fatalf("failed to create identity: %s", erro)
 	}
 	_, erro = identity.MaintainExchKeys(time.Now())
 	if erro != nil {
-		t.Fatalf("failed to maintain exchange keys: %s", err)
+		t.Fatalf("failed to maintain exchange keys: %s", erro)
 	}
 
-	term1, initData, err = NewLocalCraneTerminal(module.Ctx, 127, "c1", identity.Hub(), initMsg, term2Submit)
+	var term1 *CraneTerminal
+	var term2 *CraneTerminal
+	var initData *container.Container
+	var err Error
+	term1, initData, err = NewLocalCraneTerminal(
+		module.Ctx, 127, "c1", identity.Hub(), initMsg, createTestForwardingFunc(
+			t, "c1", "c2", func(c *container.Container) Error {
+				return term2.DuplexFlowQueue.Deliver(c)
+			},
+		),
+	)
 	if err != ErrNil {
-		t.Fatalf("failed to create encrypting local terminal: %s", err)
+		t.Fatalf("failed to create local terminal: %s", err)
 	}
-	term2, _, err = NewRemoteCraneTerminal(module.Ctx, 127, "c2", identity, initData, term1Submit)
+	term2, _, err = NewRemoteCraneTerminal(
+		module.Ctx, 127, "c2", identity, initData, createTestForwardingFunc(
+			t, "c2", "c1", func(c *container.Container) Error {
+				return term1.DuplexFlowQueue.Deliver(c)
+			},
+		),
+	)
 	if err != ErrNil {
-		t.Fatalf("failed to create encrypting remote terminal: %s", err)
+		t.Fatalf("failed to create remote terminal: %s", err)
 	}
 
 	testTerminalWithCounters(t, term1, term2, &testWithCounterOpts{
 		testName:        "twoway-encrypting",
-		countTo:         countToQueueSize * 2,
+		countTo:         countToQueueSize * 20,
 		waitBetweenMsgs: time.Millisecond,
 	})
+}
+
+func createTestForwardingFunc(t *testing.T, srcName, dstName string, deliverFunc func(*container.Container) Error) func(*container.Container) {
+	return func(c *container.Container) {
+		// Fast track nil containers.
+		if c == nil {
+			dErr := deliverFunc(c)
+			if dErr != ErrNil {
+				t.Errorf("%s>%s: failed to deliver nil msg to terminal: %s", srcName, dstName, dErr)
+			}
+			return
+		}
+
+		// Log messages.
+		if logTestCraneMsgs {
+			t.Logf("%s>%s: %v\n", srcName, dstName, c.CompileData())
+		}
+
+		// Strip terminal ID, as we are not multiplexing in this test.
+		_, err := c.GetNextN32()
+		if err != nil {
+			t.Errorf("%s>%s: failed to strip terminal ID: %s", srcName, dstName, err)
+			return
+		}
+
+		// Deliver to other terminal.
+		dErr := deliverFunc(c)
+		if dErr != ErrNil {
+			t.Errorf("%s>%s: failed to deliver to terminal: %s", srcName, dstName, dErr)
+		}
+	}
 }
 
 type testWithCounterOpts struct {
@@ -200,15 +216,21 @@ func testTerminalWithCounters(t *testing.T, term1, term2 *CraneTerminal, opts *t
 	}
 
 	// Wait until counters are done.
-	counter1.Wait.Wait()
+	counter1.Wait()
 	if !opts.oneWay {
-		counter2.Wait.Wait()
+		counter2.Wait()
 	}
 
 	// Log stats.
 	t.Logf("%s: counter1: counter=%d countTo=%d", opts.testName, counter1.Counter, counter1.CountTo)
+	if counter1.Counter < counter1.CountTo {
+		t.Errorf("%s: did not finish counting", opts.testName)
+	}
 	if !opts.oneWay {
 		t.Logf("%s: counter2: counter=%d countTo=%d", opts.testName, counter2.Counter, counter2.CountTo)
+		if counter2.Counter < counter2.CountTo {
+			t.Errorf("%s: did not finish counting", opts.testName)
+		}
 	}
 	printCTStats(t, opts.testName, "term1", term1)
 	printCTStats(t, opts.testName, "term2", term2)

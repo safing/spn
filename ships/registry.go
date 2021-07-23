@@ -12,7 +12,7 @@ import (
 // Builder is a factory that can build ships and piers of it's protocol.
 type Builder struct {
 	LaunchShip    func(ctx context.Context, transport *hub.Transport, ip net.IP) (Ship, error)
-	EstablishPier func(ctx context.Context, transport *hub.Transport, dockingRequests chan *DockingRequest) (Pier, error)
+	EstablishPier func(transport *hub.Transport, dockingRequests chan *DockingRequest) (Pier, error)
 }
 
 var (

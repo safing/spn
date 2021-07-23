@@ -1,5 +1,6 @@
 package docks
 
+/*
 import (
 	"fmt"
 	"time"
@@ -282,3 +283,4 @@ func NewClient(version int, dst *hub.Hub) (*API, error) {
 
 	return newPortAPI, nil
 }
+*/

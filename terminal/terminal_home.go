@@ -78,14 +78,14 @@ func (t *HomeTerminal) abandonNotify(err Error) {
 }
 
 func (t *HomeTerminal) Abandon(action string, err Error) {
-	if t.abandoned.SetToIf(false, true) {
+	if t.Abandoned.SetToIf(false, true) {
 		switch err {
 		case ErrNil:
 			// ErrNil means that the Terminal is being shutdown by the owner.
-			log.Tracef("terminal: %s is closing", fmtTerminalID(t.parentID, t.id))
+			log.Tracef("spn/terminal: %s is closing", fmtTerminalID(t.parentID, t.id))
 		default:
 			// All other errors are faults.
-			log.Warningf("terminal: %s %s: %s", fmtTerminalID(t.parentID, t.id), action, err)
+			log.Warningf("spn/terminal: %s %s: %s", fmtTerminalID(t.parentID, t.id), action, err)
 		}
 
 		// Notify other components of failure.
@@ -97,18 +97,11 @@ func (t *HomeTerminal) Abandon(action string, err Error) {
 				MsgTypeAbandon,
 				container.New([]byte(err)),
 			); err != ErrNil {
-				log.Warningf("terminal: %s failed to send terminal error: %s", fmtTerminalID(t.parentID, t.id), err)
+				log.Warningf("spn/terminal: %s failed to send terminal error: %s", fmtTerminalID(t.parentID, t.id), err)
 			}
 		}
 
-		// End all operations.
-		t.lock.Lock()
-		defer t.lock.Unlock()
-		for _, op := range t.operations {
-			op.End("received a", ErrCascading)
-		}
-
-		// Stop all connected workers.
-		t.cancelCtx()
+		// End all operations and stop all connected workers.
+		t.StopAll("received a", ErrCascading)
 	}
 }

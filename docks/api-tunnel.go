@@ -1,18 +1,6 @@
 package docks
 
-import (
-	"fmt"
-	"io"
-	"net"
-	"strings"
-
-	"github.com/safing/portbase/container"
-	"github.com/safing/portbase/formats/dsd"
-	"github.com/safing/portbase/log"
-	"github.com/safing/portmaster/network/packet"
-	"github.com/safing/spn/api"
-)
-
+/*
 type TunnelRequest struct {
 	Domain   string
 	IP       net.IP
@@ -155,3 +143,4 @@ func tunnelWriter(call *api.Call, conn net.Conn, request *TunnelRequest) {
 		}
 	}
 }
+*/

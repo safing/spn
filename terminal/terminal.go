@@ -67,10 +67,14 @@ type TerminalBase struct {
 	// permission holds the permissions of the terminal.
 	permission Permission
 
-	// abandoned indicates if the Terminal has been abandoned. Whoever abandoned
+	// opts holds the terminal options. It must not be modified after the terminal
+	// has started.
+	opts *TerminalOpts
+
+	// Abandoned indicates if the Terminal has been abandoned. Whoever abandoned
 	// the terminal already took care of notifying everyone, so a silent fail is
 	// normally the best response.
-	abandoned *abool.AtomicBool
+	Abandoned *abool.AtomicBool
 }
 
 func createTerminalBase(
@@ -78,7 +82,7 @@ func createTerminalBase(
 	id uint32,
 	parentID string,
 	remote bool,
-	initMsg *TerminalInitMsg,
+	initMsg *TerminalOpts,
 ) *TerminalBase {
 	t := &TerminalBase{
 		id:           id,
@@ -88,7 +92,8 @@ func createTerminalBase(
 		flush:        make(chan func()),
 		operations:   make(map[uint32]Operation),
 		nextOpID:     new(uint32),
-		abandoned:    abool.New(),
+		opts:         initMsg,
+		Abandoned:    abool.New(),
 	}
 	if remote {
 		atomic.AddUint32(t.nextOpID, 1)
@@ -130,8 +135,6 @@ const (
 	sendMaxLength        = 4000 // bytes
 	sendThresholdMaxWait = 20 * time.Millisecond
 )
-
-var addPaddingTo = 100 // bytes
 
 // Handler handles all Terminal internals and must be started as a worker in
 // the module where the Terminal is used.
@@ -177,7 +180,7 @@ func (t *TerminalBase) Handler(_ context.Context) error {
 
 		case <-time.After(10 * time.Second):
 			// If nothing happens for 10 seconds, end the session.
-			log.Debugf("terminal: %s timed out: shutting down", fmtTerminalID(t.parentID, t.id))
+			log.Debugf("spn/terminal: %s timed out: shutting down", fmtTerminalID(t.parentID, t.id))
 			t.ext.Abandon("", ErrNil)
 			return nil // Controlled worker exit.
 
@@ -190,7 +193,7 @@ func (t *TerminalBase) Handler(_ context.Context) error {
 				case ErrAbandoning:
 					return nil // Controlled worker exit.
 				default:
-					t.ext.Abandon("failed to receive", err)
+					t.ext.Abandon("failed to handle", err)
 					return nil // Controlled worker exit.
 				}
 			}
@@ -288,6 +291,7 @@ func (t *TerminalBase) Flush() {
 func (t *TerminalBase) handleReceive(c *container.Container) Error {
 	msgType, err := ParseTerminalMsgType(c)
 	if err != nil {
+		log.Warningf("spn/terminal: %s failed to parse terminal msg type: %s", t.FmtID(), err)
 		return ErrMalformedData
 	}
 
@@ -298,7 +302,22 @@ func (t *TerminalBase) handleReceive(c *container.Container) Error {
 
 	case MsgTypeOperativeData:
 
-		// FIXME: Decrypt
+		// Decrypt operative data.
+		if t.jession != nil {
+			letter, err := jess.LetterFromWire(c)
+			if err != nil {
+				log.Warningf("spn/terminal: %s failed to parse letter: %s", t.FmtID(), err)
+				return ErrMalformedData
+			}
+
+			decryptedData, err := t.jession.Open(letter)
+			if err != nil {
+				log.Warningf("spn/terminal: %s failed to decrypt: %s", t.FmtID(), err)
+				return ErrIntegrity
+			}
+
+			c = container.New(decryptedData)
+		}
 
 		for c.HoldsData() {
 			// Handle operative message.
@@ -328,6 +347,7 @@ func (t *TerminalBase) handleOpMsg(c *container.Container) Error {
 	// Parse message type, operation id and data.
 	msgType, err := ParseOpMsgType(c)
 	if err != nil {
+		log.Warningf("spn/terminal: %s failed to parse operation msg type: %s", t.FmtID(), err)
 		return ErrMalformedData
 	}
 	// Check if this is a padding message and handle it specially.
@@ -339,10 +359,12 @@ func (t *TerminalBase) handleOpMsg(c *container.Container) Error {
 	// Parse operation id and data.
 	opID, err := c.GetNextN32()
 	if err != nil {
+		log.Warningf("spn/terminal: %s failed to parse operation ID: %s", t.FmtID(), err)
 		return ErrMalformedData
 	}
 	data, err := c.GetNextBlockAsContainer()
 	if err != nil {
+		log.Warningf("spn/terminal: %s failed to get operation msg data for msg type %d: %s", t.FmtID(), msgType, err)
 		return ErrMalformedData
 	}
 
@@ -360,7 +382,7 @@ func (t *TerminalBase) handleOpMsg(c *container.Container) Error {
 		} else {
 			// If an active op is not found, this is likely just left-overs from a
 			// ended or failed operation.
-			log.Tracef("terminal: %s received msg for unknown op %d", fmtTerminalID(t.parentID, t.id), opID)
+			log.Tracef("spn/terminal: %s received msg for unknown op %d", fmtTerminalID(t.parentID, t.id), opID)
 		}
 
 	case MsgTypeEnd:
@@ -368,10 +390,11 @@ func (t *TerminalBase) handleOpMsg(c *container.Container) Error {
 		if ok {
 			t.endOperation(op, "received error", Error(data.CompileData()), true, false)
 		} else {
-			log.Tracef("terminal: %s received end msg for unknown op %d", fmtTerminalID(t.parentID, t.id), opID)
+			log.Tracef("spn/terminal: %s received end msg for unknown op %d", fmtTerminalID(t.parentID, t.id), opID)
 		}
 
 	default:
+		log.Warningf("spn/terminal: %s received unexpected message type: %d", t.FmtID(), msgType)
 		return ErrUnexpectedMsgType
 	}
 
@@ -386,9 +409,9 @@ func (t *TerminalBase) handlePaddingMsg(c *container.Container) {
 }
 
 func (t *TerminalBase) sendOpMsgs(c *container.Container) Error {
-	if addPaddingTo > 0 {
+	if t.opts.Padding > 0 {
 		// Add Padding if needed.
-		paddingNeeded := (addPaddingTo - c.Length()) % addPaddingTo
+		paddingNeeded := (int(t.opts.Padding) - c.Length()) % int(t.opts.Padding)
 		if paddingNeeded > 0 {
 			// Add padding message header.
 			c.Append(MsgTypePadding.Pack())
@@ -406,13 +429,35 @@ func (t *TerminalBase) sendOpMsgs(c *container.Container) Error {
 		}
 	}
 
-	// FIXME: Encrypt
+	// Encrypt operative data.
+	if t.jession != nil {
+		letter, err := t.jession.Close(c.CompileData())
+		if err != nil {
+			log.Warningf("spn/terminal: %s failed to encrypt: %s", t.FmtID(), err)
+			return ErrIntegrity
+		}
+
+		c, err = letter.ToWire()
+		if err != nil {
+			log.Warningf("spn/terminal: %s failed to pack letter: %s", t.FmtID(), err)
+			return ErrInternalError
+		}
+	}
 
 	// Add Terminal Message type.
 	c.Prepend(MsgTypeOperativeData.Pack())
 
 	// Send data.
 	return t.ext.Send(c)
+}
+
+func (t *TerminalBase) SendAbandonMsg(err Error) {
+	if err := t.sendTerminalMsg(
+		MsgTypeAbandon,
+		container.New([]byte(err)),
+	); err != ErrNil {
+		log.Warningf("spn/terminal: %s failed to send terminal error: %s", t.FmtID(), err)
+	}
 }
 
 func (t *TerminalBase) sendTerminalMsg(
@@ -477,4 +522,19 @@ func (t *TerminalBase) addToOpMsgSendBuffer(
 	case <-t.ctx.Done():
 		return ErrAbandoning
 	}
+}
+
+// StopAll ends all operations with the given paramaters and cancels the
+// workers. This function is usually not called directly, but at the end of an
+// Abandon() implementation.
+func (t *TerminalBase) StopAll(action string, err Error) {
+	// End all operations.
+	t.lock.Lock()
+	defer t.lock.Unlock()
+	for _, op := range t.operations {
+		op.End(action, err)
+	}
+
+	// Stop all connected workers.
+	t.cancelCtx()
 }
