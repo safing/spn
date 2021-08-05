@@ -20,13 +20,13 @@ func init() {
 	subsystems.Register(
 		"spn",
 		"SPN",
-		"Safing Privacy Network - currently in closed Pre-Alpha",
+		"Safing Privacy Network",
 		module,
 		"config:spn/",
 		&config.Option{
-			Name:         "Enable SPN",
+			Name:         "SPN Module",
 			Key:          CfgOptionEnableSPNKey,
-			Description:  "Enable the Safing Privacy Network.",
+			Description:  "Start the Safing Privacy Network module. If turned off, the SPN is fully disabled on this device.",
 			OptType:      config.OptTypeBool,
 			DefaultValue: false,
 			Annotations: config.Annotations{
