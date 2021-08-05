@@ -1,5 +1,6 @@
-package terminal
+package docks
 
+/*
 import (
 	"github.com/safing/portbase/container"
 	"github.com/safing/portbase/log"
@@ -20,7 +21,6 @@ type HomeCraneTerminal struct {
 	*DuplexFlowQueue
 }
 
-/*
 func NewHomeTerminal(hubID string) *HomeTerminal {
 	// Create Terminal Base.
 	t := NewTerminalBase(id, initData)
@@ -55,7 +55,6 @@ func NewHomeCraneTerminal(
 		DuplexFlowQueue: dfq,
 	}
 }
-*/
 
 var (
 	notifyAbandoned        func(t *HomeTerminal, err Error)
@@ -105,3 +104,4 @@ func (t *HomeTerminal) Abandon(action string, err Error) {
 		t.StopAll("received a", ErrCascading)
 	}
 }
+*/

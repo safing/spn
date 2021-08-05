@@ -9,22 +9,26 @@ import (
 
 Terminal Message Format:
 
+- Length [varint; by Crane]
+- MsgType [varint; by Crane; one of Establish, OperativeData, Abandon]
 - ID [varint; by Crane]
-- AddAvailableSpace [varint; by Flow Queue]
-- MsgType [varint; by Terminal; one of None, OperativeData, Abandon]
-- Data [bytes; by Terminal]
-	- When MsgType is None: omitted
-	- When MsgType is OperativeData: (Encrypted) Blocked Operative Messages
-	- When MsgType is Abandon: string
+- Data [bytes; possibly omitted, by Terminal]
+	- When MsgType is Establish:
+		- Init Data [bytes]
+	- When MsgType is OperativeData:
+		- AddAvailableSpace [varint; by Flow Queue]
+		- (Encrypted) Blocked Operative Messages [bytes]
+	- When MsgType is Abandon:
+		-  [string]
 
 Operative Message Format [by Terminal]:
 
 - MsgType [varint; one of Init, Data, End, Padding]
 - OpID [varint; omitted when MsgType is Padding]
 - Data Block [bytes block; omitted when MsgType is Padding]
-	- Init: OpType, Initial Data
-	- Data: Data
-	- Error: String
+	- Init: OpType [bytes block], Initial Data [remaining bytes]
+	- Data: Data [remaining bytes]
+	- Error: Error [varint]
 
 Padding MsgType Format:
 The Padding MsgType used by the terminal may only be used as the last operative
@@ -45,8 +49,8 @@ func ParseTerminalMsgType(c *container.Container) (TerminalMsgType, error) {
 }
 
 const (
-	// MsgTypeNone is used to add available space only.
-	MsgTypeNone TerminalMsgType = 0
+	// MsgTypeEstablish is used to add available space only.
+	MsgTypeEstablish TerminalMsgType = 1
 
 	// MsgTypeOperativeData is used to send encrypted data for an operation.
 	MsgTypeOperativeData TerminalMsgType = 2

@@ -8,7 +8,6 @@ import (
 	"github.com/safing/jess"
 	"github.com/safing/portbase/container"
 	"github.com/safing/portbase/formats/dsd"
-	"github.com/safing/portbase/log"
 	"github.com/safing/spn/cabin"
 	"github.com/safing/spn/hub"
 )
@@ -35,7 +34,43 @@ const (
 type TerminalOpts struct {
 	Version   uint8  `json:"-"`
 	QueueSize uint16 `json:"qs,omitempty"`
-	Padding   uint16 `json:"p"`
+	Padding   uint16 `json:"p,omitempty"`
+	Encrypt   bool   `json:"e,omitempty"`
+}
+
+func ParseTerminalOpts(c *container.Container) (*TerminalOpts, *Error) {
+	// Parse and check version.
+	version, err := c.GetNextN8()
+	if err != nil {
+		return nil, ErrMalformedData.With("failed to parse version: %w", err)
+	}
+	if version < minSupportedTerminalVersion || version > maxSupportedTerminalVersion {
+		return nil, ErrUnsupportedTerminalVersion.With("requested %d", version)
+	}
+
+	// Parse init message.
+	initMsg := &TerminalOpts{}
+	_, err = dsd.Load(c.CompileData(), initMsg)
+	if err != nil {
+		return nil, ErrMalformedData.With("failed to parse init message: %w", err)
+	}
+	initMsg.Version = version
+
+	return initMsg, nil
+}
+
+func (opts *TerminalOpts) Pack() (*container.Container, *Error) {
+	// Pack init message.
+	optsData, err := dsd.Dump(opts, dsd.JSON)
+	if err != nil {
+		return nil, ErrInternalError.With("failed to parse init message: %w", err)
+	}
+
+	// Compile init message.
+	return container.New(
+		varint.Pack8(opts.Version),
+		optsData,
+	), nil
 }
 
 func NewLocalBaseTerminal(
@@ -47,15 +82,12 @@ func NewLocalBaseTerminal(
 ) (
 	t *TerminalBase,
 	initData *container.Container,
-	tErr Error,
+	err *Error,
 ) {
-	var flags uint8
-	var initMsgData *container.Container
-
 	// Create baseline.
 	t = createTerminalBase(ctx, id, parentID, false, initMsg)
 
-	// Set default version.
+	// Set default values.
 	if initMsg.Version == 0 {
 		initMsg.Version = 1
 	}
@@ -63,22 +95,14 @@ func NewLocalBaseTerminal(
 		initMsg.QueueSize = 100
 	}
 
-	// Pack init message.
-	packedInitMsg, err := dsd.Dump(initMsg, dsd.JSON)
-	if err != nil {
-		log.Warningf("spn/terminal: failed to pack init message: %s", err)
-		return nil, nil, ErrInternalError
-	}
-
-	// Use encryption if enabled.
+	// Setup encryption if enabled.
 	if remoteHub != nil {
-		flags |= 0x01
+		initMsg.Encrypt = true
 
 		// Select signet (public key) of remote Hub to use.
 		s := remoteHub.SelectSignet()
 		if s == nil {
-			log.Warning("spn/terminal: failed to select signet of remote hub")
-			return nil, nil, ErrInvalidConfiguration
+			return nil, nil, ErrHubNotReady.With("failed to select signet of remote hub")
 		}
 
 		// Create new session.
@@ -87,35 +111,18 @@ func NewLocalBaseTerminal(
 		env.Recipients = []*jess.Signet{s}
 		jession, err := env.WireCorrespondence(nil)
 		if err != nil {
-			log.Warningf("spn/terminal: failed to initialize encryption: %s", err)
-			return nil, nil, ErrIntegrity
+			return nil, nil, ErrIntegrity.With("failed to initialize encryption: %w", err)
 		}
 		t.jession = jession
-
-		// Encrypt init message.
-		letter, err := jession.Close(packedInitMsg)
-		if err != nil {
-			log.Warningf("spn/terminal: failed to encrypt init message: %s", err)
-			return nil, nil, ErrIntegrity
-		}
-		initMsgData, err = letter.ToWire()
-		if err != nil {
-			log.Warningf("spn/terminal: failed to pack encryption letter: %s", err)
-			return nil, nil, ErrInternalError
-		}
-
-	} else {
-		initMsgData = container.New(packedInitMsg)
 	}
 
-	// Compile init message.
-	initData = container.New(
-		varint.Pack8(initMsg.Version),
-		varint.Pack8(flags),
-	)
-	initData.AppendContainer(initMsgData)
+	// Pack init message.
+	initData, err = initMsg.Pack()
+	if err != nil {
+		return nil, nil, err
+	}
 
-	return t, initData, ErrNil
+	return t, initData, nil
 }
 
 func NewRemoteBaseTerminal(
@@ -127,77 +134,29 @@ func NewRemoteBaseTerminal(
 ) (
 	t *TerminalBase,
 	initMsg *TerminalOpts,
-	tErr Error,
+	err *Error,
 ) {
-	var initMsgData []byte
-
-	// Parse and check version.
-	version, err := initData.GetNextN8()
-	if err != nil {
-		log.Warningf("spn/terminal: failed to parse version: %s", err)
-		return nil, nil, ErrMalformedData
-	}
-	if version < minSupportedTerminalVersion || version > maxSupportedTerminalVersion {
-		log.Warningf("spn/terminal: unsupprted terminal version requested: %d", version)
-		return nil, nil, ErrUnsupportedTerminalVersion
-	}
-
-	// Parse flags.
-	flags, err := initData.GetNextN8()
-	if err != nil {
-		log.Warningf("spn/terminal: failed to parse flags: %s", err)
-		return nil, nil, ErrMalformedData
-	}
-
-	// Use encryption if enabled.
-	var jession *jess.Session
-	if flags&0x01 == 0x01 {
-		if identity == nil {
-			log.Warning("spn/terminal: missing identity for setting up incoming encryption")
-			return nil, nil, ErrInternalError
-		}
-
-		// Initialize encryption.
-		letter, err := jess.LetterFromWire(initData)
-		if err != nil {
-			log.Warningf("failed to parse encryption letter: %s", err)
-			return nil, nil, ErrMalformedData
-		}
-		jession, err = letter.WireCorrespondence(identity)
-		if err != nil {
-			log.Warningf("failed to initialize encryption: %s", err)
-			return nil, nil, ErrIntegrity
-		}
-
-		// Open init message.
-		data, err := jession.Open(letter)
-		if err != nil {
-			log.Warningf("failed to decrypt init message: %s", err)
-			return nil, nil, ErrIntegrity
-		}
-		initMsgData = data
-	} else {
-		initMsgData = initData.CompileData()
-	}
-
 	// Parse init message.
-	initMsg = &TerminalOpts{}
-	_, err = dsd.Load(initMsgData, initMsg)
+	initMsg, err = ParseTerminalOpts(initData)
 	if err != nil {
-		log.Warningf("failed to parse init message: %s", err)
-		return nil, nil, ErrMalformedData
+		return nil, nil, err
 	}
-	initMsg.Version = version
 
 	// Check boundaries.
 	if initMsg.QueueSize <= 0 || initMsg.QueueSize > 100 {
-		log.Warning("spn/terminal: invalid queue size")
-		return nil, nil, ErrInvalidConfiguration
+		return nil, nil, ErrInvalidOptions.With("invalid queue size of %d", initMsg.QueueSize)
 	}
 
 	// Create baseline.
 	t = createTerminalBase(ctx, id, parentID, true, initMsg)
-	t.jession = jession
 
-	return t, initMsg, ErrNil
+	// Setup encryption if enabled.
+	if initMsg.Encrypt {
+		if identity == nil {
+			return nil, nil, ErrInternalError.With("missing identity for setting up incoming encryption")
+		}
+		t.identity = identity
+	}
+
+	return t, initMsg, nil
 }

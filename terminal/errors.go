@@ -1,90 +1,178 @@
 package terminal
 
-type Error string
+import (
+	"errors"
+	"fmt"
 
-const (
-	// ErrNil represents a nil error.
-	ErrNil Error = ""
-
-	// ErrUnknownError is returned when an unknown error occurred.
-	ErrUnknownError Error = "unknown"
-
-	// ErrAbandoning is sent when the Hub is shutting down.
-	ErrAbandoning Error = "abandoning"
-
-	// ErrOpEnded is returned by ended operations.
-	ErrOpEnded Error = "ended"
-
-	// ErrMalformedData is returned when the request data was malformed and could not be parsed.
-	ErrMalformedData Error = "malformed"
-
-	// ErrUnknownOperation is returned when a requested command cannot be found.
-	ErrUnknownOperationType Error = "optype"
-
-	// ErrUnknownOperationID is returned when a requested command cannot be found.
-	ErrUnknownOperationID Error = "opid"
-
-	// ErrPermissinDenied is returned when calling a command with insufficient permissions.
-	ErrPermissinDenied Error = "denied"
-
-	// ErrQueueOverflow is returned when a full queue is encountered and data was discarded.
-	ErrQueueOverflow Error = "overflow"
-
-	// ErrUnexpectedMsgType is returned when an unexpected message type is received.
-	ErrUnexpectedMsgType Error = "msgtype"
-
-	// ErrIntegrity is returned when there is a data integrity error.
-	ErrIntegrity Error = "integrity"
-
-	// ErrCascading is returned when a connected component failed.
-	ErrCascading Error = "cascading"
-
-	// ErrInvalidConfiguration is returned when a component is configured
-	// incorrectly.
-	ErrInvalidConfiguration Error = "config"
-
-	// ErrUnsupportedTerminalVersion is returned when an unsupported terminal
-	// version is requested.
-	ErrUnsupportedTerminalVersion Error = "terminal-version"
-
-	// ErrInternalError is returned when an unspecified internal error occured.
-	ErrInternalError Error = "internal"
+	"github.com/safing/portbase/formats/varint"
 )
 
+// Error is a terminal error.
+type Error struct {
+	// id holds the internal error ID.
+	id uint8
+	// err holds the wrapped error or the default error message.
+	err error
+	// external signifies if the error was received from the outside.
+	external bool
+}
+
+// ID returns the internal ID of the error.
+func (e *Error) ID() uint8 {
+	return e.id
+}
+
 // Error returns the human readable format of the error.
-func (e Error) Error() string {
-	switch e {
-	case ErrNil:
-		return "no error"
-	case ErrUnknownError:
-		return "unknown error"
-	case ErrAbandoning:
-		return "abandoning"
-	case ErrOpEnded:
-		return "operation ended"
-	case ErrMalformedData:
-		return "malformed data"
-	case ErrUnknownOperationType:
-		return "unknown operation type"
-	case ErrUnknownOperationID:
-		return "unknown operation id"
-	case ErrPermissinDenied:
-		return "permission denied"
-	case ErrQueueOverflow:
-		return "queue overflowed"
-	case ErrUnexpectedMsgType:
-		return "unexpected message type"
-	case ErrIntegrity:
-		return "integrity violated"
-	case ErrCascading:
-		return "cascading error"
-	case ErrInvalidConfiguration:
-		return "invalid configuration"
-	case ErrUnsupportedTerminalVersion:
-		return "unsupported terminal version"
-	case ErrInternalError:
-		return "internal error"
-	default:
-		return string(e) + " (no description)"
+func (e *Error) Error() string {
+	if e.external {
+		return "[ext] " + e.err.Error()
+	}
+	return e.err.Error()
+}
+
+// IsExternal returns whether the error occurred externally.
+func (e *Error) IsExternal() bool {
+	if e == nil {
+		return false
+	}
+
+	return e.external
+}
+
+// Is returns whether the given error is of the same type.
+func (e *Error) Is(target error) bool {
+	t, ok := target.(*Error)
+	if !ok {
+		return false
+	}
+	return e.id == t.id
+}
+
+// Unwrap returns the wrapped error.
+func (e *Error) Unwrap() error {
+	return e.err
+}
+
+// With adds context and details where the error occurred. The provided
+// message is appended to the error.
+// A new error with the same ID is returned and must be compared with
+// errors.Is().
+func (e *Error) With(format string, a ...interface{}) *Error {
+	// Return nil if error is nil.
+	if e == nil {
+		return nil
+	}
+
+	return &Error{
+		id:  e.id,
+		err: fmt.Errorf(e.Error()+": "+format, a...),
 	}
 }
+
+// Wrap adds context higher up in the call chain. The provided message is
+// prepended to the error.
+// A new error with the same ID is returned and must be compared with
+// errors.Is().
+func (e *Error) Wrap(format string, a ...interface{}) *Error {
+	// Return nil if error is nil.
+	if e == nil {
+		return nil
+	}
+
+	return &Error{
+		id:  e.id,
+		err: fmt.Errorf(format+": "+e.Error(), a...),
+	}
+}
+
+// AsExternal creates and returns an external version of the error.
+func (e *Error) AsExternal() *Error {
+	// Return nil if error is nil.
+	if e == nil {
+		return nil
+	}
+
+	return &Error{
+		id:       e.id,
+		err:      e.err,
+		external: true,
+	}
+}
+
+// Pack returns the serialized internal error ID. The additional message is
+// lost and is replaced with the default message upon parsing.
+func (e *Error) Pack() []byte {
+	// Return nil slice if error is nil.
+	if e == nil {
+		return nil
+	}
+
+	return varint.Pack8(e.id)
+}
+
+// NewExternalError creates an external error based on the given serialized ID.
+func ParseExternalError(id []byte) (*Error, error) {
+	// Return nil for an empty error.
+	if len(id) == 0 {
+		return nil, nil
+	}
+
+	parsedID, _, err := varint.Unpack8(id)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unpack error ID: %w", err)
+	}
+
+	return NewExternalError(parsedID), nil
+}
+
+// NewExternalError creates an external error based on the given ID.
+func NewExternalError(id uint8) *Error {
+	err, ok := errorRegistry[id]
+	if ok {
+		return err.AsExternal()
+	}
+
+	return ErrUnknownError.AsExternal()
+}
+
+var (
+	errorRegistry = make(map[uint8]*Error)
+)
+
+func registerError(id uint8, defaultMsg string) *Error {
+	// Check for duplicate.
+	_, ok := errorRegistry[id]
+	if ok {
+		panic(fmt.Sprintf("error with id %d already registered", id))
+	}
+
+	newErr := &Error{
+		id:  id,
+		err: errors.New(defaultMsg),
+	}
+
+	errorRegistry[id] = newErr
+	return newErr
+}
+
+// Terminal Errors.
+var (
+	ErrUnknownError               = registerError(0, "unknown error")
+	ErrInternalError              = registerError(1, "internal error")
+	ErrStopping                   = registerError(2, "stopping")
+	ErrMalformedData              = registerError(3, "malformed data")
+	ErrUnexpectedMsgType          = registerError(4, "unexpected message type")
+	ErrUnknownOperationType       = registerError(5, "unknown operation type")
+	ErrUnknownOperationID         = registerError(6, "unknown operation id")
+	ErrIntegrity                  = registerError(7, "integrity violated")
+	ErrInvalidOptions             = registerError(8, "invalid options")
+	ErrHubNotReady                = registerError(9, "hub not ready")
+	ErrPermissinDenied            = registerError(13, "permission denied")
+	ErrIncorrectUsage             = registerError(22, "incorrect usage")
+	ErrTimeout                    = registerError(62, "timed out")
+	ErrQueueOverflow              = registerError(75, "queue overflowed")
+	ErrUnsupportedTerminalVersion = registerError(93, "unsupported terminal version")
+	ErrHubUnavailable             = registerError(101, "hub unavailable")
+	ErrDestinationUnavailable     = registerError(113, "destination unavailable")
+	ErrShipSunk                   = registerError(121, "ship sunk")
+)

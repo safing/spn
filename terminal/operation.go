@@ -4,24 +4,25 @@ import (
 	"context"
 	"sync"
 	"sync/atomic"
-
-	"github.com/safing/portbase/formats/varint"
+	"time"
 
 	"github.com/safing/portbase/container"
 	"github.com/safing/portbase/log"
 	"github.com/tevino/abool"
 )
 
+const (
+	// DefaultOperationTimeout is the default time duration after which an idle
+	// operation times out and is ended or regarded as failed.
+	DefaultOperationTimeout = 10 * time.Second
+)
+
 type Operation interface {
 	ID() uint32
 	SetID(id uint32)
 	Type() string
-	Deliver(data *container.Container) Error
-	End(action string, err Error)
-}
-
-type OpBase struct {
-	Params *OpParams
+	Deliver(data *container.Container) *Error
+	End(err *Error)
 }
 
 type OpParams struct {
@@ -33,7 +34,7 @@ type OpParams struct {
 	RunOp OpRunner
 }
 
-type OpRunner func(t OpTerminal, opID uint32, initData *container.Container) (Operation, Error)
+type OpRunner func(t OpTerminal, opID uint32, initData *container.Container) (Operation, *Error)
 
 var (
 	opRegistry       = make(map[string]*OpParams)
@@ -71,33 +72,33 @@ func (t *TerminalBase) runOperation(ctx context.Context, opTerminal OpTerminal, 
 	// Extract the requested operation name.
 	opType, err := initData.GetNextBlock()
 	if err != nil {
-		t.OpEnd(&unknownOp{id: opID}, "run op", ErrMalformedData)
+		t.OpEnd(&unknownOp{id: opID}, ErrMalformedData.With("failed to get init data: %w", err))
 		return
 	}
 
 	// Get the operation parameters from the registry.
 	params, ok := opRegistry[string(opType)]
 	if !ok {
-		t.OpEnd(&unknownOp{id: opID}, "run op", ErrUnknownOperationType)
+		t.OpEnd(&unknownOp{id: opID}, ErrUnknownOperationType)
 		return
 	}
 
 	// Check if the Terminal has the required permission to run the operation.
 	if !t.HasPermission(params.Requires) {
-		t.endOperation(&unknownOp{
+		t.OpEnd(&unknownOp{
 			id:     opID,
 			opType: params.Type,
-		}, "run op", ErrPermissinDenied, false, true)
+		}, ErrPermissinDenied)
 		return
 	}
 
 	// Run the operation.
 	op, opErr := params.RunOp(opTerminal, opID, initData)
-	if opErr != ErrNil {
-		t.endOperation(&unknownOp{
+	if opErr != nil {
+		t.OpEnd(&unknownOp{
 			id:     opID,
 			opType: params.Type,
-		}, "run op", opErr, false, true)
+		}, opErr)
 		return
 	}
 
@@ -115,18 +116,21 @@ func (t *TerminalBase) runOperation(ctx context.Context, opTerminal OpTerminal, 
 // the Terminal.
 type OpTerminal interface {
 	// OpInit initialized the operation with the given data.
-	OpInit(op Operation, data *container.Container) Error
+	OpInit(op Operation, data *container.Container) *Error
 
 	// OpSend sends data.
-	OpSend(op Operation, data *container.Container) Error
+	OpSend(op Operation, data *container.Container) *Error
 
 	// OpEnd sends the end signal and calls End(ErrNil) on the Operation.
 	// The Operation should cease operation after calling this function.
-	OpEnd(op Operation, action string, err Error)
+	OpEnd(op Operation, err *Error)
+
+	// FmtID returns the formatted ID the Operation's Terminal.
+	FmtID() string
 }
 
 // OpInit initialized the operation with the given data.
-func (t *TerminalBase) OpInit(op Operation, data *container.Container) Error {
+func (t *TerminalBase) OpInit(op Operation, data *container.Container) *Error {
 	// Get next operation ID and set it on the operation.
 	op.SetID(atomic.AddUint32(t.nextOpID, 2))
 
@@ -138,11 +142,8 @@ func (t *TerminalBase) OpInit(op Operation, data *container.Container) Error {
 
 	// Add or create the operation type block.
 	if data == nil {
-		opTypeData := []byte(op.Type())
-		data = container.New(
-			varint.Pack64(uint64(len(opTypeData))),
-			opTypeData,
-		)
+		data = container.New()
+		data.AppendAsBlock([]byte(op.Type()))
 	} else {
 		data.PrependAsBlock([]byte(op.Type()))
 	}
@@ -151,7 +152,7 @@ func (t *TerminalBase) OpInit(op Operation, data *container.Container) Error {
 }
 
 // OpSend sends data.
-func (t *TerminalBase) OpSend(op Operation, data *container.Container) Error {
+func (t *TerminalBase) OpSend(op Operation, data *container.Container) *Error {
 	return t.addToOpMsgSendBuffer(op.ID(), MsgTypeData, data, false)
 }
 
@@ -159,32 +160,25 @@ func (t *TerminalBase) OpSend(op Operation, data *container.Container) Error {
 // operation from the Terminal state and calls End(ErrNil) on the Operation.
 // The Operation should cease operation after calling this function.
 // Should only be called by an operation.
-func (t *TerminalBase) OpEnd(op Operation, action string, err Error) {
-	t.endOperation(op, action, err, false, true)
-}
-
-func (t *TerminalBase) endOperation(op Operation, action string, err Error, reportToOp, sendError bool) {
-	if err == ErrNil {
+func (t *TerminalBase) OpEnd(op Operation, err *Error) {
+	if err == nil {
 		log.Debugf("terminal: operation %s %s ended", op.Type(), fmtOperationID(t.parentID, t.id, op.ID()))
 	} else {
-		log.Warningf("terminal: operation %s %s %s: %s", op.Type(), fmtOperationID(t.parentID, t.id, op.ID()), action, err)
+		log.Warningf("terminal: operation %s %s: %s", op.Type(), fmtOperationID(t.parentID, t.id, op.ID()), err)
 	}
 
-	if sendError {
+	if !err.IsExternal() {
 		// Send error to connected Operation.
-		t.addToOpMsgSendBuffer(op.ID(), MsgTypeEnd, container.New([]byte(err)), true)
+		t.addToOpMsgSendBuffer(op.ID(), MsgTypeEnd, container.New(err.Pack()), true)
 	}
 
-	if op, ok := t.DeleteActiveOp(op.ID()); ok {
-		if reportToOp {
-			op.End(action, err)
-		} else {
-			// The operation reported an error, but the error is meant for the other
-			// side, not the operation itself. Else, the operation would not be able
-			// to differentiate if an error came from itself or the other side.
-			op.End("", ErrNil)
-		}
-	}
+	// Call operation end function.
+	op.End(err)
+
+	// Remove operation from terminal.
+	t.DeleteActiveOp(op.ID())
+
+	return
 }
 
 // GetActiveOp returns the active operation with the given ID from the
@@ -207,15 +201,11 @@ func (t *TerminalBase) SetActiveOp(opID uint32, op Operation) {
 
 // DeleteActiveOp deletes an active operation from the Terminal state and
 // returns it.
-func (t *TerminalBase) DeleteActiveOp(opID uint32) (op Operation, ok bool) {
+func (t *TerminalBase) DeleteActiveOp(opID uint32) {
 	t.lock.Lock()
 	defer t.lock.Unlock()
 
-	op, ok = t.operations[opID]
-	if ok {
-		delete(t.operations, opID)
-	}
-	return
+	delete(t.operations, opID)
 }
 
 type unknownOp struct {
@@ -238,11 +228,11 @@ func (op unknownOp) Type() string {
 	return "unknown"
 }
 
-func (op unknownOp) Deliver(data *container.Container) Error {
-	return ErrMalformedData
+func (op unknownOp) Deliver(data *container.Container) *Error {
+	return ErrMalformedData.With("unknown op shim cannot receive")
 }
 
-func (op unknownOp) End(action string, err Error) {}
+func (op unknownOp) End(err *Error) {}
 
 // Terminal Message Types.
 // FIXME: Delete after commands are implemented.

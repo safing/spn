@@ -83,10 +83,10 @@ type Crane struct {
 	unloading chan *container.Container
 	// loading moves containers from the crane to the ship.
 	loading chan *container.Container
-	// controllerMsgs holds containers from the controller waiting to be loaded.
-	controllerMsgs chan *container.Container
 	// terminalMsgs holds containers from terminals waiting to be laoded.
 	terminalMsgs chan *container.Container
+	// importantMsgs holds important containers from terminals waiting to be laoded.
+	importantMsgs chan *container.Container
 
 	// terminals holds all the connected terminals.
 	terminals map[uint32]terminal.TerminalInterface
@@ -117,11 +117,11 @@ func NewCrane(ship ships.Ship, connectedHub *hub.Hub, id *cabin.Identity) (*Cran
 		ConnectedHub: connectedHub,
 		identity:     id,
 
-		ship:           ship,
-		unloading:      make(chan *container.Container, 0),
-		loading:        make(chan *container.Container, 100),
-		controllerMsgs: make(chan *container.Container, 100),
-		terminalMsgs:   make(chan *container.Container, 100),
+		ship:          ship,
+		unloading:     make(chan *container.Container, 0),
+		loading:       make(chan *container.Container, 100),
+		terminalMsgs:  make(chan *container.Container, 100),
+		importantMsgs: make(chan *container.Container, 100),
 
 		terminals: make(map[uint32]terminal.TerminalInterface),
 	}
@@ -140,6 +140,10 @@ func NewCrane(ship ships.Ship, connectedHub *hub.Hub, id *cabin.Identity) (*Cran
 	for new.targetLoadSize < optimalMinLoadSize {
 		new.targetLoadSize += loadSize
 	}
+	// Subtract overhead needed for encryption.
+	new.targetLoadSize -= 25 // Manually tested for jess.SuiteWireV1
+	// Subtract space needed for length encoding the final chunk.
+	new.targetLoadSize -= varint.EncodedSize(uint64(new.targetLoadSize))
 
 	return new, nil
 }
@@ -175,8 +179,63 @@ func (crane *Crane) setTerminal(t terminal.TerminalInterface) {
 	crane.terminals[t.ID()] = t
 }
 
-func (crane *Crane) submitControllerMsg(c *container.Container) {
-	crane.controllerMsgs <- c
+func (crane *Crane) deleteTerminal(id uint32) (t terminal.TerminalInterface, ok bool) {
+	crane.terminalsLock.Lock()
+	defer crane.terminalsLock.Unlock()
+
+	t, ok = crane.terminals[id]
+	if ok {
+		delete(crane.terminals, id)
+		return t, true
+	}
+	return nil, false
+}
+
+func (crane *Crane) AbandonTerminal(id uint32, err *terminal.Error) {
+	// Get active terminal.
+	t, ok := crane.deleteTerminal(id)
+	if !ok {
+		// Do nothing if terminal is not found.
+		return
+	}
+
+	// Log that the terminal is being abandoned
+	if err != nil {
+		log.Warningf("spn/docks: %T %s: %s", t, t.FmtID(), err)
+	} else {
+		log.Debugf("spn/docks: %T %s is being abandoned", t, t.FmtID())
+	}
+
+	// Notify other end.
+	if !err.IsExternal() {
+		// Build abandon message.
+		abandonMsg := container.New(
+			varint.Pack32(id),
+			terminal.MsgTypeAbandon.Pack(),
+			err.Pack(),
+		)
+
+		// Send message directly, or async.
+		select {
+		case crane.terminalMsgs <- abandonMsg:
+		default:
+			// Send error async.
+			module.StartWorker("abandon terminal", func(ctx context.Context) error {
+				select {
+				case crane.terminalMsgs <- abandonMsg:
+				case <-ctx.Done():
+				}
+				return nil
+			})
+		}
+	}
+
+	// Call the terminal's abandon function.
+	t.Abandon(err)
+}
+
+func (crane *Crane) submitImportantTerminalMsg(c *container.Container) {
+	crane.importantMsgs <- c
 }
 
 func (crane *Crane) submitTerminalMsg(c *container.Container) {
@@ -233,18 +292,18 @@ func (crane *Crane) unloader(ctx context.Context) error {
 		lenBuf := make([]byte, 5)
 		err := crane.unloadUntilFull(lenBuf)
 		if err != nil {
-			crane.Stop(err)
+			crane.Stop(terminal.ErrInternalError.With("failed to unload: %w", err))
 			return nil
 		}
 
 		// Unpack length.
 		containerLen, n, err := varint.Unpack64(lenBuf)
 		if err != nil {
-			crane.Stop(fmt.Errorf("failed to get container length: %w", err))
+			crane.Stop(terminal.ErrMalformedData.With("failed to get container length: %w", err))
 			return nil
 		}
 		if containerLen > maxUnloadSize {
-			crane.Stop(fmt.Errorf("received oversized container with length %d", containerLen))
+			crane.Stop(terminal.ErrMalformedData.With("received oversized container with length %d", containerLen))
 			return nil
 		}
 
@@ -258,7 +317,7 @@ func (crane *Crane) unloader(ctx context.Context) error {
 		// Read remaining container.
 		err = crane.unloadUntilFull(containerBuf[leftovers:])
 		if err != nil {
-			crane.Stop(err)
+			crane.Stop(terminal.ErrInternalError.With("failed to unload: %w", err))
 			return nil
 		}
 
@@ -511,7 +570,7 @@ handling:
 			// Decrypt shipment.
 			shipment, err := crane.decrypt(shipment)
 			if err != nil {
-				crane.Stop(fmt.Errorf("failed to decrypt: %w", err))
+				crane.Stop(terminal.ErrIntegrity.With("failed to decrypt: %w", err))
 				return nil
 			}
 
@@ -530,7 +589,7 @@ handling:
 					// Get next segment length.
 					segmentLength, err = shipment.GetNextN32()
 					if err != nil {
-						crane.Stop(fmt.Errorf("failed to get segment length: %w", err))
+						crane.Stop(terminal.ErrMalformedData.With("failed to get segment length: %w", err))
 						return nil
 					}
 					if segmentLength == 0 {
@@ -541,7 +600,7 @@ handling:
 
 				// Check if the segment is within the boundary.
 				if segmentLength > maxSegmentLength {
-					crane.Stop(fmt.Errorf("received oversized segment with length %d", segmentLength))
+					crane.Stop(terminal.ErrMalformedData.With("received oversized segment with length %d", segmentLength))
 					return nil
 				}
 
@@ -554,52 +613,66 @@ handling:
 				// Get segment from shipment.
 				segment, err := shipment.GetAsContainer(int(segmentLength))
 				if err != nil {
-					crane.Stop(fmt.Errorf("failed to get segment: %w", err))
+					crane.Stop(terminal.ErrMalformedData.With("failed to get segment: %w", err))
+					return nil
+				}
+
+				// Get terminal ID of segment.
+				terminalMsgType, err := terminal.ParseTerminalMsgType(segment)
+				if err != nil {
+					crane.Stop(terminal.ErrMalformedData.With("failed to get terminal msg type: %s", err))
 					return nil
 				}
 
 				// Get terminal ID of segment.
 				terminalID, err := segment.GetNextN32()
 				if err != nil {
-					crane.Stop(fmt.Errorf("failed to get terminal ID: %s", err))
+					crane.Stop(terminal.ErrMalformedData.With("failed to get terminal ID: %s", err))
+					return nil
 				}
 
-				// Get Terminal and let it handle the message.
-				t, ok := crane.getTerminal(terminalID)
-				if ok {
-					tErr := t.Deliver(segment)
-					if tErr != terminal.ErrNil {
-						// This is a hot path. Start a worker for abandoning the terminal.
-						module.StartWorker("end terminal", func(_ context.Context) error {
-							t.End("delivery error", tErr)
-							return nil
-						})
+				switch terminalMsgType {
+				case terminal.MsgTypeEstablish:
+					crane.establishTerminal(terminalID, segment)
+
+				case terminal.MsgTypeOperativeData:
+					// Get terminal and let it further handle the message.
+					t, ok := crane.getTerminal(terminalID)
+					if ok {
+						deliveryErr := t.Deliver(segment)
+						if deliveryErr != nil {
+							// This is a hot path. Start a worker for abandoning the terminal.
+							module.StartWorker("end terminal", func(_ context.Context) error {
+								crane.AbandonTerminal(t.ID(), deliveryErr.Wrap("failed to deliver data"))
+								return nil
+							})
+						}
+					} else {
+						log.Tracef("spn/docks: %s received msg for unknown terminal %d", crane, terminalID)
 					}
-				} else {
-					log.Tracef("spn/docks: %s received msg for unknown terminal %d", crane, terminalID)
+
+				case terminal.MsgTypeAbandon:
+					// Parse error.
+					receivedErr, err := terminal.ParseExternalError(segment.CompileData())
+					if err != nil {
+						log.Warningf("spn/docks: %s failed to parse abandon error: %s", crane, err)
+						receivedErr = terminal.ErrUnknownError.AsExternal()
+					}
+					// This is a hot path. Start a worker for abandoning the terminal.
+					module.StartWorker("end terminal", func(_ context.Context) error {
+						crane.AbandonTerminal(terminalID, receivedErr)
+						return nil
+					})
 				}
 			}
 		}
 	}
 }
 
-func (crane *Crane) calculateEffectiveTargetLoadSize() int {
-	ls := crane.targetLoadSize
-
-	// Subtract overhead needed for encryption.
-	ls -= 25 // Manually tested for jess.SuiteWireV1
-
-	// Subtract space needed for length encoding the final chunk.
-	ls -= varint.EncodedSize(uint64(crane.targetLoadSize))
-
-	return ls
-}
-
 func (crane *Crane) loader(ctx context.Context) (err error) {
 	shipment := container.New()
 	var newSegment, partialShipment *container.Container
 
-	targetLoadSize := crane.calculateEffectiveTargetLoadSize()
 	loadingMaxWaitDuration := 5 * time.Millisecond
 	var loadingTimer *time.Timer
 
@@ -614,13 +687,13 @@ func (crane *Crane) loader(ctx context.Context) (err error) {
 	for {
 
 	fillingShipment:
-		for shipment.Length() < targetLoadSize {
+		for shipment.Length() < crane.targetLoadSize {
 			newSegment = nil
 			// Gather segments until shipment is filled, or
 
 			// Prioritize messages from the controller.
 			select {
-			case newSegment = <-crane.controllerMsgs:
+			case newSegment = <-crane.importantMsgs:
 			case <-ctx.Done():
 				crane.Stop(nil)
 				return nil
@@ -628,7 +701,7 @@ func (crane *Crane) loader(ctx context.Context) (err error) {
 			default:
 				// Then listen for all.
 				select {
-				case newSegment = <-crane.controllerMsgs:
+				case newSegment = <-crane.importantMsgs:
 				case newSegment = <-crane.terminalMsgs:
 				case <-loadNow():
 					break fillingShipment
@@ -663,19 +736,19 @@ func (crane *Crane) loader(ctx context.Context) (err error) {
 		}
 
 		// Check if we are over the target load size and split the shipment.
-		if shipment.Length() > targetLoadSize {
-			partialShipment, err = shipment.GetAsContainer(targetLoadSize)
+		if shipment.Length() > crane.targetLoadSize {
+			partialShipment, err = shipment.GetAsContainer(crane.targetLoadSize)
 			if err != nil {
-				crane.Stop(fmt.Errorf("failed to split segment: %w", err))
+				crane.Stop(terminal.ErrInternalError.With("failed to split segment: %w", err))
 				return nil
 			}
 			shipment, partialShipment = partialShipment, shipment
 		}
 
 		// Load shipment.
-		err = crane.load(shipment, targetLoadSize)
+		err = crane.load(shipment)
 		if err != nil {
-			crane.Stop(fmt.Errorf("failed to load shipment: %w", err))
+			crane.Stop(terminal.ErrShipSunk.With("failed to load shipment: %w", err))
 			return nil
 		}
 
@@ -771,7 +844,7 @@ func (crane *Crane) loader(ctx context.Context) (err error) {
 	*/
 }
 
-func (crane *Crane) load(c *container.Container, targetLoadSize int) error {
+func (crane *Crane) load(c *container.Container) error {
 	if crane.opts.Padding > 0 {
 		// Add Padding if needed.
 		paddingNeeded := int(crane.opts.Padding) -
@@ -784,7 +857,7 @@ func (crane *Crane) load(c *container.Container, targetLoadSize int) error {
 		// - 268435456
 
 		// Pad to target load size at maximum.
-		maxPadding := targetLoadSize - c.Length()
+		maxPadding := crane.targetLoadSize - c.Length()
 		if paddingNeeded > maxPadding {
 			paddingNeeded = maxPadding
 		}
@@ -822,7 +895,7 @@ func (crane *Crane) load(c *container.Container, targetLoadSize int) error {
 	return nil
 }
 
-func (crane *Crane) Stop(err error) {
+func (crane *Crane) Stop(err *terminal.Error) {
 	if !crane.stopped.SetToIf(false, true) {
 		return
 	}
@@ -855,7 +928,7 @@ func (crane *Crane) Stop(err error) {
 
 	// Stop controller.
 	if crane.Controller != nil {
-		crane.Controller.Abandon("crane stopping", terminal.ErrNil)
+		crane.Controller.Abandon(nil)
 	}
 
 	// Stop all terminals.
@@ -863,16 +936,18 @@ func (crane *Crane) Stop(err error) {
 	defer crane.terminalsLock.Unlock()
 
 	for _, t := range crane.terminals {
-		t.End("crane stopping", terminal.ErrNil)
+		t.Abandon(err)
 	}
 }
 
 func (crane *Crane) String() string {
+	remoteAddr := "[private]"
 	if crane.public.IsSet() {
-		if crane.ship.IsMine() {
-			return fmt.Sprintf("crane %s to %s", crane.ID, crane.ship.RemoteAddr())
-		}
-		return fmt.Sprintf("crane %s from %s", crane.ID, crane.ship.RemoteAddr())
+		remoteAddr = crane.ship.RemoteAddr().String()
 	}
-	return fmt.Sprintf("crane %s (private)", crane.ID)
+
+	if crane.ship.IsMine() {
+		return fmt.Sprintf("crane %s to %s", crane.ID, remoteAddr)
+	}
+	return fmt.Sprintf("crane %s from %s", crane.ID, remoteAddr)
 }

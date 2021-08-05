@@ -77,7 +77,8 @@ func (d *TestShip) Reverse() *TestShip {
 // Load loads data into the ship - ie. sends the data via the connection.
 // Returns ErrSunk if the ship has already sunk earlier.
 func (ship *TestShip) Load(data []byte) error {
-	// log.Debugf("ship: loading %+v", data)
+	// log.Debugf("ship: loading %+v (%s)", data, string(data))
+	// spew.Dump(data)
 
 	// Check if ship is alive.
 	if ship.sinking.IsSet() {

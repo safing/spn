@@ -2,9 +2,12 @@ package terminal
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/safing/spn/cabin"
 
 	"github.com/safing/jess"
 
@@ -16,18 +19,25 @@ import (
 	"github.com/tevino/abool"
 )
 
-type TerminalExtension interface {
-	ReadyToSend() <-chan struct{}
-	Send(c *container.Container) Error
-	Receive() <-chan *container.Container
-	Abandon(action string, err Error)
-}
+const (
+	// DefaultTerminalTimeout is the default time duration after which an idle
+	// terminal session times out and is abandoned.
+	DefaultTerminalTimeout = 1 * time.Minute
+)
 
 type TerminalInterface interface {
 	ID() uint32
 	Ctx() context.Context
-	Deliver(c *container.Container) Error
-	End(action string, err Error)
+	Deliver(c *container.Container) *Error
+	Abandon(err *Error)
+	FmtID() string
+}
+
+type TerminalExtension interface {
+	ReadyToSend() <-chan struct{}
+	Send(c *container.Container) *Error
+	Receive() <-chan *container.Container
+	Abandon(err *Error)
 }
 
 // TerminalBase contains the basic functions of a terminal.
@@ -48,7 +58,7 @@ type TerminalBase struct {
 	// cancelCtx cancels ctx.
 	cancelCtx context.CancelFunc
 
-	// connector is the interface to the underlying communication channel.
+	// opMsgQueue is used by operations to submit messages for sending.
 	opMsgQueue chan *container.Container
 	// waitForFlush signifies if sending should be delayed until the next call
 	// to Flush()
@@ -59,6 +69,8 @@ type TerminalBase struct {
 
 	// jession is the jess session used for encryption.
 	jession *jess.Session
+	// identity is the identity used by a remote Terminal.
+	identity *cabin.Identity
 
 	// operations holds references to all active operations that require persistence.
 	operations map[uint32]Operation
@@ -121,13 +133,13 @@ func (t *TerminalBase) SetTerminalExtension(ext TerminalExtension) {
 
 // Deliver on TerminalBase only exists to conform to the interface. It must be
 // overridden by an actual implementation.
-func (t *TerminalBase) Deliver(c *container.Container) Error {
-	return ErrInvalidConfiguration
+func (t *TerminalBase) Deliver(c *container.Container) *Error {
+	return ErrIncorrectUsage
 }
 
-// End shuts down the Terminal with the given error.
-func (t *TerminalBase) End(action string, err Error) {
-	t.ext.Abandon(action, err)
+// Abandon abandons the Terminal with the given error.
+func (t *TerminalBase) Abandon(err *Error) {
+	panic("incorrect terminal base inheritance")
 }
 
 const (
@@ -139,7 +151,7 @@ const (
 // Handler handles all Terminal internals and must be started as a worker in
 // the module where the Terminal is used.
 func (t *TerminalBase) Handler(_ context.Context) error {
-	defer t.ext.Abandon("internal error", ErrUnknownError)
+	defer t.ext.Abandon(ErrInternalError.With("handler died"))
 
 	msgBuffer := container.New()
 	var msgBufferLen int
@@ -150,10 +162,17 @@ func (t *TerminalBase) Handler(_ context.Context) error {
 
 	// Only receive message when not sending the current msg buffer.
 	recvOpMsgs := func() <-chan *container.Container {
-		if !msgBufferLimitReached {
-			return t.opMsgQueue
+		// Don't handle more messages, if the buffer is full.
+		if msgBufferLimitReached {
+			return nil
 		}
-		return nil
+		// Don't handle messages, if the encryption is net yet set up.
+		// The server encryption session is only initialized with the first
+		// operative message, not on Terminal creation.
+		if t.opts.Encrypt && t.jession == nil {
+			return nil
+		}
+		return t.opMsgQueue
 	}
 
 	// Only wait for sending slot when the current msg buffer is ready to be sent.
@@ -175,25 +194,29 @@ func (t *TerminalBase) Handler(_ context.Context) error {
 	for {
 		select {
 		case <-t.ctx.Done():
-			t.ext.Abandon("", ErrNil)
+			t.ext.Abandon(nil)
 			return nil // Controlled worker exit.
 
-		case <-time.After(10 * time.Second):
-			// If nothing happens for 10 seconds, end the session.
+		case <-time.After(DefaultTerminalTimeout):
+			// If nothing happens for a while, end the session.
 			log.Debugf("spn/terminal: %s timed out: shutting down", fmtTerminalID(t.parentID, t.id))
-			t.ext.Abandon("", ErrNil)
+			t.ext.Abandon(nil)
 			return nil // Controlled worker exit.
 
 		case c := <-t.ext.Receive():
 			for c.HoldsData() {
 				err := t.handleReceive(c)
-				switch err {
-				case ErrNil:
-					// Continue.
-				case ErrAbandoning:
+				if err != nil {
+					if !errors.Is(err, ErrStopping) {
+						t.ext.Abandon(err.Wrap("failed to handle"))
+					}
 					return nil // Controlled worker exit.
+				}
+				switch err {
+				case nil:
+					// Continue.
+				case ErrStopping:
 				default:
-					t.ext.Abandon("failed to handle", err)
 					return nil // Controlled worker exit.
 				}
 			}
@@ -245,8 +268,8 @@ func (t *TerminalBase) Handler(_ context.Context) error {
 			// Send if there is anything to send.
 			if msgBufferLen > 0 {
 				err := t.sendOpMsgs(msgBuffer)
-				if err != ErrNil {
-					t.ext.Abandon("failed to send", err)
+				if err != nil {
+					t.ext.Abandon(err.With("failed to send"))
 					return nil // Controlled worker exit.
 				}
 			}
@@ -288,84 +311,74 @@ func (t *TerminalBase) Flush() {
 	<-wait
 }
 
-func (t *TerminalBase) handleReceive(c *container.Container) Error {
-	msgType, err := ParseTerminalMsgType(c)
-	if err != nil {
-		log.Warningf("spn/terminal: %s failed to parse terminal msg type: %s", t.FmtID(), err)
-		return ErrMalformedData
+func (t *TerminalBase) handleReceive(c *container.Container) *Error {
+	// Check if message is empty. This will be the case if a message was only
+	// for updated the available space of the flow queue.
+	if !c.HoldsData() {
+		return nil
 	}
 
-	switch msgType {
-	case MsgTypeNone:
-		// Message was just for updating the flow queue.
-		return ErrNil
+	// Decrypt if enabled.
+	if t.opts.Encrypt {
+		letter, err := jess.LetterFromWire(c)
+		if err != nil {
+			return ErrMalformedData.With("failed to parse letter: %w", err)
+		}
 
-	case MsgTypeOperativeData:
+		// Setup encryption .
+		if t.jession == nil {
+			if t.identity == nil {
+				return ErrInternalError.With("missing identity for setting up incoming encryption")
+			}
 
-		// Decrypt operative data.
-		if t.jession != nil {
-			letter, err := jess.LetterFromWire(c)
+			// Create jess session.
+			t.jession, err = letter.WireCorrespondence(t.identity)
 			if err != nil {
-				log.Warningf("spn/terminal: %s failed to parse letter: %s", t.FmtID(), err)
-				return ErrMalformedData
+				return ErrIntegrity.With("failed to initialize incoming encryption: %w", err)
 			}
 
-			decryptedData, err := t.jession.Open(letter)
-			if err != nil {
-				log.Warningf("spn/terminal: %s failed to decrypt: %s", t.FmtID(), err)
-				return ErrIntegrity
-			}
-
-			c = container.New(decryptedData)
+			// Don't need that anymore.
+			t.identity = nil
 		}
 
-		for c.HoldsData() {
-			// Handle operative message.
-			if handleErr := t.handleOpMsg(c); handleErr != ErrNil {
-				return handleErr
-			}
+		decryptedData, err := t.jession.Open(letter)
+		if err != nil {
+			return ErrIntegrity.With("failed to decrypt: %w", err)
 		}
 
-	case MsgTypeAbandon:
-		tErr := Error(c.CompileData())
-		switch err {
-		case ErrNil:
-			t.ext.Abandon("", ErrNil)
-		default:
-			t.ext.Abandon("received error", tErr)
-		}
-		return ErrAbandoning
-
-	default:
-		return ErrUnexpectedMsgType
+		c = container.New(decryptedData)
 	}
 
-	return ErrNil
+	// Handle operation messages.
+	for c.HoldsData() {
+		if handleErr := t.handleOpMsg(c); handleErr != nil {
+			return handleErr
+		}
+	}
+
+	return nil
 }
 
-func (t *TerminalBase) handleOpMsg(c *container.Container) Error {
+func (t *TerminalBase) handleOpMsg(c *container.Container) *Error {
 	// Parse message type, operation id and data.
 	msgType, err := ParseOpMsgType(c)
 	if err != nil {
-		log.Warningf("spn/terminal: %s failed to parse operation msg type: %s", t.FmtID(), err)
-		return ErrMalformedData
+		return ErrMalformedData.With("failed to parse operation msg type: %w", err)
 	}
 	// Check if this is a padding message and handle it specially.
 	if msgType == MsgTypePadding {
 		t.handlePaddingMsg(c)
-		return ErrNil
+		return nil
 	}
 
-	// Parse operation id and data.
+	// Parse operation id and get data.
 	opID, err := c.GetNextN32()
 	if err != nil {
-		log.Warningf("spn/terminal: %s failed to parse operation ID: %s", t.FmtID(), err)
-		return ErrMalformedData
+		return ErrMalformedData.With("failed to parse operation ID: %w", err)
 	}
 	data, err := c.GetNextBlockAsContainer()
 	if err != nil {
-		log.Warningf("spn/terminal: %s failed to get operation msg data for msg type %d: %s", t.FmtID(), msgType, err)
-		return ErrMalformedData
+		return ErrMalformedData.With("failed to get operation msg data: %w", err)
 	}
 
 	switch OpMsgType(msgType) {
@@ -376,19 +389,27 @@ func (t *TerminalBase) handleOpMsg(c *container.Container) Error {
 		op, ok := t.GetActiveOp(opID)
 		if ok {
 			err := op.Deliver(data)
-			if err != ErrNil {
-				t.endOperation(op, "data delivery failed", err, true, true)
+			if err != nil {
+				t.OpEnd(op, err.With("data delivery failed"))
 			}
 		} else {
 			// If an active op is not found, this is likely just left-overs from a
 			// ended or failed operation.
-			log.Tracef("spn/terminal: %s received msg for unknown op %d", fmtTerminalID(t.parentID, t.id), opID)
+			log.Tracef("spn/terminal: %s received data msg for unknown op %d", fmtTerminalID(t.parentID, t.id), opID)
 		}
 
 	case MsgTypeEnd:
+		// Parse received error.
+		opErr, parseErr := ParseExternalError(data.CompileData())
+		if parseErr != nil {
+			log.Warningf("spn/terminal: %s failed to parse end error: %s", fmtTerminalID(t.parentID, t.id), parseErr)
+			opErr = ErrUnknownError.AsExternal()
+		}
+
+		// End operation.
 		op, ok := t.GetActiveOp(opID)
 		if ok {
-			t.endOperation(op, "received error", Error(data.CompileData()), true, false)
+			t.OpEnd(op, opErr)
 		} else {
 			log.Tracef("spn/terminal: %s received end msg for unknown op %d", fmtTerminalID(t.parentID, t.id), opID)
 		}
@@ -398,7 +419,7 @@ func (t *TerminalBase) handleOpMsg(c *container.Container) Error {
 		return ErrUnexpectedMsgType
 	}
 
-	return ErrNil
+	return nil
 }
 
 func (t *TerminalBase) handlePaddingMsg(c *container.Container) {
@@ -408,7 +429,7 @@ func (t *TerminalBase) handlePaddingMsg(c *container.Container) {
 	}
 }
 
-func (t *TerminalBase) sendOpMsgs(c *container.Container) Error {
+func (t *TerminalBase) sendOpMsgs(c *container.Container) *Error {
 	if t.opts.Padding > 0 {
 		// Add Padding if needed.
 		paddingNeeded := (int(t.opts.Padding) - c.Length()) % int(t.opts.Padding)
@@ -421,7 +442,7 @@ func (t *TerminalBase) sendOpMsgs(c *container.Container) Error {
 			if paddingNeeded > 0 {
 				padding, err := rng.Bytes(paddingNeeded)
 				if err != nil {
-					log.Debugf("terminal: failed to get random data, using zeros instead")
+					log.Debugf("terminal: %s failed to get random data, using zeros instead", t.FmtID())
 					padding = make([]byte, paddingNeeded)
 				}
 				c.Append(padding)
@@ -430,47 +451,20 @@ func (t *TerminalBase) sendOpMsgs(c *container.Container) Error {
 	}
 
 	// Encrypt operative data.
-	if t.jession != nil {
+	if t.opts.Encrypt {
 		letter, err := t.jession.Close(c.CompileData())
 		if err != nil {
-			log.Warningf("spn/terminal: %s failed to encrypt: %s", t.FmtID(), err)
-			return ErrIntegrity
+			return ErrIntegrity.With("failed to encrypt: %w", err)
 		}
 
 		c, err = letter.ToWire()
 		if err != nil {
-			log.Warningf("spn/terminal: %s failed to pack letter: %s", t.FmtID(), err)
-			return ErrInternalError
+			return ErrInternalError.With("failed to pack letter: %w", err)
 		}
 	}
 
-	// Add Terminal Message type.
-	c.Prepend(MsgTypeOperativeData.Pack())
-
 	// Send data.
 	return t.ext.Send(c)
-}
-
-func (t *TerminalBase) SendAbandonMsg(err Error) {
-	if err := t.sendTerminalMsg(
-		MsgTypeAbandon,
-		container.New([]byte(err)),
-	); err != ErrNil {
-		log.Warningf("spn/terminal: %s failed to send terminal error: %s", t.FmtID(), err)
-	}
-}
-
-func (t *TerminalBase) sendTerminalMsg(
-	msgType TerminalMsgType,
-	data *container.Container,
-) Error {
-	if data != nil {
-		data.Prepend(msgType.Pack())
-	} else {
-		data = container.New(msgType.Pack())
-	}
-
-	return t.ext.Send(data)
 }
 
 func (t *TerminalBase) addToOpMsgSendBuffer(
@@ -478,27 +472,20 @@ func (t *TerminalBase) addToOpMsgSendBuffer(
 	msgType OpMsgType,
 	data *container.Container,
 	async bool,
-) Error {
-	if data != nil {
-		// Add message metadata.
-		data.PrependLength()
-		data.Prepend(varint.Pack32(opID))
-		data.Prepend(msgType.Pack())
-	} else {
-		// Or create new message
-		data = container.New(
-			msgType.Pack(),
-			varint.Pack32(opID),
-			varint.Pack8(0),
-		)
-	}
+) *Error {
+	// Prepend length to provided data
+	data.PrependLength()
+
+	// Add message metadata.
+	data.Prepend(varint.Pack32(opID))
+	data.Prepend(msgType.Pack())
 
 	// Submit message to buffer and fall back to async.
 	select {
 	case t.opMsgQueue <- data:
-		return ErrNil
+		return nil
 	case <-t.ctx.Done():
-		return ErrAbandoning
+		return ErrStopping
 	default:
 		if async {
 			// Operative Message Queue is full, delay sending.
@@ -507,34 +494,43 @@ func (t *TerminalBase) addToOpMsgSendBuffer(
 				select {
 				case t.opMsgQueue <- data:
 				case <-t.ctx.Done():
-				case <-ctx.Done():
 				}
 				return nil
 			})
-			return ErrNil
+			return nil
 		}
 	}
 
-	// Submit message to buffer and, and wait forever.
+	// Wait forever to submit message to buffer.
 	select {
 	case t.opMsgQueue <- data:
-		return ErrNil
+		return nil
 	case <-t.ctx.Done():
-		return ErrAbandoning
+		return ErrStopping
 	}
 }
 
 // StopAll ends all operations with the given paramaters and cancels the
 // workers. This function is usually not called directly, but at the end of an
 // Abandon() implementation.
-func (t *TerminalBase) StopAll(action string, err Error) {
+func (t *TerminalBase) StopAll(err *Error) {
 	// End all operations.
-	t.lock.Lock()
-	defer t.lock.Unlock()
-	for _, op := range t.operations {
-		op.End(action, err)
+	for _, op := range t.allOps() {
+		op.End(err)
 	}
 
 	// Stop all connected workers.
 	t.cancelCtx()
+}
+
+func (t *TerminalBase) allOps() []Operation {
+	t.lock.Lock()
+	defer t.lock.Unlock()
+
+	ops := make([]Operation, 0, len(t.operations))
+	for _, op := range t.operations {
+		ops = append(ops, op)
+	}
+
+	return ops
 }

@@ -94,12 +94,12 @@ func testCraneWithCounter(t *testing.T, testID string, encrypting bool, loadSize
 
 	// Start counters for testing.
 	op1, tErr := terminal.NewCounterOp(crane1.Controller, countTo, 10*time.Microsecond)
-	if tErr != terminal.ErrNil {
+	if tErr != nil {
 		t.Fatalf("crane test %s failed to run counter op: %s", testID, tErr)
 	}
 	module.StartWorker(testID+" counter op1", op1.CounterWorker)
 	// op2, tErr := terminal.NewCounterOp(crane2.Controller, countTo)
-	// if tErr != terminal.ErrNil {
+	// if tErr != nil {
 	// 	t.Fatalf("crane test %s failed to run counter op: %s", testID, tErr)
 	// }
 	// module.StartWorker(testID+" counter op2", op2.CounterWorker)
@@ -216,15 +216,19 @@ func (t *StreamingTerminal) Ctx() context.Context {
 	return module.Ctx
 }
 
-func (t *StreamingTerminal) Deliver(c *container.Container) terminal.Error {
+func (t *StreamingTerminal) Deliver(c *container.Container) *terminal.Error {
 	t.recv <- c
-	return terminal.ErrNil
+	return nil
 }
 
-func (t *StreamingTerminal) End(action string, err terminal.Error) {
-	if err != terminal.ErrNil {
-		t.test.Errorf("streaming terminal %d failed: %s: %s", t.id, action, err)
+func (t *StreamingTerminal) Abandon(err *terminal.Error) {
+	if err != nil {
+		t.test.Errorf("streaming terminal %d failed: %s", t.id, err)
 	}
+}
+
+func (t *StreamingTerminal) FmtID() string {
+	return fmt.Sprintf("test-%d", t.id)
 }
 
 func TestCraneLoadingUnloading(t *testing.T) {

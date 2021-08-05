@@ -2,6 +2,7 @@ package terminal
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"sync/atomic"
 
@@ -121,9 +122,6 @@ func (dfq *DuplexFlowQueue) FlowHandler(_ context.Context) error {
 	// flow owner instead. Make sure that the flow owner's module depends on the
 	// terminal module so that it is shut down earlier.
 
-	// Notify upstream when were shutting down.
-	defer dfq.submitUpstream(nil)
-
 	var sendSpaceDepleted bool
 
 sending:
@@ -133,14 +131,15 @@ sending:
 			select {
 			case <-dfq.wakeSender:
 				sendSpaceDepleted = false
+
 			case <-dfq.forceSpaceReport:
 				// Forced reporting of space.
 				// We do not need to check if there is enough sending space, as there is
 				// no data included.
 				dfq.submitUpstream(container.New(
+					MsgTypeOperativeData.Pack(),
 					varint.Pack32(dfq.ti.ID()),
 					varint.Pack64(uint64(dfq.reportableRecvSpace())),
-					MsgTypeNone.Pack(),
 				))
 
 				// Decrease the send space and set flag if depleted.
@@ -149,6 +148,7 @@ sending:
 				}
 
 				continue sending
+
 			case <-dfq.ti.Ctx().Done():
 				return nil
 			}
@@ -171,6 +171,7 @@ sending:
 			// Prepend available receiving space and flow ID.
 			c.Prepend(varint.Pack64(uint64(dfq.reportableRecvSpace())))
 			c.Prepend(varint.Pack32(dfq.ti.ID()))
+			c.Prepend(MsgTypeOperativeData.Pack())
 
 			// Submit for sending upstream.
 			dfq.submitUpstream(c)
@@ -185,9 +186,9 @@ sending:
 			// We do not need to check if there is enough sending space, as there is
 			// no data included.
 			dfq.submitUpstream(container.New(
+				MsgTypeOperativeData.Pack(),
 				varint.Pack32(dfq.ti.ID()),
 				varint.Pack64(uint64(dfq.reportableRecvSpace())),
-				MsgTypeNone.Pack(),
 			))
 
 			// Decrease the send space and set flag if depleted.
@@ -216,12 +217,12 @@ func (dfq *DuplexFlowQueue) ReadyToSend() <-chan struct{} {
 }
 
 // Send adds the given container to the send queue.
-func (dfq *DuplexFlowQueue) Send(c *container.Container) Error {
+func (dfq *DuplexFlowQueue) Send(c *container.Container) *Error {
 	select {
 	case dfq.sendQueue <- c:
-		return ErrNil
+		return nil
 	case <-dfq.ti.Ctx().Done():
-		return ErrAbandoning
+		return ErrStopping
 	}
 }
 
@@ -231,11 +232,10 @@ func (dfq *DuplexFlowQueue) Receive() <-chan *container.Container {
 }
 
 // Deliver submits a container for receiving from upstream.
-func (dfq *DuplexFlowQueue) Deliver(c *container.Container) Error {
-	// Interpret a nil container as a call to End().
+func (dfq *DuplexFlowQueue) Deliver(c *container.Container) *Error {
+	// Ignore nil containers.
 	if c == nil {
-		dfq.ti.End("", ErrNil)
-		return ErrNil
+		return ErrStopping
 	}
 
 	// Get and add new reported space.
@@ -260,10 +260,21 @@ func (dfq *DuplexFlowQueue) Deliver(c *container.Container) Error {
 			}
 		}
 
-		return ErrNil
+		return nil
 	default:
 		// If the recv queue is full, return an error.
 		// The whole point of the flow queue is to guarantee that this never happens.
 		return ErrQueueOverflow
 	}
+}
+
+// FlowStats returns a k=v formatted string of internal stats.
+func (dfq *DuplexFlowQueue) FlowStats() string {
+	return fmt.Sprintf(
+		"sq=%d rq=%d sends=%d reps=%d",
+		len(dfq.sendQueue),
+		len(dfq.recvQueue),
+		atomic.LoadInt32(dfq.sendSpace),
+		atomic.LoadInt32(dfq.reportedSpace),
+	)
 }
