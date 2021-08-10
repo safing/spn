@@ -10,6 +10,11 @@ const (
 	IsCraneController Permission = 0x8000
 )
 
+type AuthorizingTerminal interface {
+	GrantPermission(grant Permission)
+	HasPermission(required Permission) bool
+}
+
 // GrandPermission grants the specified permissions to the Terminal.
 func (t *TerminalBase) GrantPermission(grant Permission) {
 	t.lock.Lock()
@@ -18,10 +23,24 @@ func (t *TerminalBase) GrantPermission(grant Permission) {
 	t.permission = t.permission | grant
 }
 
-// HasPermission returns if the Terminal has the specified permissions.
+// HasPermission returns if the Terminal has the specified permission.
 func (t *TerminalBase) HasPermission(required Permission) bool {
 	t.lock.RLock()
 	defer t.lock.RUnlock()
 
-	return t.permission&required == required
+	return t.permission.Has(required)
+}
+
+// Has returns if the permission includes the specified permission.
+func (p Permission) Has(required Permission) bool {
+	return p&required == required
+}
+
+// AddPermissions combines multiple permissions.
+func AddPermissions(perms ...Permission) Permission {
+	var all Permission
+	for _, p := range perms {
+		all |= p
+	}
+	return all
 }

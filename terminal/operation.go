@@ -108,7 +108,7 @@ func (t *TerminalBase) runOperation(ctx context.Context, opTerminal OpTerminal, 
 		log.Debugf("terminal: operation %s %s started", params.Type, fmtOperationID(t.parentID, t.id, opID))
 	} else {
 		// If the operation was a just single function call, log that it was executed.
-		log.Debugf("terminal: operation %s %s executed", op.Type(), fmtOperationID(t.parentID, t.id, op.ID()))
+		log.Debugf("terminal: operation %s %s executed", params.Type, fmtOperationID(t.parentID, t.id, opID))
 	}
 }
 
@@ -229,7 +229,7 @@ func (op unknownOp) Type() string {
 }
 
 func (op unknownOp) Deliver(data *container.Container) *Error {
-	return ErrMalformedData.With("unknown op shim cannot receive")
+	return ErrIncorrectUsage.With("unknown op shim cannot receive")
 }
 
 func (op unknownOp) End(err *Error) {}

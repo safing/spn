@@ -29,9 +29,9 @@ func (op *OpBaseRequest) Init(deliverQueueSize int) {
 func (op *OpBaseRequest) Deliver(data *container.Container) *Error {
 	select {
 	case op.Delivered <- data:
-		return ErrIncorrectUsage.With("request was not waiting for data")
+		return nil
 	default:
-		return ErrQueueOverflow
+		return ErrIncorrectUsage.With("request was not waiting for data")
 	}
 }
 

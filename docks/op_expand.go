@@ -55,9 +55,9 @@ func (t *ExpansionRelayTerminal) Ctx() context.Context {
 
 func init() {
 	terminal.RegisterOpType(terminal.OpParams{
-		Type: ExpandOpType,
-		// Requires: terminal.MayExpand, // FIXME
-		RunOp: expand,
+		Type:     ExpandOpType,
+		Requires: terminal.MayExpand,
+		RunOp:    expand,
 	})
 }
 

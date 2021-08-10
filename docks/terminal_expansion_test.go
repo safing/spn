@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/safing/spn/access"
+
 	"github.com/safing/spn/cabin"
 	"github.com/safing/spn/hub"
 	"github.com/safing/spn/ships"
@@ -15,6 +17,8 @@ import (
 )
 
 func TestExpansion(t *testing.T) {
+	access.EnableTestMode()
+
 	testExpansion(t, "plain-expansion", false, 100)
 }
 
@@ -163,6 +167,10 @@ func testExpansion(t *testing.T, testID string, encrypting bool, countTo uint64)
 	time.Sleep(1 * time.Second)
 
 	// Start expansion to crane 3.
+	_, tErr = access.AuthorizeToTerminal(homeTerminal)
+	if tErr != nil {
+		t.Fatalf("expansion test %s failed to auth with home terminal: %s", testID, tErr)
+	}
 	expansionTerminalTo3, err := ExpandTo(homeTerminal, crane3HubID, connectedHub3)
 	if err != nil {
 		t.Fatalf("expansion test %s failed to expand to %s: %s", testID, crane3HubID, tErr)
@@ -179,6 +187,10 @@ func testExpansion(t *testing.T, testID string, encrypting bool, countTo uint64)
 	op1.Wait()
 
 	// Start expansion to crane 4.
+	_, tErr = access.AuthorizeToTerminal(expansionTerminalTo3)
+	if tErr != nil {
+		t.Fatalf("expansion test %s failed to auth with extenstion terminal: %s", testID, tErr)
+	}
 	expansionTerminalTo4, err := ExpandTo(expansionTerminalTo3, crane4HubID, connectedHub4)
 	if err != nil {
 		t.Fatalf("expansion test %s failed to expand to %s: %s", testID, crane4HubID, tErr)
