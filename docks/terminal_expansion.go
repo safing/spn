@@ -23,7 +23,7 @@ func ExpandTo(t terminal.OpTerminal, routeTo string, encryptFor *hub.Hub) (*Expa
 		Version:   1,
 		QueueSize: 100,
 	}
-	tBase, initData, tErr := terminal.NewLocalBaseTerminal(module.Ctx, 0, t.FmtID()+"-", encryptFor, opts)
+	tBase, initData, tErr := terminal.NewLocalBaseTerminal(module.Ctx, 0, t.FmtID(), encryptFor, opts)
 	if tErr != nil {
 		return nil, fmt.Errorf("failed to create expansion terminal base: %s", tErr)
 	}
@@ -101,5 +101,5 @@ func (t *ExpansionTerminal) stop(err *terminal.Error, opErr bool) {
 }
 
 func (t *ExpansionTerminal) FmtID() string {
-	return fmt.Sprintf("%s-#%d", t.relayOp.FmtID(), t.opID)
+	return fmt.Sprintf("%s#%d", t.relayOp.FmtID(), t.opID)
 }

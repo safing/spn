@@ -6,81 +6,64 @@ import (
 )
 
 /*
+Terminal and Operation Message Format:
 
-Terminal Message Format:
-
-- Length [varint; by Crane]
-- MsgType [varint; by Crane; one of Establish, OperativeData, Abandon]
-- ID [varint; by Crane]
-- Data [bytes; possibly omitted, by Terminal]
-	- When MsgType is Establish:
-		- Init Data [bytes]
-	- When MsgType is OperativeData:
-		- AddAvailableSpace [varint; by Flow Queue]
-		- (Encrypted) Blocked Operative Messages [bytes]
-	- When MsgType is Abandon:
-		-  [string]
-
-Operative Message Format [by Terminal]:
-
-- MsgType [varint; one of Init, Data, End, Padding]
-- OpID [varint; omitted when MsgType is Padding]
-- Data Block [bytes block; omitted when MsgType is Padding]
-	- Init: OpType [bytes block], Initial Data [remaining bytes]
-	- Data: Data [remaining bytes]
-	- Error: Error [varint]
-
-Padding MsgType Format:
-The Padding MsgType used by the terminal may only be used as the last operative
-message in a block of operative messages contained in a OperativeData message.
-It effectively means that any remaining data is padding.
-
+- Length [varint]
+	- If Length is 0, the remainder of given data is padding.
+- IDType [varint]
+	- Type [uses least two significant bits]
+		- One of Init, Data, Stop
+	- ID [uses all other bits]
+		- The ID is currently not adapted in order to make reading raw message
+			easier. This means that IDs are currently always a multiple of 4.
+- Data [bytes; format depends on msg type]
+	- MsgTypeInit:
+		- Data [bytes]
+	- MsgTypeData:
+		- AddAvailableSpace [varint, if Flow Queue is used]
+		- (Encrypted) Data [bytes]
+	- MsgTypeStop:
+		- Error Code [varint]
 */
 
-type TerminalMsgType uint8
-
-func (msgType TerminalMsgType) Pack() []byte {
-	return varint.Pack8(uint8(msgType))
-}
-
-func ParseTerminalMsgType(c *container.Container) (TerminalMsgType, error) {
-	msgType, err := c.GetNextN8()
-	return TerminalMsgType(msgType), err
-}
+type MsgType uint8
 
 const (
-	// MsgTypeEstablish is used to add available space only.
-	MsgTypeEstablish TerminalMsgType = 1
+	// MsgTypeInit is used to establish a new terminal or run a new operation.
+	MsgTypeInit MsgType = 1
 
-	// MsgTypeOperativeData is used to send encrypted data for an operation.
-	MsgTypeOperativeData TerminalMsgType = 2
+	// MsgTypeData is used to send data to a terminal or operation.
+	MsgTypeData MsgType = 2
 
-	// MsgTypeAbandon is used to communciate that the other end of the Terminal
-	// is being abandoned, with an optional error.
-	MsgTypeAbandon TerminalMsgType = 3
+	// MsgTypeStop is used to abandon a terminal or end an operation, with an optional error.
+	MsgTypeStop MsgType = 3
 )
 
-type OpMsgType uint8
-
-func (msgType OpMsgType) Pack() []byte {
-	return varint.Pack8(uint8(msgType))
+// AddIDType prepends the ID and Type header to the message.
+func AddIDType(c *container.Container, id uint32, msgType MsgType) {
+	c.Prepend(varint.Pack32(id | uint32(msgType)))
 }
 
-func ParseOpMsgType(c *container.Container) (OpMsgType, error) {
-	msgType, err := c.GetNextN8()
-	return OpMsgType(msgType), err
+// MakeMsg prepends the ID and Type header and the length of the message.
+func MakeMsg(c *container.Container, id uint32, msgType MsgType) {
+	AddIDType(c, id, msgType)
+	c.PrependLength()
 }
 
-const (
-	// MsgTypeInit is used to start a new operation.
-	MsgTypeInit OpMsgType = 1
+// SubmitAsDataMsg wraps the given submit function to call MakeMsg on the data before submitting.
+func (t *TerminalBase) SubmitAsDataMsg(submitFunc func(*container.Container)) func(*container.Container) {
+	return func(c *container.Container) {
+		MakeMsg(c, t.id, MsgTypeData)
+		submitFunc(c)
+	}
+}
 
-	// MsgTypeData is used to send data to an active operation.
-	MsgTypeData OpMsgType = 2
+func ParseIDType(c *container.Container) (id uint32, msgType MsgType, err error) {
+	idType, err := c.GetNextN32()
+	if err != nil {
+		return 0, 0, err
+	}
 
-	// MsgTypeEnd is used to end an active operation, with an optional error.
-	MsgTypeEnd OpMsgType = 3
-
-	// MsgTypePadding is used to add padding to increase the message size.
-	MsgTypePadding OpMsgType = 4
-)
+	msgType = MsgType(idType % 4)
+	return idType - uint32(msgType), msgType, nil
+}

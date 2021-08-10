@@ -3,7 +3,6 @@ package docks
 import (
 	"context"
 
-	"github.com/safing/portbase/formats/varint"
 	"github.com/safing/portbase/log"
 
 	"github.com/safing/portbase/container"
@@ -15,8 +14,7 @@ func (crane *Crane) EstablishNewTerminal(
 	initData *container.Container,
 ) *terminal.Error {
 	// Prepend header.
-	initData.Prepend(varint.Pack32(localTerm.ID()))
-	initData.Prepend(terminal.MsgTypeEstablish.Pack())
+	terminal.MakeMsg(initData, localTerm.ID(), terminal.MsgTypeInit)
 
 	// Register terminal with crane.
 	crane.setTerminal(localTerm)
@@ -50,11 +48,8 @@ func (crane *Crane) establishTerminal(id uint32, initData *container.Container) 
 	log.Warningf("spn/docks: %s failed to establish crane terminal: %s", crane, err)
 
 	// Build abandon message.
-	abandonMsg := container.New(
-		varint.Pack32(id),
-		terminal.MsgTypeAbandon.Pack(),
-		err.Pack(),
-	)
+	abandonMsg := container.New(err.Pack())
+	terminal.MakeMsg(abandonMsg, id, terminal.MsgTypeStop)
 
 	// Send message directly, or async.
 	select {

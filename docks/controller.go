@@ -44,7 +44,7 @@ func initCraneController(
 	initMsg *terminal.TerminalOpts,
 ) *CraneControllerTerminal {
 	// Create Flow Queue.
-	dfq := terminal.NewDuplexFlowQueue(t, initMsg.QueueSize, crane.submitImportantTerminalMsg)
+	dfq := terminal.NewDuplexFlowQueue(t, initMsg.QueueSize, t.SubmitAsDataMsg(crane.submitImportantTerminalMsg))
 
 	// Create Crane Terminal and assign it as the extended Terminal.
 	cct := &CraneControllerTerminal{

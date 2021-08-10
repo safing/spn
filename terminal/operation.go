@@ -132,7 +132,7 @@ type OpTerminal interface {
 // OpInit initialized the operation with the given data.
 func (t *TerminalBase) OpInit(op Operation, data *container.Container) *Error {
 	// Get next operation ID and set it on the operation.
-	op.SetID(atomic.AddUint32(t.nextOpID, 2))
+	op.SetID(atomic.AddUint32(t.nextOpID, 8))
 
 	// Always add operation to the active operations, as we need to receive a
 	// reply in any case.
@@ -169,7 +169,7 @@ func (t *TerminalBase) OpEnd(op Operation, err *Error) {
 
 	if !err.IsExternal() {
 		// Send error to connected Operation.
-		t.addToOpMsgSendBuffer(op.ID(), MsgTypeEnd, container.New(err.Pack()), true)
+		t.addToOpMsgSendBuffer(op.ID(), MsgTypeStop, container.New(err.Pack()), true)
 	}
 
 	// Call operation end function.

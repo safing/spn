@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/davecgh/go-spew/spew"
-
 	"github.com/safing/portbase/container"
 	"github.com/safing/spn/terminal"
 	"github.com/tevino/abool"
@@ -97,7 +95,7 @@ func expand(t terminal.OpTerminal, opID uint32, data *container.Container) (term
 	op.relayTerminal.op = op
 	// Create flow queues.
 	op.DuplexFlowQueue = terminal.NewDuplexFlowQueue(op, opts.QueueSize, op.submitBackstream)
-	op.relayTerminal.DuplexFlowQueue = terminal.NewDuplexFlowQueue(op, opts.QueueSize, op.relayTerminal.crane.submitTerminalMsg)
+	op.relayTerminal.DuplexFlowQueue = terminal.NewDuplexFlowQueue(op, opts.QueueSize, op.submitForwardstream)
 
 	// Establish terminal on destination.
 	newInitData, tErr := opts.Pack()
@@ -118,6 +116,11 @@ func expand(t terminal.OpTerminal, opID uint32, data *container.Container) (term
 	return op, nil
 }
 
+func (op *ExpandOp) submitForwardstream(c *container.Container) {
+	terminal.MakeMsg(c, op.relayTerminal.id, terminal.MsgTypeData)
+	op.relayTerminal.crane.submitTerminalMsg(c)
+}
+
 func (op *ExpandOp) submitBackstream(c *container.Container) {
 	err := op.opTerminal.OpSend(op, c)
 	if err != nil {
@@ -129,14 +132,9 @@ func (op *ExpandOp) forwardHandler(_ context.Context) error {
 	for {
 		select {
 		case c := <-op.DuplexFlowQueue.Receive():
-
-			spew.Println("forwarding:")
-			_, err := c.Get(2)
-			if err != nil {
-				return err
-			}
-
-			spew.Dump(c.CompileData())
+			// Debugging:
+			// spew.Println("forwarding:")
+			// spew.Dump(c.CompileData())
 
 			// Receive data from the origin and forward it to the relay.
 			if err := op.relayTerminal.DuplexFlowQueue.Send(c); err != nil {
@@ -153,11 +151,9 @@ func (op *ExpandOp) backwardHandler(_ context.Context) error {
 	for {
 		select {
 		case c := <-op.relayTerminal.DuplexFlowQueue.Receive():
-
-			spew.Println("backwarding:")
-			c.Prepend([]byte{2, 0})
-
-			spew.Dump(c.CompileData())
+			// Debugging:
+			// spew.Println("backwarding:")
+			// spew.Dump(c.CompileData())
 
 			// Receive data from the relay and forward it to the origin.
 			if err := op.DuplexFlowQueue.Send(c); err != nil {

@@ -137,8 +137,6 @@ sending:
 				// We do not need to check if there is enough sending space, as there is
 				// no data included.
 				dfq.submitUpstream(container.New(
-					MsgTypeOperativeData.Pack(),
-					varint.Pack32(dfq.ti.ID()),
 					varint.Pack64(uint64(dfq.reportableRecvSpace())),
 				))
 
@@ -170,8 +168,6 @@ sending:
 
 			// Prepend available receiving space and flow ID.
 			c.Prepend(varint.Pack64(uint64(dfq.reportableRecvSpace())))
-			c.Prepend(varint.Pack32(dfq.ti.ID()))
-			c.Prepend(MsgTypeOperativeData.Pack())
 
 			// Submit for sending upstream.
 			dfq.submitUpstream(c)
@@ -186,8 +182,6 @@ sending:
 			// We do not need to check if there is enough sending space, as there is
 			// no data included.
 			dfq.submitUpstream(container.New(
-				MsgTypeOperativeData.Pack(),
-				varint.Pack32(dfq.ti.ID()),
 				varint.Pack64(uint64(dfq.reportableRecvSpace())),
 			))
 

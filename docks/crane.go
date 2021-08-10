@@ -128,7 +128,7 @@ func NewCrane(ship ships.Ship, connectedHub *hub.Hub, id *cabin.Identity) (*Cran
 
 	// Shift next terminal IDs on the server.
 	if !ship.IsMine() {
-		new.nextTerminalID += 1
+		new.nextTerminalID += 4
 	}
 
 	// Calculate target load size.
@@ -154,7 +154,7 @@ func (crane *Crane) getNextTerminalID() uint32 {
 
 	for {
 		// Bump to next ID.
-		crane.nextTerminalID += 2
+		crane.nextTerminalID += 8
 
 		// Check if it's free.
 		_, ok := crane.terminals[crane.nextTerminalID]
@@ -209,11 +209,8 @@ func (crane *Crane) AbandonTerminal(id uint32, err *terminal.Error) {
 	// Notify other end.
 	if !err.IsExternal() {
 		// Build abandon message.
-		abandonMsg := container.New(
-			varint.Pack32(id),
-			terminal.MsgTypeAbandon.Pack(),
-			err.Pack(),
-		)
+		abandonMsg := container.New(err.Pack())
+		terminal.MakeMsg(abandonMsg, id, terminal.MsgTypeStop)
 
 		// Send message directly, or async.
 		select {
@@ -617,25 +614,18 @@ handling:
 					return nil
 				}
 
-				// Get terminal ID of segment.
-				terminalMsgType, err := terminal.ParseTerminalMsgType(segment)
+				// Get terminal ID and message type of segment.
+				terminalID, terminalMsgType, err := terminal.ParseIDType(segment)
 				if err != nil {
-					crane.Stop(terminal.ErrMalformedData.With("failed to get terminal msg type: %s", err))
-					return nil
-				}
-
-				// Get terminal ID of segment.
-				terminalID, err := segment.GetNextN32()
-				if err != nil {
-					crane.Stop(terminal.ErrMalformedData.With("failed to get terminal ID: %s", err))
+					crane.Stop(terminal.ErrMalformedData.With("failed to get terminal ID and msg type: %s", err))
 					return nil
 				}
 
 				switch terminalMsgType {
-				case terminal.MsgTypeEstablish:
+				case terminal.MsgTypeInit:
 					crane.establishTerminal(terminalID, segment)
 
-				case terminal.MsgTypeOperativeData:
+				case terminal.MsgTypeData:
 					// Get terminal and let it further handle the message.
 					t, ok := crane.getTerminal(terminalID)
 					if ok {
@@ -651,7 +641,7 @@ handling:
 						log.Tracef("spn/docks: %s received msg for unknown terminal %d", crane, terminalID)
 					}
 
-				case terminal.MsgTypeAbandon:
+				case terminal.MsgTypeStop:
 					// Parse error.
 					receivedErr, err := terminal.ParseExternalError(segment.CompileData())
 					if err != nil {
@@ -720,7 +710,6 @@ func (crane *Crane) loader(ctx context.Context) (err error) {
 				}
 
 				// Append to shipment.
-				newSegment.PrependLength()
 				shipment.AppendContainer(newSegment)
 
 				// Set loading max wait timer on first segment.
@@ -932,12 +921,21 @@ func (crane *Crane) Stop(err *terminal.Error) {
 	}
 
 	// Stop all terminals.
+	for _, t := range crane.allTerms() {
+		t.Abandon(err)
+	}
+}
+
+func (crane *Crane) allTerms() []terminal.TerminalInterface {
 	crane.terminalsLock.Lock()
 	defer crane.terminalsLock.Unlock()
 
-	for _, t := range crane.terminals {
-		t.Abandon(err)
+	terms := make([]terminal.TerminalInterface, 0, len(crane.terminals))
+	for _, term := range crane.terminals {
+		terms = append(terms, term)
 	}
+
+	return terms
 }
 
 func (crane *Crane) String() string {

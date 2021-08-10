@@ -265,20 +265,6 @@ func createTestForwardingFunc(t *testing.T, srcName, dstName string, deliverFunc
 			t.Logf("%s>%s: %v\n", srcName, dstName, c.CompileData())
 		}
 
-		// Strip message type, as we are not multiplexing in this test.
-		_, err := c.GetNextN32()
-		if err != nil {
-			t.Errorf("%s>%s: failed to strip terminal ID: %s", srcName, dstName, err)
-			return
-		}
-
-		// Strip terminal ID, as we are not multiplexing in this test.
-		_, err = c.GetNextN32()
-		if err != nil {
-			t.Errorf("%s>%s: failed to strip terminal ID: %s", srcName, dstName, err)
-			return
-		}
-
 		// Deliver to other terminal.
 		dErr := deliverFunc(c)
 		if dErr != nil {

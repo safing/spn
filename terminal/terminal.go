@@ -14,7 +14,6 @@ import (
 	"github.com/safing/portbase/rng"
 
 	"github.com/safing/portbase/container"
-	"github.com/safing/portbase/formats/varint"
 	"github.com/safing/portbase/log"
 	"github.com/tevino/abool"
 )
@@ -108,7 +107,7 @@ func createTerminalBase(
 		Abandoned:    abool.New(),
 	}
 	if remote {
-		atomic.AddUint32(t.nextOpID, 1)
+		atomic.AddUint32(t.nextOpID, 4)
 	}
 
 	t.ctx, t.cancelCtx = context.WithCancel(ctx)
@@ -204,7 +203,7 @@ func (t *TerminalBase) Handler(_ context.Context) error {
 			return nil // Controlled worker exit.
 
 		case c := <-t.ext.Receive():
-			for c.HoldsData() {
+			if c.HoldsData() {
 				err := t.handleReceive(c)
 				if err != nil {
 					if !errors.Is(err, ErrStopping) {
@@ -351,7 +350,26 @@ func (t *TerminalBase) handleReceive(c *container.Container) *Error {
 
 	// Handle operation messages.
 	for c.HoldsData() {
-		if handleErr := t.handleOpMsg(c); handleErr != nil {
+		// Get next messagt length.
+		msgLength, err := c.GetNextN32()
+		if err != nil {
+			return ErrMalformedData.With("failed to get operation msg length: %w", err)
+		}
+		if msgLength == 0 {
+			// Remainder is padding.
+			// Padding can only be at the end of the segment.
+			t.handlePaddingMsg(c)
+			return nil
+		}
+
+		// Get op msg data.
+		msgData, err := c.GetAsContainer(int(msgLength))
+		if err != nil {
+			return ErrMalformedData.With("failed to get operation msg data: %w", err)
+		}
+
+		// Handle op msg.
+		if handleErr := t.handleOpMsg(msgData); handleErr != nil {
 			return handleErr
 		}
 	}
@@ -359,29 +377,14 @@ func (t *TerminalBase) handleReceive(c *container.Container) *Error {
 	return nil
 }
 
-func (t *TerminalBase) handleOpMsg(c *container.Container) *Error {
-	// Parse message type, operation id and data.
-	msgType, err := ParseOpMsgType(c)
+func (t *TerminalBase) handleOpMsg(data *container.Container) *Error {
+	// Parse message operation id, type.
+	opID, msgType, err := ParseIDType(data)
 	if err != nil {
-		return ErrMalformedData.With("failed to parse operation msg type: %w", err)
-	}
-	// Check if this is a padding message and handle it specially.
-	if msgType == MsgTypePadding {
-		t.handlePaddingMsg(c)
-		return nil
+		return ErrMalformedData.With("failed to parse operation msg id/type: %w", err)
 	}
 
-	// Parse operation id and get data.
-	opID, err := c.GetNextN32()
-	if err != nil {
-		return ErrMalformedData.With("failed to parse operation ID: %w", err)
-	}
-	data, err := c.GetNextBlockAsContainer()
-	if err != nil {
-		return ErrMalformedData.With("failed to get operation msg data: %w", err)
-	}
-
-	switch OpMsgType(msgType) {
+	switch msgType {
 	case MsgTypeInit:
 		t.runOperation(t.ctx, t, opID, data)
 
@@ -398,7 +401,7 @@ func (t *TerminalBase) handleOpMsg(c *container.Container) *Error {
 			log.Tracef("spn/terminal: %s received data msg for unknown op %d", fmtTerminalID(t.parentID, t.id), opID)
 		}
 
-	case MsgTypeEnd:
+	case MsgTypeStop:
 		// Parse received error.
 		opErr, parseErr := ParseExternalError(data.CompileData())
 		if parseErr != nil {
@@ -435,7 +438,7 @@ func (t *TerminalBase) sendOpMsgs(c *container.Container) *Error {
 		paddingNeeded := (int(t.opts.Padding) - c.Length()) % int(t.opts.Padding)
 		if paddingNeeded > 0 {
 			// Add padding message header.
-			c.Append(MsgTypePadding.Pack())
+			c.Append([]byte{0})
 			paddingNeeded--
 
 			// Add needed padding data.
@@ -469,16 +472,12 @@ func (t *TerminalBase) sendOpMsgs(c *container.Container) *Error {
 
 func (t *TerminalBase) addToOpMsgSendBuffer(
 	opID uint32,
-	msgType OpMsgType,
+	msgType MsgType,
 	data *container.Container,
 	async bool,
 ) *Error {
-	// Prepend length to provided data
-	data.PrependLength()
-
-	// Add message metadata.
-	data.Prepend(varint.Pack32(opID))
-	data.Prepend(msgType.Pack())
+	// Add header.
+	MakeMsg(data, opID, msgType)
 
 	// Submit message to buffer and fall back to async.
 	select {

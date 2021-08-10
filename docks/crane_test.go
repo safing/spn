@@ -12,7 +12,6 @@ import (
 	"github.com/safing/spn/cabin"
 	"github.com/safing/spn/hub"
 
-	"github.com/safing/portbase/formats/varint"
 	"github.com/stretchr/testify/assert"
 
 	"github.com/safing/portbase/container"
@@ -98,15 +97,9 @@ func testCraneWithCounter(t *testing.T, testID string, encrypting bool, loadSize
 		t.Fatalf("crane test %s failed to run counter op: %s", testID, tErr)
 	}
 	module.StartWorker(testID+" counter op1", op1.CounterWorker)
-	// op2, tErr := terminal.NewCounterOp(crane2.Controller, countTo)
-	// if tErr != nil {
-	// 	t.Fatalf("crane test %s failed to run counter op: %s", testID, tErr)
-	// }
-	// module.StartWorker(testID+" counter op2", op2.CounterWorker)
 
 	// Wait for completion.
 	op1.Wait()
-	// op2.Wait()
 	close(finished)
 
 	// Wait a little so that all errors can be propagated, so we can truly see
@@ -117,9 +110,6 @@ func testCraneWithCounter(t *testing.T, testID string, encrypting bool, loadSize
 	if op1.Error != nil {
 		t.Fatalf("crane test %s counter op1 failed: %s", testID, op1.Error)
 	}
-	// if op2.Error != nil {
-	// t.Fatalf("crane test %s counter op2 failed: %s", testID, op2.Error)
-	// }
 }
 
 /*
@@ -301,7 +291,7 @@ func testCraneWithStreaming(t *testing.T, testID string, encrypting bool, loadSi
 	// Create terminals and run test.
 	st := &StreamingTerminal{
 		test:     t,
-		id:       10,
+		id:       8,
 		recv:     make(chan *container.Container),
 		testData: []byte("The quick brown fox jumps over the lazy dog."),
 	}
@@ -314,10 +304,9 @@ func testCraneWithStreaming(t *testing.T, testID string, encrypting bool, loadSi
 	count := 1000
 	go func() {
 		for i := 1; i <= count; i++ {
-			crane1.submitTerminalMsg(container.New(
-				varint.Pack32(st.id),
-				st.testData,
-			))
+			c := container.New(st.testData)
+			terminal.MakeMsg(c, st.ID(), terminal.MsgTypeData)
+			crane1.submitTerminalMsg(c)
 			// log.Tracef("+ %d", i)
 		}
 		t.Logf("crane test %s done with sending", testID)
