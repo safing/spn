@@ -313,13 +313,13 @@ func testTerminalWithCounters(t *testing.T, term1, term2 *TestTerminal, opts *te
 	close(finished)
 
 	// Log stats.
-	t.Logf("%s: counter1: counter=%d countTo=%d", opts.testName, counter1.Counter, counter1.CountTo)
-	if counter1.Counter < counter1.CountTo {
+	t.Logf("%s: counter1: counter=%d countTo=%d", opts.testName, counter1.ServerCounter, counter1.opts.ServerCountTo)
+	if counter1.ServerCounter < counter1.opts.ServerCountTo {
 		t.Errorf("%s: did not finish counting", opts.testName)
 	}
 	if !opts.oneWay {
-		t.Logf("%s: counter2: counter=%d countTo=%d", opts.testName, counter2.Counter, counter2.CountTo)
-		if counter2.Counter < counter2.CountTo {
+		t.Logf("%s: counter2: counter=%d countTo=%d", opts.testName, counter2.ServerCounter, counter2.opts.ServerCountTo)
+		if counter2.ServerCounter < counter2.opts.ServerCountTo {
 			t.Errorf("%s: did not finish counting", opts.testName)
 		}
 	}
@@ -328,7 +328,11 @@ func testTerminalWithCounters(t *testing.T, term1, term2 *TestTerminal, opts *te
 }
 
 func runTerminalCounter(t *testing.T, term *TestTerminal, opts *testWithCounterOpts) *CounterOp {
-	counter, err := NewCounterOp(term, opts.countTo, opts.waitBetweenMsgs)
+	counter, err := NewCounterOp(term, CounterOpts{
+		ServerCountTo:  opts.countTo,
+		Wait:           opts.waitBetweenMsgs,
+		suppressWorker: true,
+	})
 	if err != nil {
 		t.Fatalf("%s: %s: failed to start counter op: %s", opts.testName, term.parentID, err)
 		return nil
@@ -364,7 +368,7 @@ func runTerminalCounter(t *testing.T, term *TestTerminal, opts *testWithCounterO
 
 			// Endless loop check
 			round++
-			if round > counter.CountTo*2 {
+			if round > counter.opts.ServerCountTo*2 {
 				t.Errorf("%s: %s: looping more than it should", opts.testName, term.parentID)
 				return
 			}

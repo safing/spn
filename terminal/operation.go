@@ -2,6 +2,7 @@ package terminal
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -94,21 +95,24 @@ func (t *TerminalBase) runOperation(ctx context.Context, opTerminal OpTerminal, 
 
 	// Run the operation.
 	op, opErr := params.RunOp(opTerminal, opID, initData)
-	if opErr != nil {
+	switch {
+	case opErr != nil:
+		// Something went wrong.
 		t.OpEnd(&unknownOp{
 			id:     opID,
 			opType: params.Type,
 		}, opErr)
-		return
-	}
-
-	if op != nil {
-		// If the operation started successfully and requires persistence, add it to the active ops.
+	case op == nil:
+		// The Operation was successful and is done already.
+		log.Debugf("terminal: operation %s %s executed", params.Type, fmtOperationID(t.parentID, t.id, opID))
+		t.OpEnd(&unknownOp{
+			id:     opID,
+			opType: params.Type,
+		}, nil)
+	default:
+		// The operation started successfully and requires persistence.
 		t.SetActiveOp(opID, op)
 		log.Debugf("terminal: operation %s %s started", params.Type, fmtOperationID(t.parentID, t.id, opID))
-	} else {
-		// If the operation was a just single function call, log that it was executed.
-		log.Debugf("terminal: operation %s %s executed", params.Type, fmtOperationID(t.parentID, t.id, opID))
 	}
 }
 
@@ -161,15 +165,19 @@ func (t *TerminalBase) OpSend(op Operation, data *container.Container) *Error {
 // The Operation should cease operation after calling this function.
 // Should only be called by an operation.
 func (t *TerminalBase) OpEnd(op Operation, err *Error) {
-	if err == nil {
-		log.Debugf("terminal: operation %s %s ended", op.Type(), fmtOperationID(t.parentID, t.id, op.ID()))
-	} else {
-		log.Warningf("terminal: operation %s %s: %s", op.Type(), fmtOperationID(t.parentID, t.id, op.ID()), err)
+	// Send error to the connected Operation, if the error is internal.
+	if !err.IsExternal() {
+		t.addToOpMsgSendBuffer(op.ID(), MsgTypeStop, container.New(err.Pack()), true)
 	}
 
-	if !err.IsExternal() {
-		// Send error to connected Operation.
-		t.addToOpMsgSendBuffer(op.ID(), MsgTypeStop, container.New(err.Pack()), true)
+	// Log reason the Operation is ending. Override stopping error with nil.
+	if err == nil {
+		log.Debugf("terminal: operation %s %s ended", op.Type(), fmtOperationID(t.parentID, t.id, op.ID()))
+	} else if errors.Is(err, ErrStopping) {
+		err = nil
+		log.Debugf("terminal: operation %s %s was ended by peer", op.Type(), fmtOperationID(t.parentID, t.id, op.ID()))
+	} else {
+		log.Warningf("terminal: operation %s %s: %s", op.Type(), fmtOperationID(t.parentID, t.id, op.ID()), err)
 	}
 
 	// Call operation end function.

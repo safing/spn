@@ -6,6 +6,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/safing/portbase/formats/dsd"
+
 	"github.com/tevino/abool"
 
 	"github.com/safing/portbase/container"
@@ -13,18 +15,28 @@ import (
 	"github.com/safing/portbase/log"
 )
 
-const CounterOpType string = "test/count"
+const CounterOpType string = "debug/count"
 
 type CounterOp struct {
-	t    OpTerminal
-	id   uint32
-	wg   sync.WaitGroup
-	wait time.Duration
+	t      OpTerminal
+	id     uint32
+	wg     sync.WaitGroup
+	server bool
+	opts   *CounterOpts
 
-	Counter uint64
-	CountTo uint64
-	Ended   *abool.AtomicBool
-	Error   error
+	counterLock   sync.Mutex
+	ClientCounter uint64
+	ServerCounter uint64
+	Ended         *abool.AtomicBool
+	Error         error
+}
+
+type CounterOpts struct {
+	ClientCountTo uint64
+	ServerCountTo uint64
+	Wait          time.Duration
+
+	suppressWorker bool
 }
 
 func init() {
@@ -34,37 +46,56 @@ func init() {
 	})
 }
 
-func NewCounterOp(t OpTerminal, countTo uint64, wait time.Duration) (*CounterOp, *Error) {
+func NewCounterOp(t OpTerminal, opts CounterOpts) (*CounterOp, *Error) {
 	// Create operation.
 	op := &CounterOp{
-		t:       t,
-		wait:    wait,
-		CountTo: countTo,
-		Ended:   abool.New(),
+		t:     t,
+		opts:  &opts,
+		Ended: abool.New(),
 	}
 	op.wg.Add(1)
 
 	// Create argument container.
-	data := container.New(varint.Pack64(countTo))
+	data, err := dsd.Dump(op.opts, dsd.JSON)
+	if err != nil {
+		return nil, ErrInternalError.With("failed to pack options: %w", err)
+	}
 
-	return op, t.OpInit(op, data)
+	// Initialize operation.
+	tErr := t.OpInit(op, container.New(data))
+	if tErr != nil {
+		return nil, tErr
+	}
+
+	// Start worker if needed.
+	if op.getRemoteCounterTarget() > 0 && !op.opts.suppressWorker {
+		module.StartWorker("counter sender", op.CounterWorker)
+	}
+	return op, nil
 }
 
 func runCounterOp(t OpTerminal, opID uint32, data *container.Container) (Operation, *Error) {
 	// Create operation.
 	op := &CounterOp{
-		t:     t,
-		id:    opID,
-		Ended: abool.New(),
+		t:      t,
+		id:     opID,
+		server: true,
+		Ended:  abool.New(),
 	}
 	op.wg.Add(1)
 
 	// Parse arguments.
-	countTo, err := data.GetNextN64()
+	opts := &CounterOpts{}
+	_, err := dsd.Load(data.CompileData(), opts)
 	if err != nil {
-		return nil, ErrMalformedData.With("failed to set up counter op: %w", err)
+		return nil, ErrInternalError.With("failed to unpack options: %w", err)
 	}
-	op.CountTo = countTo
+	op.opts = opts
+
+	// Start worker if needed.
+	if op.getRemoteCounterTarget() > 0 {
+		module.StartWorker("counter sender", op.CounterWorker)
+	}
 
 	return op, nil
 }
@@ -81,6 +112,39 @@ func (op *CounterOp) Type() string {
 	return CounterOpType
 }
 
+func (op *CounterOp) getCounter(sending, increase bool) uint64 {
+	op.counterLock.Lock()
+	defer op.counterLock.Unlock()
+
+	// Use server counter, when op is server or for sending, but not when both.
+	if op.server != sending {
+		if increase {
+			op.ServerCounter++
+		}
+		return op.ServerCounter
+	}
+
+	if increase {
+		op.ClientCounter++
+	}
+	return op.ClientCounter
+}
+
+func (op *CounterOp) getRemoteCounterTarget() uint64 {
+	if op.server {
+		return op.opts.ClientCountTo
+	}
+	return op.opts.ServerCountTo
+}
+
+func (op *CounterOp) isDone() bool {
+	op.counterLock.Lock()
+	defer op.counterLock.Unlock()
+
+	return op.ClientCounter >= op.opts.ClientCountTo &&
+		op.ServerCounter >= op.opts.ServerCountTo
+}
+
 func (op *CounterOp) Deliver(data *container.Container) *Error {
 	nextStep, err := data.GetNextN64()
 	if err != nil {
@@ -89,19 +153,21 @@ func (op *CounterOp) Deliver(data *container.Container) *Error {
 	}
 
 	// Count and compare.
-	op.Counter += 1
-	if op.Counter != nextStep {
+	counter := op.getCounter(false, true)
+	// Debugging:
+	// log.Errorf("terminal: counter %s>%d recvd, now at %d", op.t.FmtID(), op.id, counter)
+	if counter != nextStep {
 		log.Warningf(
-			"terminal: integrity of counter op violated: have %d, expected %d",
-			op.Counter,
+			"terminal: integrity of counter op violated: received %d, expected %d",
 			nextStep,
+			counter,
 		)
 		op.t.OpEnd(op, ErrIntegrity.With("counters mismatched"))
 		return nil
 	}
 
 	// Check if we are done.
-	if op.Counter >= op.CountTo {
+	if op.isDone() {
 		op.t.OpEnd(op, nil)
 	}
 
@@ -111,8 +177,13 @@ func (op *CounterOp) Deliver(data *container.Container) *Error {
 func (op *CounterOp) End(err *Error) {
 	if op.Ended.SetToIf(false, true) {
 		// Check if counting finished.
-		if op.Counter < op.CountTo {
-			err := fmt.Errorf("counter op %d: did not finish counting", op.id)
+		if !op.isDone() {
+			err := fmt.Errorf(
+				"counter op %d: did not finish counting (%d<-%d %d->%d)",
+				op.id,
+				op.opts.ClientCountTo, op.ClientCounter,
+				op.ServerCounter, op.opts.ServerCountTo,
+			)
 			op.Error = err
 		}
 
@@ -125,8 +196,12 @@ func (op *CounterOp) SendCounter() *Error {
 		return ErrStopping
 	}
 
-	op.Counter += 1
-	return op.t.OpSend(op, container.New(varint.Pack64(op.Counter)))
+	// Increase sending counter.
+	counter := op.getCounter(true, true)
+
+	// Debugging:
+	// defer log.Errorf("terminal: counter %s>%d sent, now at %d", op.t.FmtID(), op.id, counter)
+	return op.t.OpSend(op, container.New(varint.Pack64(counter)))
 }
 
 func (op *CounterOp) Wait() {
@@ -134,8 +209,6 @@ func (op *CounterOp) Wait() {
 }
 
 func (op *CounterOp) CounterWorker(ctx context.Context) error {
-	var round uint64
-
 	for {
 		// Send counter msg.
 		err := op.SendCounter()
@@ -147,22 +220,20 @@ func (op *CounterOp) CounterWorker(ctx context.Context) error {
 			return nil
 		default:
 			// Something went wrong.
-			err := fmt.Errorf("counter op %d: failed to send counter: %s", op.id, err)
+			err := fmt.Errorf("counter op %d: failed to send counter: %w", op.id, err)
 			op.Error = err
-			return err
+			op.t.OpEnd(op, ErrInternalError.With(err.Error()))
+			return nil
 		}
 
-		// Endless loop check
-		round++
-		if round > op.CountTo*2 {
-			err := fmt.Errorf("counter op %d: looping more than it should", op.id)
-			op.Error = err
-			return err
+		// Check if we are done with sending.
+		if op.getCounter(true, false) >= op.getRemoteCounterTarget() {
+			return nil
 		}
 
 		// Maybe wait a little.
-		if op.wait > 0 {
-			time.Sleep(op.wait)
+		if op.opts.Wait > 0 {
+			time.Sleep(op.opts.Wait)
 		}
 	}
 }

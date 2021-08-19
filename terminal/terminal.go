@@ -198,7 +198,7 @@ func (t *TerminalBase) Handler(_ context.Context) error {
 
 		case <-time.After(DefaultTerminalTimeout):
 			// If nothing happens for a while, end the session.
-			log.Debugf("spn/terminal: %s timed out: shutting down", fmtTerminalID(t.parentID, t.id))
+			log.Debugf("spn/terminal: %s timed out: shutting down", t.FmtID())
 			t.ext.Abandon(nil)
 			return nil // Controlled worker exit.
 
@@ -311,6 +311,9 @@ func (t *TerminalBase) Flush() {
 }
 
 func (t *TerminalBase) handleReceive(c *container.Container) *Error {
+	// Debugging:
+	// log.Errorf("terminal %s handling tmsg: %s", t.FmtID(), spew.Sdump(c.CompileData()))
+
 	// Check if message is empty. This will be the case if a message was only
 	// for updated the available space of the flow queue.
 	if !c.HoldsData() {
@@ -324,7 +327,7 @@ func (t *TerminalBase) handleReceive(c *container.Container) *Error {
 			return ErrMalformedData.With("failed to parse letter: %w", err)
 		}
 
-		// Setup encryption .
+		// Setup encryption if not yet done.
 		if t.jession == nil {
 			if t.identity == nil {
 				return ErrInternalError.With("missing identity for setting up incoming encryption")
@@ -378,6 +381,9 @@ func (t *TerminalBase) handleReceive(c *container.Container) *Error {
 }
 
 func (t *TerminalBase) handleOpMsg(data *container.Container) *Error {
+	// Debugging:
+	// log.Errorf("terminal %s handling opmsg: %s", t.FmtID(), spew.Sdump(data.CompileData()))
+
 	// Parse message operation id, type.
 	opID, msgType, err := ParseIDType(data)
 	if err != nil {
