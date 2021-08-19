@@ -2,6 +2,7 @@ package access
 
 import (
 	"github.com/safing/portbase/container"
+	"github.com/safing/portbase/log"
 	"github.com/safing/spn/terminal"
 )
 
@@ -35,7 +36,7 @@ func AuthorizeToTerminal(t terminal.OpTerminal) (*AuthorizeOp, *terminal.Error) 
 
 	tErr := t.OpInit(op, container.New(code.Raw()))
 	if tErr != nil {
-		return nil, terminal.ErrInternalError.With("failed to init auth op: %w", err)
+		return nil, terminal.ErrInternalError.With("failed to init auth op: %w", tErr)
 	}
 
 	return op, nil
@@ -62,6 +63,7 @@ func checkAccessCode(t terminal.OpTerminal, opID uint32, initData *container.Con
 
 	// Grant permissions.
 	authTerm.GrantPermission(granted)
+	log.Debugf("spn/access: granted %s permissions via %s zone", t.FmtID(), code.Zone)
 
 	// End successfully.
 	return nil, nil

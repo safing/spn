@@ -133,8 +133,7 @@ func (op *ExpandOp) forwardHandler(_ context.Context) error {
 		select {
 		case c := <-op.DuplexFlowQueue.Receive():
 			// Debugging:
-			// spew.Println("forwarding:")
-			// spew.Dump(c.CompileData())
+			// log.Debugf("forwarding at %s: %s", op.FmtID(), spew.Sdump(c.CompileData()))
 
 			// Receive data from the origin and forward it to the relay.
 			if err := op.relayTerminal.DuplexFlowQueue.Send(c); err != nil {
@@ -152,8 +151,7 @@ func (op *ExpandOp) backwardHandler(_ context.Context) error {
 		select {
 		case c := <-op.relayTerminal.DuplexFlowQueue.Receive():
 			// Debugging:
-			// spew.Println("backwarding:")
-			// spew.Dump(c.CompileData())
+			// log.Debugf("backwarding at %s: %s", op.FmtID(), spew.Sdump(c.CompileData()))
 
 			// Receive data from the relay and forward it to the origin.
 			if err := op.DuplexFlowQueue.Send(c); err != nil {

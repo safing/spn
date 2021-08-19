@@ -199,14 +199,7 @@ func (crane *Crane) AbandonTerminal(id uint32, err *terminal.Error) {
 		return
 	}
 
-	// Log that the terminal is being abandoned
-	if err != nil {
-		log.Warningf("spn/docks: %T %s: %s", t, t.FmtID(), err)
-	} else {
-		log.Debugf("spn/docks: %T %s is being abandoned", t, t.FmtID())
-	}
-
-	// Notify other end.
+	// Send error to the connected terminal, if the error is internal.
 	if !err.IsExternal() {
 		// Build abandon message.
 		abandonMsg := container.New(err.Pack())
@@ -225,6 +218,16 @@ func (crane *Crane) AbandonTerminal(id uint32, err *terminal.Error) {
 				return nil
 			})
 		}
+	}
+
+	// Log reason the terminal is ending. Override stopping error with nil.
+	if err == nil {
+		log.Debugf("spn/docks: %T %s is being abandoned", t, t.FmtID())
+	} else if errors.Is(err, terminal.ErrStopping) {
+		err = nil
+		log.Debugf("spn/docks: %T %s is being abandoned by peer", t, t.FmtID())
+	} else {
+		log.Warningf("spn/docks: %T %s: %s", t, t.FmtID(), err)
 	}
 
 	// Call the terminal's abandon function.
@@ -286,7 +289,9 @@ func (crane *Crane) decrypt(shipment *container.Container) (decrypted *container
 func (crane *Crane) unloader(ctx context.Context) error {
 	for {
 		// Get first couple bytes to get the packet length.
-		lenBuf := make([]byte, 5)
+		// 3 bytes are enough enough to encode 2097151.
+		// On the other hand, packets could theoretically be only 3 bytes small.
+		lenBuf := make([]byte, 3)
 		err := crane.unloadUntilFull(lenBuf)
 		if err != nil {
 			crane.Stop(terminal.ErrInternalError.With("failed to unload: %w", err))
@@ -575,30 +580,36 @@ handling:
 			for shipment.HoldsData() {
 				if partialShipment != nil {
 					// Continue processing partial segment.
-
 					// Append new shipment to previous partial segment.
 					partialShipment.AppendContainer(shipment)
 					shipment, partialShipment = partialShipment, nil
+				}
 
-				} else {
-					// Handle new segment.
-
-					// Get next segment length.
+				// Get next segment length.
+				if segmentLength == 0 {
 					segmentLength, err = shipment.GetNextN32()
 					if err != nil {
+						if errors.Is(err, varint.ErrBufTooSmall) {
+							// Continue handling when there is not yet enough data.
+							partialShipment = shipment
+							segmentLength = 0
+							continue handling
+						}
+
 						crane.Stop(terminal.ErrMalformedData.With("failed to get segment length: %w", err))
 						return nil
 					}
+
 					if segmentLength == 0 {
 						// Remainder is padding.
 						continue handling
 					}
-				}
 
-				// Check if the segment is within the boundary.
-				if segmentLength > maxSegmentLength {
-					crane.Stop(terminal.ErrMalformedData.With("received oversized segment with length %d", segmentLength))
-					return nil
+					// Check if the segment is within the boundary.
+					if segmentLength > maxSegmentLength {
+						crane.Stop(terminal.ErrMalformedData.With("received oversized segment with length %d", segmentLength))
+						return nil
+					}
 				}
 
 				// Check if we have enough data for the segment.
@@ -613,6 +624,7 @@ handling:
 					crane.Stop(terminal.ErrMalformedData.With("failed to get segment: %w", err))
 					return nil
 				}
+				segmentLength = 0
 
 				// Get terminal ID and message type of segment.
 				terminalID, terminalMsgType, err := terminal.ParseIDType(segment)
@@ -724,31 +736,44 @@ func (crane *Crane) loader(ctx context.Context) (err error) {
 			}
 		}
 
-		// Check if we are over the target load size and split the shipment.
-		if shipment.Length() > crane.targetLoadSize {
-			partialShipment, err = shipment.GetAsContainer(crane.targetLoadSize)
+	sendingShipment:
+		for {
+			// Check if we are over the target load size and split the shipment.
+			if shipment.Length() > crane.targetLoadSize {
+				partialShipment, err = shipment.GetAsContainer(crane.targetLoadSize)
+				if err != nil {
+					crane.Stop(terminal.ErrInternalError.With("failed to split segment: %w", err))
+					return nil
+				}
+				shipment, partialShipment = partialShipment, shipment
+			}
+
+			// Load shipment.
+			err = crane.load(shipment)
 			if err != nil {
-				crane.Stop(terminal.ErrInternalError.With("failed to split segment: %w", err))
+				crane.Stop(terminal.ErrShipSunk.With("failed to load shipment: %w", err))
 				return nil
 			}
-			shipment, partialShipment = partialShipment, shipment
-		}
 
-		// Load shipment.
-		err = crane.load(shipment)
-		if err != nil {
-			crane.Stop(terminal.ErrShipSunk.With("failed to load shipment: %w", err))
-			return nil
-		}
+			// Reset loading timer.
+			loadingTimer = nil
 
-		// Reset loading timer.
-		loadingTimer = nil
+			// Continue loading with partial shipment, or a new one.
+			if partialShipment != nil {
+				// Continue loading with a partial previous shipment.
+				shipment, partialShipment = partialShipment, nil
 
-		// Continue loading with partial shipment, or a new one.
-		if partialShipment != nil {
-			shipment, partialShipment = partialShipment, nil
-		} else {
-			shipment = container.New()
+				// If shipment is not big enough to send immediately, wait for more data.
+				if shipment.Length() < crane.targetLoadSize {
+					loadingTimer = time.NewTimer(loadingMaxWaitDuration)
+					break sendingShipment
+				}
+
+			} else {
+				// Continue loading with new shipment.
+				shipment = container.New()
+				break sendingShipment
+			}
 		}
 	}
 

@@ -114,7 +114,7 @@ func (e *Error) Pack() []byte {
 func ParseExternalError(id []byte) (*Error, error) {
 	// Return nil for an empty error.
 	if len(id) == 0 {
-		return nil, nil
+		return ErrStopping.AsExternal(), nil
 	}
 
 	parsedID, _, err := varint.Unpack8(id)

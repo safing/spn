@@ -77,8 +77,8 @@ func (d *TestShip) Reverse() *TestShip {
 // Load loads data into the ship - ie. sends the data via the connection.
 // Returns ErrSunk if the ship has already sunk earlier.
 func (ship *TestShip) Load(data []byte) error {
-	// log.Debugf("ship: loading %+v (%s)", data, string(data))
-	// spew.Dump(data)
+	// Debugging:
+	// log.Debugf("ship: loading %s", spew.Sdump(data))
 
 	// Check if ship is alive.
 	if ship.sinking.IsSet() {
@@ -90,8 +90,6 @@ func (ship *TestShip) Load(data []byte) error {
 		ship.Sink()
 		return nil
 	}
-
-	// log.Debugf("ships: testship loaded shipment with size of %d", len(data))
 
 	// Send all given data.
 	ship.forward <- data
@@ -106,8 +104,6 @@ func (ship *TestShip) Load(data []byte) error {
 func (ship *TestShip) UnloadTo(buf []byte) (n int, err error) {
 	// Process unload tmp data, if there is any.
 	if ship.unloadTmp != nil {
-		// log.Debugf("ship: unloading unloadTmp %+v", ship.unloadTmp)
-
 		// Copy as much data as possible.
 		copy(buf, ship.unloadTmp)
 
@@ -125,7 +121,6 @@ func (ship *TestShip) UnloadTo(buf []byte) (n int, err error) {
 
 	// Receive data.
 	data := <-ship.backward
-	// log.Debugf("ship: unloading %+v", data)
 	if len(data) == 0 {
 		return 0, ErrSunk
 	}

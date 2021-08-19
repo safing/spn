@@ -1,19 +1,15 @@
 package docks
 
 import (
-	"bytes"
 	"errors"
-	"fmt"
 
 	"github.com/safing/portbase/container"
-	"github.com/safing/portbase/log"
-	"github.com/safing/portbase/rng"
 	"github.com/safing/spn/hub"
 
 	"github.com/tevino/abool"
 )
 
-type craneHookFunc func(controller *CraneController, connectedHub *hub.Hub, c *container.Container) error
+type craneHookFunc func(controller *CraneControllerTerminal, connectedHub *hub.Hub, c *container.Container) error
 
 var (
 	ErrInternalError = errors.New("internal error")
@@ -36,29 +32,30 @@ func RegisterCraneHooks(announcement, status, publish, discontinue craneHookFunc
 	}
 }
 
-func (cControl *CraneController) SendHubAnnouncement(msg []byte) {
-	cControl.send <- container.NewContainer([]byte{CraneMsgTypeHubAnnouncement}, msg)
+/*
+func (t *CraneControllerTerminal) SendHubAnnouncement(msg []byte) {
+	t.send <- container.NewContainer([]byte{CraneMsgTypeHubAnnouncement}, msg)
 }
 
-func (cControl *CraneController) handleHubAnnouncement(c *container.Container) error {
+func (cControl *CraneControllerTerminal) handleHubAnnouncement(c *container.Container) error {
 	if hooksActive.IsSet() {
 		return hubAnnouncementHook(cControl, cControl.Crane.ConnectedHub, c)
 	}
 	return ErrInternalError
 }
 
-func (cControl *CraneController) SendHubStatus(msg []byte) {
+func (cControl *CraneControllerTerminal) SendHubStatus(msg []byte) {
 	cControl.send <- container.NewContainer([]byte{CraneMsgTypeHubStatus}, msg)
 }
 
-func (cControl *CraneController) handleHubStatus(c *container.Container) error {
+func (cControl *CraneControllerTerminal) handleHubStatus(c *container.Container) error {
 	if hooksActive.IsSet() {
 		return hubStatusHook(cControl, cControl.Crane.ConnectedHub, c)
 	}
 	return ErrInternalError
 }
 
-func (cControl *CraneController) PublishConnection() error {
+func (cControl *CraneControllerTerminal) PublishConnection() error {
 	// 1) [client] request publishing of channel
 
 	if !cControl.Crane.ship.IsMine() {
@@ -83,7 +80,7 @@ func (cControl *CraneController) PublishConnection() error {
 	return nil
 }
 
-func (cControl *CraneController) handlePublishConnection(c *container.Container) error {
+func (cControl *CraneControllerTerminal) handlePublishConnection(c *container.Container) error {
 
 	client := cControl.Crane.ship.IsMine()
 
@@ -204,3 +201,4 @@ func (cControl *CraneController) handlePublishConnection(c *container.Container)
 
 	return nil
 }
+*/

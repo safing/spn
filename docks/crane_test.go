@@ -92,11 +92,13 @@ func testCraneWithCounter(t *testing.T, testID string, encrypting bool, loadSize
 	t.Logf("crane2 controller: %+v", crane2.Controller)
 
 	// Start counters for testing.
-	op1, tErr := terminal.NewCounterOp(crane1.Controller, countTo, 10*time.Microsecond)
+	op1, tErr := terminal.NewCounterOp(crane1.Controller, terminal.CounterOpts{
+		ClientCountTo: countTo,
+		ServerCountTo: countTo,
+	})
 	if tErr != nil {
 		t.Fatalf("crane test %s failed to run counter op: %s", testID, tErr)
 	}
-	module.StartWorker(testID+" counter op1", op1.CounterWorker)
 
 	// Wait for completion.
 	op1.Wait()
