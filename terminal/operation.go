@@ -125,6 +125,9 @@ type OpTerminal interface {
 	// OpSend sends data.
 	OpSend(op Operation, data *container.Container) *Error
 
+	// OpSendWithTimeout sends data, but fails after the given timeout passed.
+	OpSendWithTimeout(op Operation, data *container.Container, timeout time.Duration) *Error
+
 	// OpEnd sends the end signal and calls End(ErrNil) on the Operation.
 	// The Operation should cease operation after calling this function.
 	OpEnd(op Operation, err *Error)
@@ -152,12 +155,17 @@ func (t *TerminalBase) OpInit(op Operation, data *container.Container) *Error {
 		data.PrependAsBlock([]byte(op.Type()))
 	}
 
-	return t.addToOpMsgSendBuffer(op.ID(), MsgTypeInit, data, false)
+	return t.addToOpMsgSendBuffer(op.ID(), MsgTypeInit, data, 10*time.Second)
 }
 
 // OpSend sends data.
 func (t *TerminalBase) OpSend(op Operation, data *container.Container) *Error {
-	return t.addToOpMsgSendBuffer(op.ID(), MsgTypeData, data, false)
+	return t.addToOpMsgSendBuffer(op.ID(), MsgTypeData, data, 0)
+}
+
+// OpSendWithTimeout sends data, but fails after the given timeout passed.
+func (t *TerminalBase) OpSendWithTimeout(op Operation, data *container.Container, timeout time.Duration) *Error {
+	return t.addToOpMsgSendBuffer(op.ID(), MsgTypeData, data, timeout)
 }
 
 // OpEnd sends the end signal with an optional error and then deletes the
@@ -167,7 +175,7 @@ func (t *TerminalBase) OpSend(op Operation, data *container.Container) *Error {
 func (t *TerminalBase) OpEnd(op Operation, err *Error) {
 	// Send error to the connected Operation, if the error is internal.
 	if !err.IsExternal() {
-		t.addToOpMsgSendBuffer(op.ID(), MsgTypeStop, container.New(err.Pack()), true)
+		t.addToOpMsgSendBuffer(op.ID(), MsgTypeStop, container.New(err.Pack()), 0)
 	}
 
 	// Log reason the Operation is ending. Override stopping error with nil.

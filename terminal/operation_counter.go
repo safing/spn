@@ -2,6 +2,7 @@ package terminal
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -34,6 +35,7 @@ type CounterOp struct {
 type CounterOpts struct {
 	ClientCountTo uint64
 	ServerCountTo uint64
+	Flush         bool
 	Wait          time.Duration
 
 	suppressWorker bool
@@ -154,8 +156,12 @@ func (op *CounterOp) Deliver(data *container.Container) *Error {
 
 	// Count and compare.
 	counter := op.getCounter(false, true)
+
 	// Debugging:
-	// log.Errorf("terminal: counter %s>%d recvd, now at %d", op.t.FmtID(), op.id, counter)
+	if counter < 1000 || counter%100 == 0 {
+		log.Errorf("terminal: counter %s>%d recvd, now at %d", op.t.FmtID(), op.id, counter)
+	}
+
 	if counter != nextStep {
 		log.Warningf(
 			"terminal: integrity of counter op violated: received %d, expected %d",
@@ -200,7 +206,10 @@ func (op *CounterOp) SendCounter() *Error {
 	counter := op.getCounter(true, true)
 
 	// Debugging:
-	// defer log.Errorf("terminal: counter %s>%d sent, now at %d", op.t.FmtID(), op.id, counter)
+	if counter < 1000 || counter%100 == 0 {
+		defer log.Errorf("terminal: counter %s>%d sent, now at %d", op.t.FmtID(), op.id, counter)
+	}
+
 	return op.t.OpSend(op, container.New(varint.Pack64(counter)))
 }
 
@@ -208,7 +217,20 @@ func (op *CounterOp) Wait() {
 	op.wg.Wait()
 }
 
+type flusher interface {
+	Flush()
+}
+
 func (op *CounterOp) CounterWorker(ctx context.Context) error {
+	var flushingTerminal flusher
+	if op.opts.Flush {
+		var ok bool
+		flushingTerminal, ok = op.t.(flusher)
+		if !ok {
+			return errors.New("terminal cannot flush")
+		}
+	}
+
 	for {
 		// Send counter msg.
 		err := op.SendCounter()
@@ -224,6 +246,11 @@ func (op *CounterOp) CounterWorker(ctx context.Context) error {
 			op.Error = err
 			op.t.OpEnd(op, ErrInternalError.With(err.Error()))
 			return nil
+		}
+
+		// Maybe flush message.
+		if op.opts.Flush {
+			flushingTerminal.Flush()
 		}
 
 		// Check if we are done with sending.

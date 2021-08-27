@@ -65,9 +65,17 @@ type TerminalBase struct {
 	// flush is used to send a finish function to the handler, which will write
 	// all pending messages and then call the received function.
 	flush chan func()
+	// idleTicker ticks for increasing and checking the idle counter.
+	idleTicker *time.Ticker
+	// idleCounter counts the ticks the terminal has been idle.
+	idleCounter *uint32
 
 	// jession is the jess session used for encryption.
 	jession *jess.Session
+	// jessionLock locks jession.
+	jessionLock sync.Mutex
+	// encryptionReady is set when the encryption is ready for sending messages.
+	encryptionReady chan struct{}
 	// identity is the identity used by a remote Terminal.
 	identity *cabin.Identity
 
@@ -96,15 +104,18 @@ func createTerminalBase(
 	initMsg *TerminalOpts,
 ) *TerminalBase {
 	t := &TerminalBase{
-		id:           id,
-		parentID:     parentID,
-		opMsgQueue:   make(chan *container.Container),
-		waitForFlush: abool.New(),
-		flush:        make(chan func()),
-		operations:   make(map[uint32]Operation),
-		nextOpID:     new(uint32),
-		opts:         initMsg,
-		Abandoned:    abool.New(),
+		id:              id,
+		parentID:        parentID,
+		opMsgQueue:      make(chan *container.Container),
+		waitForFlush:    abool.New(),
+		flush:           make(chan func()),
+		idleTicker:      time.NewTicker(1 * time.Minute),
+		idleCounter:     new(uint32),
+		encryptionReady: make(chan struct{}),
+		operations:      make(map[uint32]Operation),
+		nextOpID:        new(uint32),
+		opts:            initMsg,
+		Abandoned:       abool.New(),
 	}
 	if remote {
 		atomic.AddUint32(t.nextOpID, 4)
@@ -147,10 +158,64 @@ const (
 	sendThresholdMaxWait = 20 * time.Millisecond
 )
 
-// Handler handles all Terminal internals and must be started as a worker in
-// the module where the Terminal is used.
+// Handler receives and handles messages and must be started as a worker in the
+// module where the Terminal is used.
 func (t *TerminalBase) Handler(_ context.Context) error {
 	defer t.ext.Abandon(ErrInternalError.With("handler died"))
+
+	for {
+		// Register activity.
+		atomic.StoreUint32(t.idleCounter, 0)
+
+		select {
+		case <-t.ctx.Done():
+			t.ext.Abandon(nil)
+			return nil // Controlled worker exit.
+
+		case <-t.idleTicker.C:
+			// If nothing happens for a while, end the session.
+			if atomic.AddUint32(t.idleCounter, 1) > 5 {
+				t.ext.Abandon(ErrTimeout.With("no activity"))
+				return nil // Controlled worker exit.
+			}
+
+		case c := <-t.ext.Receive():
+			if c.HoldsData() {
+				err := t.handleReceive(c)
+				if err != nil {
+					if !errors.Is(err, ErrStopping) {
+						t.ext.Abandon(err.Wrap("failed to handle"))
+					}
+					return nil // Controlled worker exit.
+				}
+				switch err {
+				case nil:
+					// Continue.
+				case ErrStopping:
+				default:
+					return nil // Controlled worker exit.
+				}
+			}
+		}
+	}
+}
+
+// Sender handles sending messages and must be started as a worker in the
+// module where the Terminal is used.
+func (t *TerminalBase) Sender(_ context.Context) error {
+	// Don't send messages, if the encryption is net yet set up.
+	// The server encryption session is only initialized with the first
+	// operative message, not on Terminal creation.
+	if t.opts.Encrypt {
+		select {
+		case <-t.ctx.Done():
+			t.ext.Abandon(nil)
+			return nil // Controlled worker exit.
+		case <-t.encryptionReady:
+		}
+	}
+
+	defer t.ext.Abandon(ErrInternalError.With("sender died"))
 
 	msgBuffer := container.New()
 	var msgBufferLen int
@@ -163,12 +228,6 @@ func (t *TerminalBase) Handler(_ context.Context) error {
 	recvOpMsgs := func() <-chan *container.Container {
 		// Don't handle more messages, if the buffer is full.
 		if msgBufferLimitReached {
-			return nil
-		}
-		// Don't handle messages, if the encryption is net yet set up.
-		// The server encryption session is only initialized with the first
-		// operative message, not on Terminal creation.
-		if t.opts.Encrypt && t.jession == nil {
 			return nil
 		}
 		return t.opMsgQueue
@@ -191,33 +250,19 @@ func (t *TerminalBase) Handler(_ context.Context) error {
 	}
 
 	for {
+		// Register activity.
+		atomic.StoreUint32(t.idleCounter, 0)
+
 		select {
 		case <-t.ctx.Done():
 			t.ext.Abandon(nil)
 			return nil // Controlled worker exit.
 
-		case <-time.After(DefaultTerminalTimeout):
+		case <-t.idleTicker.C:
 			// If nothing happens for a while, end the session.
-			log.Debugf("spn/terminal: %s timed out: shutting down", t.FmtID())
-			t.ext.Abandon(nil)
-			return nil // Controlled worker exit.
-
-		case c := <-t.ext.Receive():
-			if c.HoldsData() {
-				err := t.handleReceive(c)
-				if err != nil {
-					if !errors.Is(err, ErrStopping) {
-						t.ext.Abandon(err.Wrap("failed to handle"))
-					}
-					return nil // Controlled worker exit.
-				}
-				switch err {
-				case nil:
-					// Continue.
-				case ErrStopping:
-				default:
-					return nil // Controlled worker exit.
-				}
+			if atomic.AddUint32(t.idleCounter, 1) > 5 {
+				t.ext.Abandon(ErrTimeout.With("no activity"))
+				return nil // Controlled worker exit.
 			}
 
 		case c := <-recvOpMsgs():
@@ -310,6 +355,67 @@ func (t *TerminalBase) Flush() {
 	<-wait
 }
 
+func (t *TerminalBase) encrypt(c *container.Container) (*container.Container, *Error) {
+	if !t.opts.Encrypt {
+		return c, nil
+	}
+
+	t.jessionLock.Lock()
+	defer t.jessionLock.Unlock()
+
+	letter, err := t.jession.Close(c.CompileData())
+	if err != nil {
+		return nil, ErrIntegrity.With("failed to encrypt: %w", err)
+	}
+
+	encryptedData, err := letter.ToWire()
+	if err != nil {
+		return nil, ErrInternalError.With("failed to pack letter: %w", err)
+	}
+
+	return encryptedData, nil
+}
+
+func (t *TerminalBase) decrypt(c *container.Container) (*container.Container, *Error) {
+	if !t.opts.Encrypt {
+		return c, nil
+	}
+
+	t.jessionLock.Lock()
+	defer t.jessionLock.Unlock()
+
+	letter, err := jess.LetterFromWire(c)
+	if err != nil {
+		return nil, ErrMalformedData.With("failed to parse letter: %w", err)
+	}
+
+	// Setup encryption if not yet done.
+	if t.jession == nil {
+		if t.identity == nil {
+			return nil, ErrInternalError.With("missing identity for setting up incoming encryption")
+		}
+
+		// Create jess session.
+		t.jession, err = letter.WireCorrespondence(t.identity)
+		if err != nil {
+			return nil, ErrIntegrity.With("failed to initialize incoming encryption: %w", err)
+		}
+
+		// Don't need that anymore.
+		t.identity = nil
+
+		// Encryption is ready for sending.
+		close(t.encryptionReady)
+	}
+
+	decryptedData, err := t.jession.Open(letter)
+	if err != nil {
+		return nil, ErrIntegrity.With("failed to decrypt: %w", err)
+	}
+
+	return container.New(decryptedData), nil
+}
+
 func (t *TerminalBase) handleReceive(c *container.Container) *Error {
 	// Debugging:
 	// log.Errorf("terminal %s handling tmsg: %s", t.FmtID(), spew.Sdump(c.CompileData()))
@@ -321,34 +427,10 @@ func (t *TerminalBase) handleReceive(c *container.Container) *Error {
 	}
 
 	// Decrypt if enabled.
-	if t.opts.Encrypt {
-		letter, err := jess.LetterFromWire(c)
-		if err != nil {
-			return ErrMalformedData.With("failed to parse letter: %w", err)
-		}
-
-		// Setup encryption if not yet done.
-		if t.jession == nil {
-			if t.identity == nil {
-				return ErrInternalError.With("missing identity for setting up incoming encryption")
-			}
-
-			// Create jess session.
-			t.jession, err = letter.WireCorrespondence(t.identity)
-			if err != nil {
-				return ErrIntegrity.With("failed to initialize incoming encryption: %w", err)
-			}
-
-			// Don't need that anymore.
-			t.identity = nil
-		}
-
-		decryptedData, err := t.jession.Open(letter)
-		if err != nil {
-			return ErrIntegrity.With("failed to decrypt: %w", err)
-		}
-
-		c = container.New(decryptedData)
+	var tErr *Error
+	c, tErr = t.decrypt(c)
+	if tErr != nil {
+		return tErr
 	}
 
 	// Handle operation messages.
@@ -460,16 +542,10 @@ func (t *TerminalBase) sendOpMsgs(c *container.Container) *Error {
 	}
 
 	// Encrypt operative data.
-	if t.opts.Encrypt {
-		letter, err := t.jession.Close(c.CompileData())
-		if err != nil {
-			return ErrIntegrity.With("failed to encrypt: %w", err)
-		}
-
-		c, err = letter.ToWire()
-		if err != nil {
-			return ErrInternalError.With("failed to pack letter: %w", err)
-		}
+	var tErr *Error
+	c, tErr = t.encrypt(c)
+	if tErr != nil {
+		return tErr
 	}
 
 	// Send data.
@@ -480,36 +556,23 @@ func (t *TerminalBase) addToOpMsgSendBuffer(
 	opID uint32,
 	msgType MsgType,
 	data *container.Container,
-	async bool,
+	timeout time.Duration,
 ) *Error {
 	// Add header.
 	MakeMsg(data, opID, msgType)
 
-	// Submit message to buffer and fall back to async.
-	select {
-	case t.opMsgQueue <- data:
-		return nil
-	case <-t.ctx.Done():
-		return ErrStopping
-	default:
-		if async {
-			// Operative Message Queue is full, delay sending.
-			// TODO: Find better way of handling this.
-			module.StartWorker("delayed operative message queuing", func(ctx context.Context) error {
-				select {
-				case t.opMsgQueue <- data:
-				case <-t.ctx.Done():
-				}
-				return nil
-			})
-			return nil
-		}
+	// Prepare submit timeout.
+	var submitTimeout <-chan time.Time
+	if timeout > 0 {
+		submitTimeout = time.After(timeout)
 	}
 
-	// Wait forever to submit message to buffer.
+	// Submit message to buffer, if space is available.
 	select {
 	case t.opMsgQueue <- data:
 		return nil
+	case <-submitTimeout:
+		return ErrTimeout.With("op msg send timeout")
 	case <-t.ctx.Done():
 		return ErrStopping
 	}

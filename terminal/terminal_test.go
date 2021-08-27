@@ -77,7 +77,8 @@ func initTestTerminal(
 	t.SetTerminalExtension(ct)
 
 	// Start workers.
-	module.StartWorker("test terminal", ct.Handler)
+	module.StartWorker("test terminal handler", ct.Handler)
+	module.StartWorker("test terminal sender", ct.Sender)
 	module.StartWorker("test terminal flow queue", ct.FlowHandler)
 
 	return ct
@@ -136,65 +137,92 @@ func TestTerminals(t *testing.T) {
 	// Start testing with counters.
 
 	testTerminalWithCounters(t, term1, term2, &testWithCounterOpts{
-		testName:        "oneway-flushing-waiting",
-		oneWay:          true,
+		testName:        "onlyup-flushing-waiting",
 		flush:           true,
-		countTo:         countToQueueSize * 2,
+		serverCountTo:   countToQueueSize * 2,
 		waitBetweenMsgs: sendThresholdMaxWait * 2,
 	})
 
 	testTerminalWithCounters(t, term1, term2, &testWithCounterOpts{
-		testName:        "oneway-waiting",
-		oneWay:          true,
-		countTo:         10,
+		testName:        "onlyup-waiting",
+		serverCountTo:   10,
 		waitBetweenMsgs: sendThresholdMaxWait * 2,
 	})
 
 	testTerminalWithCounters(t, term1, term2, &testWithCounterOpts{
-		testName:        "oneway-flushing",
-		oneWay:          true,
+		testName:        "onlyup-flushing",
 		flush:           true,
-		countTo:         countToQueueSize * 2,
+		serverCountTo:   countToQueueSize * 2,
 		waitBetweenMsgs: time.Millisecond,
 	})
 
 	testTerminalWithCounters(t, term1, term2, &testWithCounterOpts{
-		testName:        "oneway",
-		oneWay:          true,
-		countTo:         countToQueueSize * 2,
+		testName:        "onlyup",
+		serverCountTo:   countToQueueSize * 2,
+		waitBetweenMsgs: time.Millisecond,
+	})
+
+	testTerminalWithCounters(t, term1, term2, &testWithCounterOpts{
+		testName:        "onlydown-flushing-waiting",
+		flush:           true,
+		clientCountTo:   countToQueueSize * 2,
+		waitBetweenMsgs: sendThresholdMaxWait * 2,
+	})
+
+	testTerminalWithCounters(t, term1, term2, &testWithCounterOpts{
+		testName:        "onlydown-waiting",
+		clientCountTo:   10,
+		waitBetweenMsgs: sendThresholdMaxWait * 2,
+	})
+
+	testTerminalWithCounters(t, term1, term2, &testWithCounterOpts{
+		testName:        "onlydown-flushing",
+		flush:           true,
+		clientCountTo:   countToQueueSize * 2,
+		waitBetweenMsgs: time.Millisecond,
+	})
+
+	testTerminalWithCounters(t, term1, term2, &testWithCounterOpts{
+		testName:        "onlydown",
+		clientCountTo:   countToQueueSize * 2,
 		waitBetweenMsgs: time.Millisecond,
 	})
 
 	testTerminalWithCounters(t, term1, term2, &testWithCounterOpts{
 		testName:        "twoway-flushing-waiting",
 		flush:           true,
-		countTo:         countToQueueSize * 2,
+		clientCountTo:   countToQueueSize * 2,
+		serverCountTo:   countToQueueSize * 2,
 		waitBetweenMsgs: sendThresholdMaxWait * 2,
 	})
 
 	testTerminalWithCounters(t, term1, term2, &testWithCounterOpts{
 		testName:        "twoway-waiting",
 		flush:           true,
-		countTo:         10,
+		clientCountTo:   10,
+		serverCountTo:   10,
 		waitBetweenMsgs: sendThresholdMaxWait * 2,
 	})
 
 	testTerminalWithCounters(t, term1, term2, &testWithCounterOpts{
 		testName:        "twoway-flushing",
 		flush:           true,
-		countTo:         countToQueueSize * 2,
+		clientCountTo:   countToQueueSize * 2,
+		serverCountTo:   countToQueueSize * 2,
 		waitBetweenMsgs: time.Millisecond,
 	})
 
 	testTerminalWithCounters(t, term1, term2, &testWithCounterOpts{
 		testName:        "twoway",
-		countTo:         countToQueueSize * 2,
+		clientCountTo:   countToQueueSize * 2,
+		serverCountTo:   countToQueueSize * 2,
 		waitBetweenMsgs: time.Millisecond,
 	})
 
 	testTerminalWithCounters(t, term1, term2, &testWithCounterOpts{
 		testName:        "stresstest",
-		countTo:         1000000,
+		clientCountTo:   1000000,
+		serverCountTo:   1000000,
 		waitBetweenMsgs: time.Microsecond,
 	})
 }
@@ -244,7 +272,8 @@ func TestTerminalsWithEncryption(t *testing.T) {
 
 	testTerminalWithCounters(t, term1, term2, &testWithCounterOpts{
 		testName:        "twoway-encrypting",
-		countTo:         countToQueueSize * 20,
+		clientCountTo:   countToQueueSize * 20,
+		serverCountTo:   countToQueueSize * 20,
 		waitBetweenMsgs: time.Millisecond,
 	})
 }
@@ -275,15 +304,13 @@ func createTestForwardingFunc(t *testing.T, srcName, dstName string, deliverFunc
 
 type testWithCounterOpts struct {
 	testName        string
-	oneWay          bool
 	flush           bool
-	countTo         uint64
+	clientCountTo   uint64
+	serverCountTo   uint64
 	waitBetweenMsgs time.Duration
 }
 
 func testTerminalWithCounters(t *testing.T, term1, term2 *TestTerminal, opts *testWithCounterOpts) {
-	var counter1, counter2 *CounterOp
-
 	// Wait async for test to complete, print stack after timeout.
 	finished := make(chan struct{})
 	go func() {
@@ -300,87 +327,28 @@ func testTerminalWithCounters(t *testing.T, term1, term2 *TestTerminal, opts *te
 	defer t.Logf("stopping terminal counter test %s", opts.testName)
 
 	// Start counters.
-	counter1 = runTerminalCounter(t, term1, opts)
-	if !opts.oneWay {
-		counter2 = runTerminalCounter(t, term2, opts)
+	counter, tErr := NewCounterOp(term1, CounterOpts{
+		ClientCountTo: opts.clientCountTo,
+		ServerCountTo: opts.serverCountTo,
+		Flush:         opts.flush,
+		Wait:          opts.waitBetweenMsgs,
+	})
+	if tErr != nil {
+		t.Fatalf("terminal test %s failed to start counter: %s", opts.testName, tErr)
 	}
 
 	// Wait until counters are done.
-	counter1.Wait()
-	if !opts.oneWay {
-		counter2.Wait()
-	}
+	counter.Wait()
 	close(finished)
 
+	// Check for error.
+	if counter.Error != nil {
+		t.Fatalf("terminal test %s failed to count: %s", opts.testName, counter.Error)
+	}
+
 	// Log stats.
-	t.Logf("%s: counter1: counter=%d countTo=%d", opts.testName, counter1.ServerCounter, counter1.opts.ServerCountTo)
-	if counter1.ServerCounter < counter1.opts.ServerCountTo {
-		t.Errorf("%s: did not finish counting", opts.testName)
-	}
-	if !opts.oneWay {
-		t.Logf("%s: counter2: counter=%d countTo=%d", opts.testName, counter2.ServerCounter, counter2.opts.ServerCountTo)
-		if counter2.ServerCounter < counter2.opts.ServerCountTo {
-			t.Errorf("%s: did not finish counting", opts.testName)
-		}
-	}
 	printCTStats(t, opts.testName, "term1", term1)
 	printCTStats(t, opts.testName, "term2", term2)
-}
-
-func runTerminalCounter(t *testing.T, term *TestTerminal, opts *testWithCounterOpts) *CounterOp {
-	counter, err := NewCounterOp(term, CounterOpts{
-		ServerCountTo:  opts.countTo,
-		Wait:           opts.waitBetweenMsgs,
-		suppressWorker: true,
-	})
-	if err != nil {
-		t.Fatalf("%s: %s: failed to start counter op: %s", opts.testName, term.parentID, err)
-		return nil
-	}
-
-	go func() {
-		var round uint64
-		for {
-			// Send counter msg.
-			err = counter.SendCounter()
-			switch err {
-			case nil:
-				// All good.
-			case ErrStopping:
-				return // Done!
-			default:
-				// Something went wrong.
-				t.Errorf("%s: %s: failed to send counter: %s", opts.testName, term.parentID, err)
-				return
-			}
-
-			if opts.flush {
-				// Force sending message.
-				term.Flush()
-			}
-
-			if opts.waitBetweenMsgs > 0 {
-				// Wait shortly.
-				// In order for the test to succeed, this should be roughly the same as
-				// the sendThresholdMaxWait.
-				time.Sleep(opts.waitBetweenMsgs)
-			}
-
-			// Endless loop check
-			round++
-			if round > counter.opts.ServerCountTo*2 {
-				t.Errorf("%s: %s: looping more than it should", opts.testName, term.parentID)
-				return
-			}
-
-			// Log progress
-			if round%100000 == 0 {
-				t.Logf("%s: %s: sent %d messages", opts.testName, term.parentID, round)
-			}
-		}
-	}()
-
-	return counter
 }
 
 func printCTStats(t *testing.T, testName, name string, term *TestTerminal) {

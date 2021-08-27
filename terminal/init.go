@@ -45,7 +45,7 @@ func ParseTerminalOpts(c *container.Container) (*TerminalOpts, *Error) {
 		return nil, ErrMalformedData.With("failed to parse version: %w", err)
 	}
 	if version < minSupportedTerminalVersion || version > maxSupportedTerminalVersion {
-		return nil, ErrUnsupportedTerminalVersion.With("requested %d", version)
+		return nil, ErrUnsupportedVersion.With("requested terminal version %d", version)
 	}
 
 	// Parse init message.
@@ -114,6 +114,9 @@ func NewLocalBaseTerminal(
 			return nil, nil, ErrIntegrity.With("failed to initialize encryption: %w", err)
 		}
 		t.jession = jession
+
+		// Encryption is ready for sending.
+		close(t.encryptionReady)
 	}
 
 	// Pack init message.
