@@ -2,30 +2,60 @@ package cabin
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/safing/spn/hub"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestIdentity(t *testing.T) {
-	// create
+	// Register config options for public hub.
+	if err := prepPublicHubConfig(); err != nil {
+		t.Fatal(err)
+	}
 
+	// Create new identity.
+	identityTestKey := "core:spn/public/identity"
 	id, err := CreateIdentity(context.Background(), hub.ScopePublic)
 	if err != nil {
 		t.Fatal(err)
 	}
+	id.SetKey(identityTestKey)
 
-	// maintain
+	// Check values
+	// Identity
+	assert.NotEmpty(t, id.ID, "id.ID must be set")
+	assert.NotEmpty(t, id.Scope, "id.Scope must be set")
+	assert.NotNil(t, id.Signet, "id.Signet must be set")
+	assert.NotNil(t, id.infoExportCache, "id.infoExportCache must be set")
+	assert.NotNil(t, id.statusExportCache, "id.statusExportCache must be set")
+	// Hub
+	assert.NotEmpty(t, id.Hub.ID, "hub.ID must be set")
+	assert.NotEmpty(t, id.Hub.Scope, "hub.Scope must be set")
+	assert.NotZero(t, id.Hub.FirstSeen, "hub.FirstSeen must be set")
+	// Info
+	assert.NotEmpty(t, id.Hub.Info.ID, "info.ID must be set")
+	assert.NotEqual(t, 0, id.Hub.Info.Timestamp, "info.Timestamp must be set")
+	assert.NotEqual(t, "", id.Hub.Info.Name, "info.Name must be set (to hostname)")
+	// Status
+	assert.NotEqual(t, 0, id.Hub.Status.Timestamp, "status.Timestamp must be set")
+	assert.NotEmpty(t, id.Hub.Status.Keys, "status.Keys must be set")
 
-	changed, err := id.MaintainAnnouncement()
+	fmt.Printf("id: %+v\n", id)
+	fmt.Printf("id.hub: %+v\n", id.Hub)
+	fmt.Printf("id.Hub.Info: %+v\n", id.Hub.Info)
+	fmt.Printf("id.Hub.Status: %+v\n", id.Hub.Status)
+
+	// Maintenance is run in creation, so nothing should change now.
+	changed, err := id.MaintainAnnouncement(false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if changed {
 		t.Error("unexpected change of announcement")
 	}
-
-	changed, err = id.MaintainStatus(nil)
+	changed, err = id.MaintainStatus(nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,6 +63,7 @@ func TestIdentity(t *testing.T) {
 		t.Error("unexpected change of status")
 	}
 
+	// Change lanes.
 	lanes := []*hub.Lane{
 		&hub.Lane{
 			ID:       "A",
@@ -50,7 +81,7 @@ func TestIdentity(t *testing.T) {
 			Latency:  6,
 		},
 	}
-	changed, err = id.MaintainStatus(lanes)
+	changed, err = id.MaintainStatus(lanes, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +89,8 @@ func TestIdentity(t *testing.T) {
 		t.Error("status should have changed")
 	}
 
-	changed, err = id.MaintainStatus(lanes)
+	// Change nothing.
+	changed, err = id.MaintainStatus(lanes, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,22 +98,29 @@ func TestIdentity(t *testing.T) {
 		t.Error("unexpected change of status")
 	}
 
-	// export
-
+	// Exporting
 	_, err = id.ExportAnnouncement()
 	if err != nil {
 		t.Fatal(err)
 	}
-
 	_, err = id.ExportStatus()
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// check if identity was registered in the hub DB
-
-	_, err = hub.GetHub(id.Scope, id.ID)
+	// Save to and load from database.
+	err = id.Save()
 	if err != nil {
 		t.Fatal(err)
 	}
+	id2, changed, err := LoadIdentity(identityTestKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changed {
+		t.Error("unexpected change")
+	}
+
+	// Check if they match
+	assert.Equal(t, id, id2, "identities should be equal")
 }

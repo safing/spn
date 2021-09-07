@@ -1,0 +1,49 @@
+version: "2.4"
+
+networks:
+  default:
+    ipam:
+      driver: default
+      config:
+        - subnet: 6.0.0.0/24
+
+services:
+  hub1:
+    container_name: "hub1"
+    image: toolset.safing.network/dev
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["/opt/hub1 --data /opt/data --log trace --bootstrap-file /opt/shared/bootstrap.dsd"]
+    # command: ["ifconfig"]
+    volumes:
+      - ${SPN_TEST_BIN}:/opt/hub1:ro
+      - ${SPN_TEST_DATA_DIR}/hub1:/opt/data
+      - ${SPN_TEST_SHARED_DATA_DIR}:/opt/shared
+    networks:
+      default:
+        ipv4_address: 6.0.0.11
+
+  hub2:
+    container_name: "hub2"
+    image: toolset.safing.network/dev
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["echo waiting for 6s; sleep 6; /opt/hub2 --data /opt/data --log trace --bootstrap-file /opt/shared/bootstrap.dsd"]
+    volumes:
+      - ${SPN_TEST_BIN}:/opt/hub2:ro
+      - ${SPN_TEST_DATA_DIR}/hub2:/opt/data
+      - ${SPN_TEST_SHARED_DATA_DIR}:/opt/shared
+    networks:
+      default:
+        ipv4_address: 6.0.0.12
+
+  hub3:
+    container_name: "hub3"
+    image: toolset.safing.network/dev
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["echo waiting for 7s; sleep 7; /opt/hub3 --data /opt/data --log trace --bootstrap-file /opt/shared/bootstrap.dsd"]
+    volumes:
+      - ${SPN_TEST_BIN}:/opt/hub3:ro
+      - ${SPN_TEST_DATA_DIR}/hub3:/opt/data
+      - ${SPN_TEST_SHARED_DATA_DIR}:/opt/shared
+    networks:
+      default:
+        ipv4_address: 6.0.0.13

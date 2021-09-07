@@ -2,7 +2,6 @@ package terminal
 
 import (
 	"context"
-	"errors"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -181,11 +180,10 @@ func (t *TerminalBase) OpEnd(op Operation, err *Error) {
 	// Log reason the Operation is ending. Override stopping error with nil.
 	if err == nil {
 		log.Debugf("terminal: operation %s %s ended", op.Type(), fmtOperationID(t.parentID, t.id, op.ID()))
-	} else if errors.Is(err, ErrStopping) {
-		err = nil
-		log.Debugf("terminal: operation %s %s was ended by peer", op.Type(), fmtOperationID(t.parentID, t.id, op.ID()))
+	} else if err.IsSpecial() {
+		log.Debugf("terminal: operation %s %s ended: %s", op.Type(), fmtOperationID(t.parentID, t.id, op.ID()), err)
 	} else {
-		log.Warningf("terminal: operation %s %s: %s", op.Type(), fmtOperationID(t.parentID, t.id, op.ID()), err)
+		log.Warningf("terminal: operation %s %s failed: %s", op.Type(), fmtOperationID(t.parentID, t.id, op.ID()), err)
 	}
 
 	// Call operation end function.

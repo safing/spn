@@ -33,8 +33,11 @@ type TerminalInterface interface {
 }
 
 type TerminalExtension interface {
+	OpTerminal
+
 	ReadyToSend() <-chan struct{}
 	Send(c *container.Container) *Error
+	SendRaw(c *container.Container) *Error
 	Receive() <-chan *container.Container
 	Abandon(err *Error)
 }
@@ -474,14 +477,18 @@ func (t *TerminalBase) handleOpMsg(data *container.Container) *Error {
 
 	switch msgType {
 	case MsgTypeInit:
-		t.runOperation(t.ctx, t, opID, data)
+		t.runOperation(t.ctx, t.ext, opID, data)
 
 	case MsgTypeData:
 		op, ok := t.GetActiveOp(opID)
 		if ok {
 			err := op.Deliver(data)
 			if err != nil {
-				t.OpEnd(op, err.With("data delivery failed"))
+				if err.IsSpecial() {
+					t.OpEnd(op, err)
+				} else {
+					t.OpEnd(op, err.Wrap("data delivery failed"))
+				}
 			}
 		} else {
 			// If an active op is not found, this is likely just left-overs from a
@@ -578,16 +585,27 @@ func (t *TerminalBase) addToOpMsgSendBuffer(
 	}
 }
 
-// StopAll ends all operations with the given paramaters and cancels the
-// workers. This function is usually not called directly, but at the end of an
+// Shutdown sends a stop message with the given error (if it is external) and
+// ends all operations with a nil error and finally cancels the terminal
+// context. This function is usually not called directly, but at the end of an
 // Abandon() implementation.
-func (t *TerminalBase) StopAll(err *Error) {
-	// End all operations.
-	for _, op := range t.allOps() {
-		op.End(err)
+func (t *TerminalBase) Shutdown(err *Error) {
+	if !err.IsExternal() {
+		stopMsg := container.New(err.Pack())
+		MakeMsg(container.New(err.Pack()), t.id, MsgTypeStop)
+
+		tErr := t.ext.SendRaw(stopMsg)
+		if tErr != nil {
+			log.Warningf("spn/terminal: terminal %s failed to send stop msg: %s", t.ext.FmtID(), tErr)
+		}
 	}
 
-	// Stop all connected workers.
+	// End all operations.
+	for _, op := range t.allOps() {
+		op.End(nil)
+	}
+
+	// Stop all other connected workers.
 	t.cancelCtx()
 }
 

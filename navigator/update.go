@@ -2,12 +2,11 @@ package navigator
 
 import (
 	"context"
-	"errors"
-	"path"
 	"time"
 
 	"github.com/safing/portbase/database"
 	"github.com/safing/portbase/database/query"
+	"github.com/safing/portbase/database/record"
 	"github.com/safing/portbase/log"
 	"github.com/safing/portbase/modules"
 	"github.com/safing/spn/hub"
@@ -40,7 +39,8 @@ func (m *Map) InitializeFromDatabase(databasePrefix string) {
 		}
 
 		hubCount += 1
-		m.updateHub(h)
+
+		m.updateHub(h, false, true)
 	}
 	switch {
 	case iter.Err() != nil:
@@ -52,6 +52,41 @@ func (m *Map) InitializeFromDatabase(databasePrefix string) {
 	}
 }
 
+type UpdateHook struct {
+	database.HookBase
+	m *Map
+}
+
+// UsesPrePut implements the Hook interface.
+func (hook *UpdateHook) UsesPrePut() bool {
+	return true
+}
+
+// PrePut implements the Hook interface.
+func (hook *UpdateHook) PrePut(r record.Record) (record.Record, error) {
+	// Ensure we have a hub and update it in navigation map.
+	h, err := hub.EnsureHub(r)
+	if err != nil {
+		log.Debugf("spn/navigator: record %s is not a hub", r.Key())
+	} else {
+		hook.m.updateHub(h, true, false)
+	}
+
+	return r, nil
+}
+
+// RegisterHubUpdateHook registers a database pre-put hook that updates all
+// Hubs saved at the given database prefix.
+func (m *Map) RegisterHubUpdateHook(databasePrefix string) error {
+	_, err := database.RegisterHook(
+		query.New(databasePrefix),
+		&UpdateHook{m: m},
+	)
+	// TODO: Save registered hook and cancel it when shutting down the module.
+	return err
+}
+
+/*
 func (m *Map) SubscriptionFeeder(databasePrefix string) func(context.Context) error {
 	return func(ctx context.Context) error {
 		sub, err := db.Subscribe(query.New(databasePrefix))
@@ -87,26 +122,30 @@ func (m *Map) SubscriptionFeeder(databasePrefix string) func(context.Context) er
 		}
 	}
 }
+*/
 
 // RemoveHub removes a Hub from the Map.
 func (m *Map) RemoveHub(id string) {
 	m.Lock()
-	defer m.Lock()
+	defer m.Unlock()
 
 	delete(m.All, id)
 }
 
 // UpdateHub updates a Hub on the Map.
 func (m *Map) UpdateHub(h *hub.Hub) {
-	m.Lock()
-	defer m.Lock()
-
-	m.updateHub(h)
+	m.updateHub(h, true, true)
 }
 
-func (m *Map) updateHub(h *hub.Hub) {
-	h.Lock()
-	defer h.Unlock()
+func (m *Map) updateHub(h *hub.Hub, lockMap, lockHub bool) {
+	if lockMap {
+		m.Lock()
+		defer m.Unlock()
+	}
+	if lockHub {
+		h.Lock()
+		defer h.Unlock()
+	}
 
 	// Hub requires both Info and Status to be added to the Map.
 	if h.Info == nil || h.Status == nil {
@@ -152,18 +191,17 @@ func (m *Map) updateHub(h *hub.Hub) {
 	}
 
 	// Update Lanes (connections to other Hubs) from the Status.
-laneLoop:
 	for _, lane := range pin.Hub.Status.Lanes {
 		// Check if this is a Lane to itself.
 		if lane.ID == pin.Hub.ID {
-			continue laneLoop
+			continue
 		}
 
 		// First, get the Lane peer.
 		peer, ok := m.All[lane.ID]
 		if !ok {
 			// We need to wait for peer to be added to the Map.
-			continue laneLoop
+			continue
 		}
 
 		m.updateHubLane(pin, lane, peer)

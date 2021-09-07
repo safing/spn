@@ -1,12 +1,15 @@
 package captain
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/safing/portbase/config"
 	"github.com/safing/portbase/modules"
 	"github.com/safing/portbase/modules/subsystems"
+	"github.com/safing/portbase/rng"
 	"github.com/safing/spn/conf"
+	"github.com/safing/spn/ships"
 
 	_ "github.com/safing/spn/sluice"
 )
@@ -49,6 +52,12 @@ func prep() error {
 }
 
 func start() error {
+	maskingBytes, err := rng.Bytes(16)
+	if err != nil {
+		return fmt.Errorf("failed to get random bytes for masking: %w", err)
+	}
+	ships.EnableMasking(maskingBytes)
+
 	// identity and piers
 	if conf.PublicHub() {
 		// load identity

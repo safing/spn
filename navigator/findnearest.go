@@ -1,8 +1,8 @@
 package navigator
 
 import (
+	"errors"
 	"fmt"
-	"net"
 	"sort"
 	"strings"
 
@@ -82,7 +82,7 @@ func (nb *nearbyPin) DstCost() int {
 }
 
 // FindNearestHubs searches for the nearest Hubs to the given IP address. The returned Hubs must not be modified in any way.
-func (m *Map) FindNearestHubs(ip net.IP, opts *Options, maxMatches int) ([]*hub.Hub, error) {
+func (m *Map) FindNearestHubs(locationV4, locationV6 *geoip.Location, opts *Options, matchFor HubType, maxMatches int) ([]*hub.Hub, error) {
 	m.RLock()
 	defer m.RUnlock()
 
@@ -91,7 +91,7 @@ func (m *Map) FindNearestHubs(ip net.IP, opts *Options, maxMatches int) ([]*hub.
 	}
 
 	// Find nearest Pins.
-	nearby, err := m.findNearestPins(ip, opts.Matcher(DestinationHub), maxMatches)
+	nearby, err := m.findNearestPins(locationV4, locationV6, opts.Matcher(matchFor), maxMatches)
 	if err != nil {
 		return nil, err
 	}
@@ -104,14 +104,9 @@ func (m *Map) FindNearestHubs(ip net.IP, opts *Options, maxMatches int) ([]*hub.
 	return hubs, nil
 }
 
-func (m *Map) findNearestPins(ip net.IP, matcher PinMatcher, maxMatches int) (*nearbyPins, error) {
-	// Save whether the given IP address is a IPv4 or IPv6 address.
-	v4 := ip.To4() != nil
-
-	// Get the location of the given IP address.
-	location, err := geoip.GetLocation(ip)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get IP location: %w", err)
+func (m *Map) findNearestPins(locationV4, locationV6 *geoip.Location, matcher PinMatcher, maxMatches int) (*nearbyPins, error) {
+	if locationV4 == nil && locationV6 == nil {
+		return nil, errors.New("no location provided")
 	}
 
 	// Create nearby Pins list.
@@ -123,21 +118,23 @@ func (m *Map) findNearestPins(ip net.IP, matcher PinMatcher, maxMatches int) (*n
 	for _, pin := range m.All {
 		// Check if the Pin matches the criteria.
 		if !matcher(pin) {
-			// fmt.Printf("skipping %s\n", pin)
+			// Debugging:
+			// log.Tracef("spn/navigator: skipping %s with states %s for finding nearest", pin, pin.State)
 			continue
 		}
 
-		// Calculate proximity to the given IP address.
-		var proximity int
-		if v4 {
-			proximity = pin.LocationV4.EstimateNetworkProximity(location)
-		} else {
-			proximity = pin.LocationV6.EstimateNetworkProximity(location)
+		// Calculate IPv4 proximity and add Pin to the list.
+		if locationV4 != nil && pin.LocationV4 != nil {
+			proximity := pin.LocationV4.EstimateNetworkProximity(locationV4)
+			nearby.add(pin, proximity)
 		}
 
-		// Add Pin to the list with the calculated proximity.
-		nearby.add(pin, proximity)
-		// fmt.Printf("added %s with %d proximity\n", pin, proximity)
+		// Calculate IPv6 proximity and add Pin to the list.
+		if locationV6 != nil && pin.LocationV6 != nil {
+			// Calculate proximity and add Pin to the list.
+			proximity := pin.LocationV6.EstimateNetworkProximity(locationV6)
+			nearby.add(pin, proximity)
+		}
 
 		// Clean the nearby list if have collected more than two times the max amount.
 		if len(nearby.pins) >= nearby.maxPins*2 {

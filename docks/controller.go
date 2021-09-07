@@ -68,7 +68,8 @@ func initCraneController(
 	t.GrantPermission(terminal.IsCraneController)
 
 	// Start workers.
-	module.StartWorker("crane controller terminal", cct.Handler)
+	module.StartWorker("crane controller terminal handler", cct.Handler)
+	module.StartWorker("crane controller terminal sender", cct.Sender)
 	module.StartWorker("crane controller terminal flow queue", cct.FlowHandler)
 
 	return cct
@@ -80,8 +81,8 @@ func (controller *CraneControllerTerminal) Deliver(c *container.Container) *term
 
 func (controller *CraneControllerTerminal) Abandon(err *terminal.Error) {
 	if controller.Abandoned.SetToIf(false, true) {
-		// End all operations and stop all connected workers.
-		controller.StopAll(nil)
+		// Send stop msg and end all operations.
+		controller.Shutdown(err)
 
 		// Abandon terminal.
 		controller.Crane.AbandonTerminal(0, err)

@@ -1,6 +1,7 @@
 package navigator
 
 import (
+	"strings"
 	"time"
 )
 
@@ -16,7 +17,7 @@ const (
 
 	// StateInvalid signifies that there was an error while processing or
 	// handling this Hub.
-	StateInvalid PinState = 1 << iota // 1 << 0 => 00000001 => 0x01
+	StateInvalid PinState = 1 << (iota - 1) // 1 << 0 => 00000001 => 0x01
 
 	// StateSuperseded signifies that this Hub was superseded by another. This is
 	// the case if any other Hub with a matching IP was verified after this one.
@@ -61,6 +62,13 @@ const (
 	// StateUsageAsDestinationDiscouraged signifies that usage of the Hub as a Destination Hub is discouraged.
 	StateUsageAsDestinationDiscouraged // 0x0800
 
+	// Special States
+
+	// StateIsHomeHub signifies that the Hub is the current Home Hub. While not
+	// negative in itself, selecting the Home Hub does not make sense in almost
+	// all cases.
+	StateIsHomeHub // 0x1000
+
 	// State Summaries
 
 	// StateSummaryRegard summarizes all states that must always be set in order to take a Hub into consideration for any task.
@@ -68,7 +76,7 @@ const (
 	StateSummaryRegard = StateReachable | StateActive
 
 	// StateSummaryDisregard summarizes all states that must not be set in order to take a Hub into consideration for any task.
-	StateSummaryDisregard = StateInvalid | StateFailing | StateSuperseded | StateUsageDiscouraged
+	StateSummaryDisregard = StateInvalid | StateSuperseded | StateFailing | StateUsageDiscouraged | StateIsHomeHub
 )
 
 var (
@@ -83,6 +91,7 @@ var (
 		StateUsageDiscouraged,
 		StateUsageAsHomeDiscouraged,
 		StateUsageAsDestinationDiscouraged,
+		StateIsHomeHub,
 	}
 )
 
@@ -154,45 +163,49 @@ func (m *Map) updateStateSuperseded(pin *Pin) {
 	// TODO: This will not scale well beyond about 1000 Hubs.
 
 	// IPv4 Loop
-	for _, mapPin := range m.All {
-		// Skip Pin itself
-		if mapPin.Hub.ID == pin.Hub.ID {
-			continue
-		}
+	if pin.Hub.Info.IPv4 != nil {
+		for _, mapPin := range m.All {
+			// Skip Pin itself
+			if mapPin.Hub.ID == pin.Hub.ID {
+				continue
+			}
 
-		// Check for a matching IPv4 address.
-		if pin.Hub.Info.IPv4.Equal(mapPin.Hub.Info.IPv4) {
-			// If there is a match assign the older Hub the Superseded status.
-			if pin.Hub.FirstSeen.After(mapPin.Hub.FirstSeen) {
-				mapPin.addStates(StateSuperseded)
-				// This Pin is newer and superseeds another, keep looking for more.
-			} else {
-				pin.addStates(StateSuperseded)
-				// This Pin is older than an existing one, don't keep looking, as this
-				// results in incorrect data.
-				break
+			// Check for a matching IPv4 address.
+			if mapPin.Hub.Info.IPv4 != nil && pin.Hub.Info.IPv4.Equal(mapPin.Hub.Info.IPv4) {
+				// If there is a match assign the older Hub the Superseded status.
+				if pin.Hub.FirstSeen.After(mapPin.Hub.FirstSeen) {
+					mapPin.addStates(StateSuperseded)
+					// This Pin is newer and superseeds another, keep looking for more.
+				} else {
+					pin.addStates(StateSuperseded)
+					// This Pin is older than an existing one, don't keep looking, as this
+					// results in incorrect data.
+					break
+				}
 			}
 		}
 	}
 
 	// IPv6 Loop
-	for _, mapPin := range m.All {
-		// Skip Pin itself
-		if mapPin.Hub.ID == pin.Hub.ID {
-			continue
-		}
+	if pin.Hub.Info.IPv6 != nil {
+		for _, mapPin := range m.All {
+			// Skip Pin itself
+			if mapPin.Hub.ID == pin.Hub.ID {
+				continue
+			}
 
-		// Check for a matching IPv6 address.
-		if pin.Hub.Info.IPv6.Equal(mapPin.Hub.Info.IPv6) {
-			// If there is a match assign the older Hub the Superseded status.
-			if pin.Hub.FirstSeen.After(mapPin.Hub.FirstSeen) {
-				mapPin.addStates(StateSuperseded)
-				// This Pin is newer and superseeds another, keep looking for more.
-			} else {
-				pin.addStates(StateSuperseded)
-				// This Pin is older than an existing one, don't keep looking, as this
-				// results in incorrect data.
-				break
+			// Check for a matching IPv6 address.
+			if mapPin.Hub.Info.IPv6 != nil && pin.Hub.Info.IPv6.Equal(mapPin.Hub.Info.IPv6) {
+				// If there is a match assign the older Hub the Superseded status.
+				if pin.Hub.FirstSeen.After(mapPin.Hub.FirstSeen) {
+					mapPin.addStates(StateSuperseded)
+					// This Pin is newer and superseeds another, keep looking for more.
+				} else {
+					pin.addStates(StateSuperseded)
+					// This Pin is older than an existing one, don't keep looking, as this
+					// results in incorrect data.
+					break
+				}
 			}
 		}
 	}
@@ -266,6 +279,22 @@ func (pin *Pin) markReachable(hopDistance int) {
 }
 
 func (pinState PinState) String() string {
+	// Check if there are no states.
+	if pinState == StateNone {
+		return "None"
+	}
+
+	var stateNames []string
+	for _, state := range allStates {
+		if pinState.has(state) {
+			stateNames = append(stateNames, state.Name())
+		}
+	}
+
+	return strings.Join(stateNames, ", ")
+}
+
+func (pinState PinState) Name() string {
 	switch pinState {
 	case StateNone:
 		return "None"
@@ -289,6 +318,8 @@ func (pinState PinState) String() string {
 		return "UsageAsHomeDiscouraged"
 	case StateUsageAsDestinationDiscouraged:
 		return "UsageAsDestinationDiscouraged"
+	case StateIsHomeHub:
+		return "IsHomeHub"
 	default:
 		return "Unknown"
 	}

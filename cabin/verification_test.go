@@ -117,7 +117,7 @@ func testVerificationWith(
 		v.Challenge = mitmChallenge
 	}
 
-	err = v.Verify(response, id.Hub())
+	err = v.Verify(response, id.Hub)
 	if err != nil {
 		return fmt.Errorf("failed to verify: %w", err)
 	}

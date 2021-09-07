@@ -83,7 +83,14 @@ func (pier *PierBase) Transport() *hub.Transport {
 
 // Docking is the blocking (!) procedure that docks new ships and sends docking requests. This should be run as a worker by the caller.
 func (pier *PierBase) Docking(ctx context.Context) error {
-	defer pier.listener.Close()
+	defer pier.Abolish()
+
+	// TODO: Find a nicer way for a clean shutdown.
+	// We need this to detect a shutdown because pier.dockShip() blocks.
+	go func() {
+		<-ctx.Done()
+		pier.Abolish()
+	}()
 
 	for {
 		ship, err := pier.dockShip()

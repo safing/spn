@@ -45,7 +45,8 @@ func ExpandTo(t terminal.OpTerminal, routeTo string, encryptFor *hub.Hub) (*Expa
 		return nil, fmt.Errorf("failed to init expansion: %w", tErr)
 	}
 
-	module.StartWorker("expansion terminal handler", expansion.Handler)
+	module.StartWorker("expansion terminal handler handler", expansion.Handler)
+	module.StartWorker("expansion terminal handler sender", expansion.Sender)
 	module.StartWorker("expansion terminal flow handler", expansion.FlowHandler)
 
 	return expansion, nil
@@ -75,14 +76,14 @@ func (t *ExpansionTerminal) Type() string {
 }
 
 func (t *ExpansionTerminal) End(err *terminal.Error) {
-	t.stop(err, true)
+	t.stop(err)
 }
 
 func (t *ExpansionTerminal) Abandon(err *terminal.Error) {
-	t.stop(err, false)
+	t.stop(err)
 }
 
-func (t *ExpansionTerminal) stop(err *terminal.Error, opErr bool) {
+func (t *ExpansionTerminal) stop(err *terminal.Error) {
 	if t.Abandoned.SetToIf(false, true) {
 		if err != nil {
 			log.Warningf("spn/docks: expansion terminal %s: %s", t.FmtID(), err)
@@ -90,14 +91,13 @@ func (t *ExpansionTerminal) stop(err *terminal.Error, opErr bool) {
 			log.Debugf("spn/docks: expansion terminal %s is being abandoned", t.FmtID())
 		}
 
-		// End all operations and stop all connected workers.
-		t.StopAll(err.Wrap("%s was abandoned", t.FmtID()))
-
-		// Notify lower layer.
-		if !opErr {
-			t.relayOp.OpEnd(t, err)
-		}
+		// Send stop msg and end all operations.
+		t.Shutdown(nil)
 	}
+}
+
+func (t *ExpansionTerminal) IsAbandoned() bool {
+	return t.Abandoned.IsSet()
 }
 
 func (t *ExpansionTerminal) FmtID() string {

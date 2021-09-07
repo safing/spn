@@ -1,18 +1,54 @@
 package docks
 
 import (
+	"errors"
+	"fmt"
+	"time"
+
 	"github.com/safing/portbase/container"
-	"github.com/safing/spn/hub"
+	"github.com/safing/portbase/formats/varint"
+	"github.com/safing/spn/cabin"
 	"github.com/safing/spn/terminal"
 )
 
 const (
-	hubVerificationPurpose = "hub address"
+	hubVerificationPurpose = "hub identify verification"
 )
 
-func VerifyHubAddress(h *hub.Hub) error {
-	// FIXME: implement
-	return nil
+func (crane *Crane) VerifyConnectedHub() error {
+	if !crane.ship.IsMine() || crane.nextTerminalID != 0 || crane.Public() {
+		return errors.New("hub verification can only be executed in init phase by the client")
+	}
+
+	// Create verification request.
+	v, request, err := cabin.CreateVerificationRequest(hubVerificationPurpose, "", "")
+	if err != nil {
+		return fmt.Errorf("failed to create verification request: %w", err)
+	}
+
+	// Send it.
+	msg := container.New(
+		varint.Pack8(CraneMsgTypeVerify),
+		request,
+	)
+	msg.PrependLength()
+	err = crane.ship.Load(msg.CompileData())
+	if err != nil {
+		return terminal.ErrShipSunk.With("failed to send verification request: %w", err)
+	}
+
+	// Wait for reply.
+	var reply *container.Container
+	select {
+	case reply = <-crane.unloading:
+	case <-time.After(5 * time.Second):
+		return terminal.ErrTimeout.With("waiting for verification reply")
+	case <-crane.ctx.Done():
+		return terminal.ErrShipSunk.With("waiting for verification reply")
+	}
+
+	// Verify reply.
+	return v.Verify(reply.CompileData(), crane.ConnectedHub)
 }
 
 func (crane *Crane) handleCraneVerification(request *container.Container) *terminal.Error {

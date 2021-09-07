@@ -138,7 +138,7 @@ func createRandomTestMap(seed int64, size int) *Map {
 	m := NewMap(fmt.Sprintf("Test-Map-%d", seed))
 	m.Intel = mapIntel
 	for _, h := range hubs {
-		m.updateHub(h)
+		m.UpdateHub(h)
 	}
 
 	// Fake communication error with three Hubs.

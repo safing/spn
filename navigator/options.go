@@ -10,9 +10,9 @@ import (
 type HubType uint8
 
 const (
-	HomeHub        HubType = iota
-	TransitHub     HubType = iota
-	DestinationHub HubType = iota
+	HomeHub HubType = iota
+	TransitHub
+	DestinationHub
 )
 
 // Options holds configuration options for operations with the Map.
@@ -84,7 +84,9 @@ func (o *Options) Matcher(hubType HubType) PinMatcher {
 		// Add type based Advisories.
 		switch hubType {
 		case HomeHub:
+			// Home Hubs don't need to be reachable and don't need keys ready to be used.
 			regard = regard.remove(StateReachable)
+			regard = regard.remove(StateActive)
 			disregard = disregard.add(StateUsageAsHomeDiscouraged)
 		case DestinationHub:
 			disregard = disregard.add(StateUsageAsDestinationDiscouraged)

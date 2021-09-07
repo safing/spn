@@ -37,27 +37,27 @@ Crane Operational Message Format:
 const (
 	CraneMsgTypeEnd              = 0
 	CraneMsgTypeInfo             = 1
-	CraneMsgTypeVerify           = 2
-	CraneMsgTypeRequestHubInfo   = 3
+	CraneMsgTypeRequestHubInfo   = 2
+	CraneMsgTypeVerify           = 3
 	CraneMsgTypeStartEncrypted   = 4
 	CraneMsgTypeStartUnencrypted = 5
 )
 
 func (crane *Crane) Start() error {
-	log.Tracef("spn/docks: %s is starting", crane)
+	log.Infof("spn/docks: %s is starting", crane)
 
 	// Start crane depending on situation.
-	var err *terminal.Error
+	var tErr *terminal.Error
 	if crane.ship.IsMine() {
-		err = crane.startLocal()
+		tErr = crane.startLocal()
 	} else {
-		err = crane.startRemote()
+		tErr = crane.startRemote()
 	}
 
 	// Stop crane again if starting failed.
-	if err != nil {
-		crane.Stop(err)
-		return err
+	if tErr != nil {
+		crane.Stop(tErr)
+		return tErr
 	} else {
 		log.Debugf("spn/docks: %s started", crane)
 		// Return an explicit nil for working "!= nil" checks.
@@ -75,59 +75,51 @@ func (crane *Crane) startLocal() *terminal.Error {
 			return terminal.ErrIncorrectUsage.With("cannot start encrypted channel without connected hub")
 		}
 
-		// Try to select a public key.
+		// Always request hub info, as we don't know if the hub has restarted in
+		// the meantime and lost ephemeral keys.
+		hubInfoRequest := container.New(
+			varint.Pack8(CraneMsgTypeRequestHubInfo),
+		)
+		hubInfoRequest.PrependLength()
+		err := crane.ship.Load(hubInfoRequest.CompileData())
+		if err != nil {
+			return terminal.ErrShipSunk.With("failed to request hub info: %w", err)
+		}
+
+		// Wait for reply.
+		var reply *container.Container
+		select {
+		case reply = <-crane.unloading:
+		case <-time.After(5 * time.Second):
+			return terminal.ErrTimeout.With("timed out waiting for hub info")
+		case <-crane.ctx.Done():
+			return terminal.ErrShipSunk.With("waiting for hub info")
+		}
+
+		// Parse and import Announcement and Status.
+		announcementData, err := reply.GetNextBlock()
+		if err != nil {
+			return terminal.ErrMalformedData.With("failed to get announcement: %w", err)
+		}
+		statusData, err := reply.GetNextBlock()
+		if err != nil {
+			return terminal.ErrMalformedData.With("failed to get status: %w", err)
+		}
+		h, _, tErr := ImportAndVerifyHubInfo(
+			crane.ctx,
+			crane.ConnectedHub.ID,
+			announcementData, statusData, hub.ScopePublic,
+		)
+		if tErr != nil {
+			return tErr.Wrap("failed to import and verify hub")
+		}
+		// Update reference in case it was changed by the import.
+		crane.ConnectedHub = h
+
+		// Now, try to select a public key again.
 		signet := crane.ConnectedHub.SelectSignet()
 		if signet == nil {
-			// We have no signet, request hub info.
-			err := crane.ship.Load(append(
-				varint.Pack8(1),
-				varint.Pack8(CraneMsgTypeRequestHubInfo)...,
-			))
-			if err != nil {
-				return terminal.ErrShipSunk.With("failed to request unencrypted channel: %s", err)
-			}
-
-			// Wait for reply.
-			var reply *container.Container
-			select {
-			case reply = <-crane.unloading:
-			case <-time.After(1 * time.Second):
-				return terminal.ErrTimeout.With("timed out waiting for hub info")
-			case <-crane.ctx.Done():
-				return terminal.ErrShipSunk
-			}
-
-			// Parse and import Announcement.
-			announcementData, err := reply.GetNextBlock()
-			if err != nil {
-				return terminal.ErrMalformedData.With("failed to get announcement: %w", err)
-			}
-			err = hub.ImportAnnouncement(announcementData, hub.ScopePublic)
-			if err != nil {
-				return terminal.ErrInternalError.With("failed to import announcement: %w", err)
-			}
-			// Parse and import Status.
-			statusData, err := reply.GetNextBlock()
-			if err != nil {
-				return terminal.ErrMalformedData.With("failed to get status: %w", err)
-			}
-			err = hub.ImportStatus(statusData, hub.ScopePublic)
-			if err != nil {
-				return terminal.ErrInternalError.With("failed to import status: %w", err)
-			}
-
-			// Refetch Hub from DB to ensure we have the new version.
-			dstHub, err := hub.GetHub(hub.ScopePublic, crane.ConnectedHub.ID)
-			if err != nil {
-				return terminal.ErrInternalError.With("failed to refetch destination Hub: %w", err)
-			}
-			crane.ConnectedHub = dstHub
-
-			// Now, try to select a public key again.
-			signet = crane.ConnectedHub.SelectSignet()
-			if signet == nil {
-				return terminal.ErrHubNotReady.With("failed to select signet even after hub info request")
-			}
+			return terminal.ErrHubNotReady.With("failed to select signet (after updating hub info)")
 		}
 
 		// Configure encryption.
@@ -136,7 +128,6 @@ func (crane *Crane) startLocal() *terminal.Error {
 		env.Recipients = []*jess.Signet{signet}
 
 		// Do not encrypt directly, rather get session for future use, then encrypt.
-		var err error
 		crane.jession, err = env.WireCorrespondence(nil)
 		if err != nil {
 			return terminal.ErrInternalError.With("failed to create encryption session: %w", err)
@@ -194,10 +185,10 @@ handling:
 		select {
 		case request = <-crane.unloading:
 
-		case <-time.After(1 * time.Second):
+		case <-time.After(5 * time.Second):
 			return terminal.ErrTimeout.With("timed out waiting for crane init msg")
 		case <-crane.ctx.Done():
-			return terminal.ErrShipSunk
+			return terminal.ErrShipSunk.With("waiting for crane init msg")
 		}
 
 		msgType, err := request.GetNextN8()
@@ -216,13 +207,7 @@ handling:
 			if err != nil {
 				return err
 			}
-
-		case CraneMsgTypeVerify:
-			// Verify is a terminating request.
-			err := crane.handleCraneVerification(request)
-			if err != nil {
-				return err
-			}
+			log.Debugf("spn/docks: %s sent version info", crane)
 
 		case CraneMsgTypeRequestHubInfo:
 			// Handle Hub info request.
@@ -230,12 +215,22 @@ handling:
 			if err != nil {
 				return err
 			}
+			log.Debugf("spn/docks: %s sent hub info", crane)
+
+		case CraneMsgTypeVerify:
+			// Verify is a terminating request.
+			err := crane.handleCraneVerification(request)
+			if err != nil {
+				return err
+			}
+			log.Debugf("spn/docks: %s sent hub verification", crane)
 
 		case CraneMsgTypeStartUnencrypted:
 			initMsg = request
 
 			// Start crane with initMsg.
 			break handling
+			log.Debugf("spn/docks: %s initiated unencrypted channel", crane)
 
 		case CraneMsgTypeStartEncrypted:
 			if crane.identity == nil {
@@ -258,6 +253,7 @@ handling:
 			initMsg = container.New(initMsgData)
 
 			// Start crane with initMsg.
+			log.Debugf("spn/docks: %s initiated encrypted channel", crane)
 			break handling
 		}
 	}
@@ -271,6 +267,18 @@ handling:
 	module.StartWorker("crane loader", crane.loader)
 	module.StartWorker("crane handler", crane.handler)
 
+	return nil
+}
+
+func (crane *Crane) endInit() *terminal.Error {
+	endMsg := container.New(
+		varint.Pack8(CraneMsgTypeEnd),
+	)
+	endMsg.PrependLength()
+	err := crane.ship.Load(endMsg.CompileData())
+	if err != nil {
+		return terminal.ErrShipSunk.With("failed to send end msg: %w", err)
+	}
 	return nil
 }
 

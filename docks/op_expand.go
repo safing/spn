@@ -80,6 +80,8 @@ func expand(t terminal.OpTerminal, opID uint32, data *container.Container) (term
 		return nil, terminal.ErrHubUnavailable.With("no crane assigned to %q", string(dstData))
 	}
 
+	// TODO: Expand outside of hot path.
+
 	// Create operation and terminal.
 	op := &ExpandOp{
 		opTerminal: t,

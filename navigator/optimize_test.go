@@ -67,8 +67,8 @@ func (m *Map) optimizeTestMap(t *testing.T) {
 					Latency:  gofakeit.Number(10, 100),
 				})
 				// Update Hubs in map.
-				m.updateHub(m.Home.Hub)
-				m.updateHub(connectTo.Hub)
+				m.UpdateHub(m.Home.Hub)
+				m.UpdateHub(connectTo.Hub)
 				newLanes++
 				newLanesInRun++
 

@@ -175,7 +175,7 @@ func testExpansion(t *testing.T, testID string, encrypting bool, countTo uint64,
 		t.Fatalf("expansion test %s failed to auth with home terminal: %s", testID, tErr)
 	}
 	tErr = <-opAuthTo2.Ended
-	if tErr != nil {
+	if tErr != nil && !tErr.IsSpecial() {
 		t.Fatalf("expansion test %s failed to auth with home terminal: %s", testID, tErr)
 	}
 	expansionTerminalTo3, err := ExpandTo(homeTerminal, crane3HubID, connectedHub3)
@@ -203,7 +203,7 @@ func testExpansion(t *testing.T, testID string, encrypting bool, countTo uint64,
 		t.Fatalf("expansion test %s failed to auth with extenstion terminal: %s", testID, tErr)
 	}
 	tErr = <-opAuthTo3.Ended
-	if tErr != nil {
+	if tErr != nil && !tErr.IsSpecial() {
 		t.Fatalf("expansion test %s failed to auth with extenstion terminal: %s", testID, tErr)
 	}
 
@@ -240,7 +240,7 @@ func testExpansion(t *testing.T, testID string, encrypting bool, countTo uint64,
 	if op1.Error != nil {
 		t.Fatalf("crane test %s counter op1 failed: %s", testID, op1.Error)
 	}
-	// if op2.Error != nil {
-	// 	t.Fatalf("crane test %s counter op2 failed: %s", testID, op2.Error)
-	// }
+	if op2.Error != nil {
+		t.Fatalf("crane test %s counter op2 failed: %s", testID, op2.Error)
+	}
 }

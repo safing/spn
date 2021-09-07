@@ -1,7 +1,10 @@
 package navigator
 
 import (
+	"fmt"
 	"net"
+
+	"github.com/safing/portmaster/intel/geoip"
 )
 
 func (m *Map) FindRoutes(ip net.IP, opts *Options, maxRoutes int) (*Routes, error) {
@@ -12,8 +15,21 @@ func (m *Map) FindRoutes(ip net.IP, opts *Options, maxRoutes int) (*Routes, erro
 		return nil, ErrEmptyMap
 	}
 
+	// Get the location of the given IP address.
+	var locationV4, locationV6 *geoip.Location
+	var err error
+	// Save whether the given IP address is a IPv4 or IPv6 address.
+	if v4 := ip.To4(); v4 != nil {
+		locationV4, err = geoip.GetLocation(ip)
+	} else {
+		locationV6, err = geoip.GetLocation(ip)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get IP location: %w", err)
+	}
+
 	// Find nearest Pins.
-	nearby, err := m.findNearestPins(ip, opts.Matcher(DestinationHub), maxRoutes)
+	nearby, err := m.findNearestPins(locationV4, locationV6, opts.Matcher(DestinationHub), maxRoutes)
 	if err != nil {
 		return nil, err
 	}

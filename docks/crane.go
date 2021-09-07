@@ -32,6 +32,10 @@ const (
 var (
 	// optimalMinLoadSize defines minimum for Crane.targetLoadSize.
 	optimalMinLoadSize = 3072 // Targeting around 4096.
+
+	// loadingMaxWaitDuration is the maximum time a crane will wait for
+	// additional data to send.
+	loadingMaxWaitDuration = 5 * time.Millisecond
 )
 
 // Errors.
@@ -60,9 +64,6 @@ type Crane struct {
 	// already took care of notifying everyone, so a silent fail is normally the
 	// best response.
 	stopped *abool.AtomicBool
-	// public indiciates if this Crane is publicly advertised. If that is the
-	// case, IP addresses will be used in logging.
-	public *abool.AtomicBool
 
 	// ConnectedHub is the identity of the remote Hub.
 	ConnectedHub *hub.Hub
@@ -99,8 +100,8 @@ type Crane struct {
 	targetLoadSize int
 }
 
-func NewCrane(ship ships.Ship, connectedHub *hub.Hub, id *cabin.Identity) (*Crane, error) {
-	ctx, cancelCtx := context.WithCancel(module.Ctx)
+func NewCrane(ctx context.Context, ship ships.Ship, connectedHub *hub.Hub, id *cabin.Identity) (*Crane, error) {
+	ctx, cancelCtx := context.WithCancel(ctx)
 	randomID, err := rng.Bytes(3)
 	if err != nil {
 		return nil, err
@@ -112,7 +113,6 @@ func NewCrane(ship ships.Ship, connectedHub *hub.Hub, id *cabin.Identity) (*Cran
 		ctx:       ctx,
 		cancelCtx: cancelCtx,
 		stopped:   abool.NewBool(false),
-		public:    abool.NewBool(false),
 
 		ConnectedHub: connectedHub,
 		identity:     id,
@@ -146,6 +146,27 @@ func NewCrane(ship ships.Ship, connectedHub *hub.Hub, id *cabin.Identity) (*Cran
 	new.targetLoadSize -= varint.EncodedSize(uint64(new.targetLoadSize))
 
 	return new, nil
+}
+
+func (crane *Crane) Public() bool {
+	return crane.ship.Public()
+}
+
+func (crane *Crane) Publish() error {
+	// Check if crane is connected.
+	if crane.ConnectedHub == nil {
+		return fmt.Errorf("spn/docks: %s: cannot publish without defined connected hub", crane)
+	}
+
+	// Mark crane as public.
+	maskedID := crane.ship.MaskAddress(crane.ship.RemoteAddr())
+	crane.ship.MarkPublic()
+
+	// Assign crane to make it available to others.
+	AssignCrane(crane.ConnectedHub.ID, crane)
+
+	log.Infof("spn/docks: %s (was %s) is now public", crane, maskedID)
+	return nil
 }
 
 func (crane *Crane) getNextTerminalID() uint32 {
@@ -197,27 +218,6 @@ func (crane *Crane) AbandonTerminal(id uint32, err *terminal.Error) {
 	if !ok {
 		// Do nothing if terminal is not found.
 		return
-	}
-
-	// Send error to the connected terminal, if the error is internal.
-	if !err.IsExternal() {
-		// Build abandon message.
-		abandonMsg := container.New(err.Pack())
-		terminal.MakeMsg(abandonMsg, id, terminal.MsgTypeStop)
-
-		// Send message directly, or async.
-		select {
-		case crane.terminalMsgs <- abandonMsg:
-		default:
-			// Send error async.
-			module.StartWorker("abandon terminal", func(ctx context.Context) error {
-				select {
-				case crane.terminalMsgs <- abandonMsg:
-				case <-ctx.Done():
-				}
-				return nil
-			})
-		}
 	}
 
 	// Log reason the terminal is ending. Override stopping error with nil.
@@ -289,9 +289,9 @@ func (crane *Crane) decrypt(shipment *container.Container) (decrypted *container
 func (crane *Crane) unloader(ctx context.Context) error {
 	for {
 		// Get first couple bytes to get the packet length.
-		// 3 bytes are enough enough to encode 2097151.
-		// On the other hand, packets could theoretically be only 3 bytes small.
-		lenBuf := make([]byte, 3)
+		// 2 bytes are enough to encode 65535.
+		// On the other hand, packets can be only 2 bytes small.
+		lenBuf := make([]byte, 2)
 		err := crane.unloadUntilFull(lenBuf)
 		if err != nil {
 			crane.Stop(terminal.ErrInternalError.With("failed to unload: %w", err))
@@ -309,18 +309,26 @@ func (crane *Crane) unloader(ctx context.Context) error {
 			return nil
 		}
 
-		// Create container buffer and copy leftovers from the length buffer.
-		containerBuf := make([]byte, containerLen)
+		// Build shipment.
+		var shipmentBuf []byte
 		leftovers := len(lenBuf) - n
-		if leftovers > 0 {
-			copy(containerBuf, lenBuf[n:])
-		}
 
-		// Read remaining container.
-		err = crane.unloadUntilFull(containerBuf[leftovers:])
-		if err != nil {
-			crane.Stop(terminal.ErrInternalError.With("failed to unload: %w", err))
-			return nil
+		if leftovers == int(containerLen) {
+			// We already have all the shipment data.
+			shipmentBuf = lenBuf[n:]
+		} else {
+			// Create a shipment buffer, copy leftovers and read the rest from the connection.
+			shipmentBuf = make([]byte, containerLen)
+			if leftovers > 0 {
+				copy(shipmentBuf, lenBuf[n:])
+			}
+
+			// Read remaining shipment.
+			err = crane.unloadUntilFull(shipmentBuf[leftovers:])
+			if err != nil {
+				crane.Stop(terminal.ErrInternalError.With("failed to unload: %w", err))
+				return nil
+			}
 		}
 
 		// Submit to handler.
@@ -328,7 +336,7 @@ func (crane *Crane) unloader(ctx context.Context) error {
 		case <-crane.ctx.Done():
 			crane.Stop(nil)
 			return nil
-		case crane.unloading <- container.New(containerBuf):
+		case crane.unloading <- container.New(shipmentBuf):
 		}
 	}
 }
@@ -339,7 +347,10 @@ func (crane *Crane) unloadUntilFull(buf []byte) error {
 		// Get shipment from ship.
 		n, err := crane.ship.UnloadTo(buf[bytesRead:])
 		if err != nil {
-			return fmt.Errorf("failed to unload ship: %s", err)
+			return err
+		}
+		if n == 0 {
+			log.Tracef("spn/docks: %s unloaded 0 bytes")
 		}
 		bytesRead += n
 
@@ -674,8 +685,6 @@ handling:
 func (crane *Crane) loader(ctx context.Context) (err error) {
 	shipment := container.New()
 	var newSegment, partialShipment *container.Container
-
-	loadingMaxWaitDuration := 5 * time.Millisecond
 	var loadingTimer *time.Timer
 
 	// Return the loading wait channel if waiting.
@@ -916,7 +925,7 @@ func (crane *Crane) Stop(err *terminal.Error) {
 
 	// Log error message.
 	if err != nil {
-		if errors.Is(err, ErrDone) {
+		if err.IsSpecial() {
 			log.Debugf("spn/docks: %s is done", crane)
 		} else {
 			log.Warningf("spn/docks: %s is stopping: %s", crane, err)
@@ -926,29 +935,28 @@ func (crane *Crane) Stop(err *terminal.Error) {
 	// Unregister crane.
 	RetractCraneByID(crane.ID)
 
-	// Call discontinue connection hook.
-	if hooksActive.IsSet() {
-		err := discontinueConnectionHook(crane.Controller, crane.ConnectedHub, nil)
-		if err != nil {
-			log.Warningf("spn/docks: %s failed to call discontinue connection hook: %s", crane, err)
-		}
+	// Stop controller.
+	if crane.Controller != nil {
+		crane.Controller.Abandon(err)
+		crane.Controller.Flush()
 	}
+
+	// Wait shortly in order for the controller end message to be sent.
+	time.Sleep(loadingMaxWaitDuration * 10)
 
 	// Close connection.
 	crane.ship.Sink()
-
-	// Cancel crane context.
-	crane.cancelCtx()
-
-	// Stop controller.
-	if crane.Controller != nil {
-		crane.Controller.Abandon(nil)
-	}
 
 	// Stop all terminals.
 	for _, t := range crane.allTerms() {
 		t.Abandon(err)
 	}
+
+	// Cancel crane context.
+	crane.cancelCtx()
+
+	// Notify about change.
+	crane.NotifyUpdate()
 }
 
 func (crane *Crane) allTerms() []terminal.TerminalInterface {
@@ -964,13 +972,8 @@ func (crane *Crane) allTerms() []terminal.TerminalInterface {
 }
 
 func (crane *Crane) String() string {
-	remoteAddr := "[private]"
-	if crane.public.IsSet() {
-		remoteAddr = crane.ship.RemoteAddr().String()
-	}
-
 	if crane.ship.IsMine() {
-		return fmt.Sprintf("crane %s to %s", crane.ID, remoteAddr)
+		return fmt.Sprintf("crane %s to %s", crane.ID, crane.ship.MaskAddress(crane.ship.RemoteAddr()))
 	}
-	return fmt.Sprintf("crane %s from %s", crane.ID, remoteAddr)
+	return fmt.Sprintf("crane %s from %s", crane.ID, crane.ship.MaskAddress(crane.ship.RemoteAddr()))
 }

@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/mitchellh/copystructure"
 	"github.com/safing/jess"
 	"github.com/safing/portbase/database/record"
 )
@@ -39,6 +40,7 @@ type Hub struct {
 	Status *Status
 
 	FirstSeen     time.Time
+	VerifiedIPs   bool
 	InvalidInfo   bool
 	InvalidStatus bool
 }
@@ -92,6 +94,24 @@ type Announcement struct {
 	// {"- * TCP/25", "- US"}
 }
 
+// Copy returns a deep copy of the Announcement.
+func (a *Announcement) Copy() (*Announcement, error) {
+	// TODO: Improve this.
+	copied, err := copystructure.Copy(a)
+	if err != nil {
+		return nil, err
+	}
+	return copied.(*Announcement), nil
+}
+
+// Verified return whether the Hub has been verified.
+func (h *Hub) Verified() bool {
+	h.Lock()
+	defer h.Unlock()
+
+	return h.VerifiedIPs
+}
+
 // String returns a human-readable representation of the Hub.
 func (h *Hub) String() string {
 	h.Lock()
@@ -133,6 +153,8 @@ func (h *Hub) getName() string {
 // Equal returns whether the given Announcements are equal.
 func (a *Announcement) Equal(b *Announcement) bool {
 	switch {
+	case a == nil || b == nil:
+		return false
 	case a.ID != b.ID:
 		return false
 	case a.Timestamp != b.Timestamp:

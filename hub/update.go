@@ -3,8 +3,6 @@ package hub
 import (
 	"errors"
 	"fmt"
-	"net"
-	"sync"
 	"time"
 
 	"github.com/safing/portbase/log"
@@ -15,12 +13,9 @@ import (
 	"github.com/safing/portbase/container"
 	"github.com/safing/portbase/database"
 	"github.com/safing/portbase/formats/dsd"
-	"github.com/safing/spn/conf"
 )
 
 var (
-	updateLock sync.Mutex
-
 	// hubMsgRequirements defines which security attributes message need to have.
 	hubMsgRequirements = jess.NewRequirements().
 				Remove(jess.RecipientAuthentication). // Recipient don't need a private key.
@@ -28,17 +23,8 @@ var (
 				Remove(jess.Integrity)                // Only applies to decryption.
 	// SenderAuthentication provides pre-decryption integrity. That is all we need.
 
-	validateHubIP func(hub *Hub, ip net.IP) error
-
 	clockSkewTolerance = 1 * time.Hour
 )
-
-// SetHubIPValidationFn sets the function that is used to validate the IP of a Hub.
-func SetHubIPValidationFn(fn func(hub *Hub, ip net.IP) error) {
-	if validateHubIP == nil {
-		validateHubIP = fn
-	}
-}
 
 // SignHubMsg signs the given serialized hub msg with the given configuration.
 func SignHubMsg(msg []byte, env *jess.Envelope, enableTofu bool) ([]byte, error) {
@@ -84,8 +70,10 @@ func SignHubMsg(msg []byte, env *jess.Envelope, enableTofu bool) ([]byte, error)
 	return data, nil
 }
 
-// OpenHubMsg opens a signed hub msg and verifies the signature using the local database. If TOFU is enabled, the signature is always accepted, if valid.
-func OpenHubMsg(data []byte, scope Scope, tofu bool) (msg []byte, sendingHub *Hub, err error) {
+// OpenHubMsg opens a signed hub msg and verifies the signature using the
+// provided hub or the local database. If TOFU is enabled, the signature is
+// always accepted, if valid.
+func OpenHubMsg(hub *Hub, data []byte, scope Scope, tofu bool) (msg []byte, sendingHub *Hub, err error) {
 	letter, err := jess.LetterFromDSD(data)
 	if err != nil {
 		return nil, nil, fmt.Errorf("malformed letter: %s", err)
@@ -108,12 +96,14 @@ func OpenHubMsg(data []byte, scope Scope, tofu bool) (msg []byte, sendingHub *Hu
 	}
 
 	// get hub for public key
-	hub, err := GetHub(scope, seal.ID)
-	if err != nil {
-		if err != database.ErrNotFound {
-			return nil, nil, fmt.Errorf("failed to get existing hub: %s", err)
+	if hub == nil {
+		hub, err = GetHub(scope, seal.ID)
+		if err != nil {
+			if err != database.ErrNotFound {
+				return nil, nil, fmt.Errorf("failed to get existing hub: %s", err)
+			}
+			hub = nil
 		}
-		hub = nil
 	}
 
 	var truststore jess.TrustStore
@@ -191,22 +181,20 @@ func (ha *Announcement) Export(env *jess.Envelope) ([]byte, error) {
 	return SignHubMsg(msg, env, true)
 }
 
-// ImportAnnouncement imports an announcement if it passes all the checks.
-func ImportAnnouncement(data []byte, scope Scope) error {
-	updateLock.Lock()
-	defer updateLock.Unlock()
-
+// ApplyAnnouncement applies the announcement to the Hub if it passes all the
+// checks. If no Hub is provided, it is loaded from the database or created.
+func ApplyAnnouncement(hub *Hub, data []byte, scope Scope, selfcheck bool) (_ *Hub, forward bool, err error) {
 	// open and verify
-	msg, hub, err := OpenHubMsg(data, scope, true)
+	msg, hub, err := OpenHubMsg(hub, data, scope, true)
 	if err != nil {
-		return err
+		return nil, false, err
 	}
 
 	// parse
 	announcement := &Announcement{}
 	_, err = dsd.Load(msg, announcement)
 	if err != nil {
-		return err
+		return nil, false, err
 	}
 
 	// integrity check
@@ -216,29 +204,28 @@ func ImportAnnouncement(data []byte, scope Scope) error {
 	// a signed version of the ID to mitigate fake IDs.
 	// Fake IDs are possible because the hash algorithm of the ID is dynamic.
 	if hub.ID != announcement.ID {
-		return fmt.Errorf("announcement ID %q mismatches hub ID %q", announcement.ID, hub.ID)
+		return nil, false, fmt.Errorf("announcement ID %q mismatches hub ID %q", announcement.ID, hub.ID)
 	}
 
 	// version check
 	if hub.Info != nil {
 		// check if we already have this version
 		switch {
-		case announcement.Timestamp == hub.Info.Timestamp:
+		case announcement.Timestamp == hub.Info.Timestamp && !selfcheck:
 			// The new copy is not saved, as we expect the versions to be identical.
 			// Also, the new version has not been validated at this point.
-			return nil
+			return hub, false, nil
 		case announcement.Timestamp < hub.Info.Timestamp:
 			// Received an old version, do not update.
-			return errors.New("newer announcement version present")
+			return nil, false, errors.New("newer announcement version present")
 		}
 	}
 
 	// Validate the announcement.
 	err = hub.validateAnnouncement(announcement, scope)
 	if err != nil {
-		if hub.FirstSeen.IsZero() {
-			// The first announcement must always be fully valid.
-			return err
+		if selfcheck || hub.FirstSeen.IsZero() {
+			return nil, false, fmt.Errorf("failed to validate: %w", err)
 		}
 
 		log.Warningf("received an invalid announcement from %s: %s", hub, err)
@@ -250,7 +237,11 @@ func ImportAnnouncement(data []byte, scope Scope) error {
 	}
 
 	// Apply the result to the Hub.
-	hub.Lock()
+	if !selfcheck {
+		hub.Lock()
+		defer hub.Unlock()
+	}
+
 	// Only save announcement if it is valid, else mark it as invalid.
 	if err == nil {
 		hub.Info = announcement
@@ -262,16 +253,8 @@ func ImportAnnouncement(data []byte, scope Scope) error {
 	if hub.FirstSeen.IsZero() {
 		hub.FirstSeen = time.Now().UTC()
 	}
-	hub.Unlock()
 
-	// Save the Hub to the database.
-	err = hub.Save()
-	if err != nil {
-		return err
-	}
-
-	// Save the raw message to the database.
-	return SaveRawHubMsg(hub.ID, hub.Scope, "announcement", data)
+	return hub, true, nil
 }
 
 func (hub *Hub) validateAnnouncement(announcement *Announcement, scope Scope) error {
@@ -289,16 +272,20 @@ func (hub *Hub) validateAnnouncement(announcement *Announcement, scope Scope) er
 		return err
 	}
 
-	// validate IP changes
+	// check for illegal IP address changes
 	if hub.Info != nil {
 		switch {
 		case hub.Info.IPv4 != nil && announcement.IPv4 == nil:
+			hub.VerifiedIPs = false
 			return errors.New("previously announced IPv4 address missing")
 		case hub.Info.IPv4 != nil && !announcement.IPv4.Equal(hub.Info.IPv4):
+			hub.VerifiedIPs = false
 			return errors.New("IPv4 address changed")
 		case hub.Info.IPv6 != nil && announcement.IPv6 == nil:
+			hub.VerifiedIPs = false
 			return errors.New("previously announced IPv6 address missing")
 		case hub.Info.IPv6 != nil && !announcement.IPv6.Equal(hub.Info.IPv6):
+			hub.VerifiedIPs = false
 			return errors.New("IPv6 address changed")
 		}
 	}
@@ -312,6 +299,10 @@ func (hub *Hub) validateAnnouncement(announcement *Announcement, scope Scope) er
 		case scope == ScopePublic && !ipScope.IsGlobal():
 			return errors.New("IPv4 scope violation: outside of global scope")
 		}
+		// Reset IP verification flag if IPv4 was added.
+		if hub.Info == nil || hub.Info.IPv4 == nil {
+			hub.VerifiedIPs = false
+		}
 	}
 	if announcement.IPv6 != nil {
 		ipScope := netutils.GetIPScope(announcement.IPv6)
@@ -320,6 +311,10 @@ func (hub *Hub) validateAnnouncement(announcement *Announcement, scope Scope) er
 			return errors.New("IPv6 scope violation: outside of local scope")
 		case scope == ScopePublic && !ipScope.IsGlobal():
 			return errors.New("IPv6 scope violation: outside of global scope")
+		}
+		// Reset IP verification flag if IPv6 was added.
+		if hub.Info == nil || hub.Info.IPv6 == nil {
+			hub.VerifiedIPs = false
 		}
 	}
 
@@ -336,25 +331,6 @@ func (hub *Hub) validateAnnouncement(announcement *Announcement, scope Scope) er
 		return errors.New("no valid transports present")
 	}
 
-	// validate IP ownership if public hub
-	if conf.PublicHub() {
-		if validateHubIP == nil {
-			return errors.New("IP address validation not configured")
-		}
-		if announcement.IPv4 != nil {
-			err := validateHubIP(hub, announcement.IPv4)
-			if err != nil {
-				return fmt.Errorf("%w: failed to validate IPv4 of %s: %s", ErrTemporaryValidationError, hub, err)
-			}
-		}
-		if announcement.IPv6 != nil {
-			err := validateHubIP(hub, announcement.IPv6)
-			if err != nil {
-				return fmt.Errorf("%w: failed to validate IPv6 of %s: %s", ErrTemporaryValidationError, hub, err)
-			}
-		}
-	}
-
 	return nil
 }
 
@@ -369,28 +345,43 @@ func (hs *Status) Export(env *jess.Envelope) ([]byte, error) {
 	return SignHubMsg(msg, env, false)
 }
 
-// ImportStatus imports a status update if it passes all the checks.
-func ImportStatus(data []byte, scope Scope) error {
-	updateLock.Lock()
-	defer updateLock.Unlock()
-
+// ApplyStatus applies a status update if it passes all the checks.
+func ApplyStatus(hub *Hub, data []byte, scope Scope, selfcheck bool) (_ *Hub, forward bool, err error) {
 	// open and verify
-	msg, hub, err := OpenHubMsg(data, scope, false)
+	msg, hub, err := OpenHubMsg(hub, data, scope, false)
 	if err != nil {
-		return err
+		return nil, false, err
 	}
 
 	// parse
 	status := &Status{}
 	_, err = dsd.Load(msg, status)
 	if err != nil {
-		return err
+		return nil, false, err
+	}
+
+	// version check
+	if hub.Status != nil {
+		// check if we already have this version
+		switch {
+		case status.Timestamp == hub.Status.Timestamp && !selfcheck:
+			// The new copy is not saved, as we expect the versions to be identical.
+			// Also, the new version has not been validated at this point.
+			return hub, false, nil
+		case status.Timestamp < hub.Status.Timestamp:
+			// Received an old version, do not update.
+			return hub, false, errors.New("newer status version present")
+		}
 	}
 
 	// Validate the status.
 	err = hub.validateStatus(status)
 	if err != nil {
-		log.Warningf("received an invalid announcement from %s: %s", hub, err)
+		if selfcheck {
+			return nil, false, fmt.Errorf("failed to validate: %w", err)
+		}
+
+		log.Warningf("spn/hub: received an invalid status from %s: %s", hub, err)
 		// If a previously fully validated Hub publishes an update that breaks it, a
 		// soft-fail will accept the faulty changes, but mark is as invalid and
 		// forward it to neighbors. This way the invalid update is propagated through
@@ -399,7 +390,11 @@ func ImportStatus(data []byte, scope Scope) error {
 	}
 
 	// Apply the result to the Hub.
-	hub.Lock()
+	if !selfcheck {
+		hub.Lock()
+		defer hub.Unlock()
+	}
+
 	// Only save status if it is valid, else mark it as invalid.
 	if err == nil {
 		hub.Status = status
@@ -407,16 +402,8 @@ func ImportStatus(data []byte, scope Scope) error {
 	} else {
 		hub.InvalidStatus = true
 	}
-	hub.Unlock()
 
-	// Save the Hub to the database.
-	err = hub.Save()
-	if err != nil {
-		return err
-	}
-
-	// Save the raw message to the database.
-	return SaveRawHubMsg(hub.ID, hub.Scope, "status", data)
+	return hub, true, nil
 }
 
 func (hub *Hub) validateStatus(status *Status) error {
@@ -432,20 +419,6 @@ func (hub *Hub) validateStatus(status *Status) error {
 	// value formatting
 	if err := status.validateFormatting(); err != nil {
 		return err
-	}
-
-	// version check
-	if hub.Status != nil {
-		// check if we already have this version
-		switch {
-		case status.Timestamp == hub.Status.Timestamp:
-			// The new copy is not saved, as we expect the versions to be identical.
-			// Also, the new version has not been validated at this point.
-			return nil
-		case status.Timestamp < hub.Status.Timestamp:
-			// Received an old version, do not update.
-			return errors.New("newer status version present")
-		}
 	}
 
 	// TODO: validate status.Keys

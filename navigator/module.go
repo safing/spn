@@ -30,7 +30,10 @@ func prep() error {
 
 func start() error {
 	Main.InitializeFromDatabase(hub.PublicHubs)
-	module.StartServiceWorker("subscription feeder", 0, Main.SubscriptionFeeder(hub.PublicHubs))
+	err := Main.RegisterHubUpdateHook(hub.PublicHubs)
+	if err != nil {
+		return err
+	}
 
 	// TODO: delete superseded hubs after x amount of time
 

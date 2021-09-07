@@ -6,6 +6,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/mitchellh/copystructure"
 	"github.com/safing/jess"
 )
 
@@ -37,6 +38,15 @@ type Lane struct {
 	Latency  int    // ping in msecs
 }
 
+// Copy returns a deep copy of the Status.
+func (s *Status) Copy() (*Status, error) {
+	copied, err := copystructure.Copy(s)
+	if err != nil {
+		return nil, err
+	}
+	return copied.(*Status), nil
+}
+
 // SelectSignet selects the public key to use for initiating connections to that Hub.
 func (h *Hub) SelectSignet() *jess.Signet {
 	h.Lock()
@@ -48,8 +58,9 @@ func (h *Hub) SelectSignet() *jess.Signet {
 	}
 
 	// TODO: select key based on preferred alg?
+	now := time.Now().Unix()
 	for id, key := range h.Status.Keys {
-		if time.Now().Unix() < key.Expires {
+		if now < key.Expires {
 			return &jess.Signet{
 				ID:     id,
 				Scheme: key.Scheme,
@@ -149,6 +160,8 @@ func (h *Hub) GetLaneTo(hubID string) *Lane {
 // Equal returns whether the Lane is equal to the given one.
 func (l *Lane) Equal(other *Lane) bool {
 	switch {
+	case l == nil || other == nil:
+		return false
 	case l.ID != other.ID:
 		return false
 	case l.Capacity != other.Capacity:

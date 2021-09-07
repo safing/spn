@@ -3,6 +3,7 @@ package ships
 import (
 	"net"
 
+	"github.com/mr-tron/base58"
 	"github.com/safing/spn/hub"
 	"github.com/tevino/abool"
 )
@@ -134,19 +135,19 @@ func (ship *TestShip) UnloadTo(buf []byte) (n int, err error) {
 	return len(data), nil
 }
 
-// LocalAddr returns the underlying local net.Addr of the connection.
-func (d *TestShip) LocalAddr() net.Addr {
-	return nil
-}
-
-// RemoteAddr returns the underlying remote net.Addr of the connection.
-func (d *TestShip) RemoteAddr() net.Addr {
-	return nil
-}
-
 // Sink closes the underlying connection and cleans up any related resources.
 func (d *TestShip) Sink() {
 	if d.sinking.SetToIf(false, true) {
 		close(d.forward)
 	}
 }
+
+// Dummy methods to conform to interface for testing.
+
+func (d *TestShip) LocalAddr() net.Addr              { return nil }
+func (d *TestShip) RemoteAddr() net.Addr             { return nil }
+func (d *TestShip) Public() bool                     { return true }
+func (d *TestShip) MarkPublic()                      {}
+func (d *TestShip) MaskAddress(addr net.Addr) string { return addr.String() }
+func (d *TestShip) MaskIP(ip net.IP) string          { return ip.String() }
+func (d *TestShip) Mask(value []byte) string         { return base58.Encode(value) }

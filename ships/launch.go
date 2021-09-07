@@ -1,4 +1,4 @@
-package docks
+package ships
 
 import (
 	"context"
@@ -6,12 +6,10 @@ import (
 	"net"
 
 	"github.com/safing/portbase/log"
-	"github.com/safing/spn/cabin"
 	"github.com/safing/spn/hub"
-	"github.com/safing/spn/ships"
 )
 
-func LaunchShip(ctx context.Context, h *hub.Hub, transport *hub.Transport, ip net.IP) (ships.Ship, error) {
+func Launch(ctx context.Context, h *hub.Hub, transport *hub.Transport, ip net.IP) (Ship, error) {
 	var transports []*hub.Transport
 	var ips []net.IP
 
@@ -70,8 +68,8 @@ func LaunchShip(ctx context.Context, h *hub.Hub, transport *hub.Transport, ip ne
 	return nil, firstErr
 }
 
-func connectTo(ctx context.Context, h *hub.Hub, transport *hub.Transport, ip net.IP) (ships.Ship, error) {
-	builder := ships.GetBuilder(transport.Protocol)
+func connectTo(ctx context.Context, h *hub.Hub, transport *hub.Transport, ip net.IP) (Ship, error) {
+	builder := GetBuilder(transport.Protocol)
 	if builder == nil {
 		return nil, fmt.Errorf("protocol %s not supported", transport.Protocol)
 	}
@@ -82,41 +80,4 @@ func connectTo(ctx context.Context, h *hub.Hub, transport *hub.Transport, ip net
 	}
 
 	return ship, nil
-}
-
-func EstablishRoute(id *cabin.Identity, dst *hub.Hub) {
-
-	if GetAssignedCrane(dst.ID) != nil {
-		log.Infof("spn/docks: tried to establish route to %s, but one already exists", dst.ID)
-		return
-	}
-
-	log.Infof("spn/docks: establishing new route to %s", dst.ID)
-
-	ship, err := LaunchShip(context.TODO(), dst, nil, nil)
-	if err != nil {
-		log.Warningf("spn/docks: unable to establish route to %s: failed to launch ship: %s", dst.ID, err)
-		return
-	}
-
-	crane, err := NewCrane(ship, id, dst)
-	if err != nil {
-		log.Warningf("spn/docks: unable to establish route to %s: failed to build crane: %s", dst.ID, err)
-		return
-	}
-
-	err = crane.Start()
-	if err != nil {
-		log.Warningf("spn/docks: unable to establish route to %s: failed to start crane: %s", dst.ID, err)
-		return
-	}
-	if crane.stopped.IsSet() {
-		return
-	}
-
-	err = crane.Controller.PublishConnection()
-	if err != nil {
-		log.Warningf("spn/docks: failed to initiate connection publishing: %s", err)
-		return
-	}
 }

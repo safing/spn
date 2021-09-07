@@ -41,7 +41,7 @@ func (r *Routes) add(route *Route) {
 	if !r.isGoodEnough(route) {
 		return
 	}
-	r.All = append(r.All, route.copy())
+	r.All = append(r.All, route.CopyUpTo(0))
 	r.clean()
 }
 
@@ -77,8 +77,8 @@ type Route struct {
 type Hop struct {
 	pin *Pin
 
-	// Hub is the Hub ID.
-	Hub string
+	// HubID is the Hub ID.
+	HubID string
 
 	// Cost is the cost for both Lane to this Hub and the Hub itself.
 	Cost int
@@ -115,7 +115,7 @@ func (r *Route) removeHop() {
 func (r *Route) recalculateTotalCost() {
 	r.TotalCost = r.DstCost
 	for _, hop := range r.Path {
-		if hop.pin.ActiveAPI != nil {
+		if hop.pin.isConnected() {
 			// If we have an active connection, only take 90% of the cost.
 			r.TotalCost += (hop.Cost * 9) / 10
 		} else {
@@ -124,12 +124,18 @@ func (r *Route) recalculateTotalCost() {
 	}
 }
 
-// copy makes a somewhat deep copy of the Route and returns it. Hops themselves
-// are not copied, because their data does not change. Therefore, returned Hops
-// may not be edited.
-func (r *Route) copy() *Route {
+// CopyUpTo makes a somewhat deep copy of the Route up to the specified index
+// and returns it. Hops themselves are not copied, because their data does not
+// change. Therefore, returned Hops may not be edited.
+// Specify an index of 0 to copy all.
+func (r *Route) CopyUpTo(index int) *Route {
+	// Check index.
+	if index == 0 || index > len(r.Path) {
+		index = len(r.Path)
+	}
+
 	newRoute := &Route{
-		Path:      make([]*Hop, len(r.Path)),
+		Path:      make([]*Hop, index),
 		TotalCost: r.TotalCost,
 	}
 	copy(newRoute.Path, r.Path)
@@ -156,7 +162,7 @@ func (r *Route) makeExportReady(algorithm string) {
 // makeExportReady fills in all the missing data fields which are meant for
 // exporting only.
 func (hop *Hop) makeExportReady() {
-	hop.Hub = hop.pin.Hub.ID
+	hop.HubID = hop.pin.Hub.ID
 }
 
 func (r *Route) String() string {

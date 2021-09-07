@@ -32,7 +32,7 @@ func init() {
 	flag.StringVar(&bootstrapFileFlag, "bootstrap-file", "", "bootstrap file containing bootstrap hubs - will be initialized if running a public hub and it doesn't exist")
 }
 
-// prepBootstrapHubFlag cehcks the bootstrap-hub argument if it is valid.
+// prepBootstrapHubFlag checks the bootstrap-hub argument if it is valid.
 func prepBootstrapHubFlag() error {
 	if bootstrapHubFlag != "" {
 		return processBootstrapHub(bootstrapHubFlag, false)
@@ -58,7 +58,7 @@ func processBootstrapHub(bootstrapTransport string, save bool) error {
 	if t.Option == "" {
 		return errors.New("missing hub ID in URL fragment")
 	}
-	if _, err := lhash.LoadFromString(t.Option); err != nil {
+	if _, err := lhash.FromBase58(t.Option); err != nil {
 		return fmt.Errorf("hub ID is invalid: %w", err)
 	}
 	ip := net.ParseIP(t.Domain)
@@ -76,7 +76,7 @@ func processBootstrapHub(bootstrapTransport string, save bool) error {
 	if err == nil {
 		return nil
 	}
-	if err != database.ErrNotFound {
+	if !errors.Is(err, database.ErrNotFound) {
 		return err
 	}
 
@@ -89,11 +89,11 @@ func processBootstrapHub(bootstrapTransport string, save bool) error {
 	bootstrapHub := &hub.Hub{
 		ID:    id,
 		Scope: hub.ScopePublic,
-		Info: &hub.HubAnnouncement{
+		Info: &hub.Announcement{
 			ID:         id,
 			Transports: []string{t.String()},
 		},
-		Status: &hub.HubStatus{},
+		Status: &hub.Status{},
 	}
 
 	// set IP address
@@ -168,7 +168,7 @@ func loadBootstrapFile(filename string) (err error) {
 		}
 	}
 
-	if firstErr != nil {
+	if firstErr == nil {
 		log.Infof("spn/captain: loaded bootstrap file %s", filename)
 	}
 	return firstErr
@@ -182,24 +182,24 @@ func createBootstrapFile(filename string) error {
 	}
 
 	// create bootstrap hub
-	if len(publicIdentity.Hub().Info.Transports) == 0 {
+	if len(publicIdentity.Hub.Info.Transports) == 0 {
 		return errors.New("public identity has no transports available")
 	}
 	// parse first transport
-	t, err := hub.ParseTransport(publicIdentity.Hub().Info.Transports[0])
+	t, err := hub.ParseTransport(publicIdentity.Hub.Info.Transports[0])
 	if err != nil {
 		return fmt.Errorf("failed to parse transport of public identity: %w", err)
 	}
 	// add IP address
-	if publicIdentity.Hub().Info.IPv4 != nil {
-		t.Domain = publicIdentity.Hub().Info.IPv4.String()
-	} else if publicIdentity.Hub().Info.IPv6 != nil {
-		t.Domain = "[" + publicIdentity.Hub().Info.IPv6.String() + "]"
+	if publicIdentity.Hub.Info.IPv4 != nil {
+		t.Domain = publicIdentity.Hub.Info.IPv4.String()
+	} else if publicIdentity.Hub.Info.IPv6 != nil {
+		t.Domain = "[" + publicIdentity.Hub.Info.IPv6.String() + "]"
 	} else {
 		return errors.New("public identity has no IP address available")
 	}
 	// add Hub ID
-	t.Option = publicIdentity.Hub().ID
+	t.Option = publicIdentity.Hub.ID
 	// put together
 	bs := &BootstrapFile{
 		PublicHubs: []string{t.String()},

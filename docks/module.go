@@ -55,14 +55,14 @@ func RetractCraneByID(craneID string) (connectedHub *hub.Hub) {
 	return nil
 }
 
-func GetAllControllers() map[string]*CraneControllerTerminal {
-	new := make(map[string]*CraneControllerTerminal)
+func GetAllCranes() map[string]*Crane {
+	new := make(map[string]*Crane, len(docks))
 
 	docksLock.Lock()
 	defer docksLock.Unlock()
 
 	for destination, crane := range docks {
-		new[destination] = crane.Controller
+		new[destination] = crane
 	}
 	return new
 }

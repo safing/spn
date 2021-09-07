@@ -217,28 +217,27 @@ func optimizeNetwork(ctx context.Context, task *modules.Task) error {
 		return nil
 	}
 
-	newDst, err := navigator.Optimize(publicIdentity.Hub())
-	switch err {
-	case nil:
-		// continue
-	case navigator.ErrIAmLonely:
-		// bootstrap to the network!
-		err := bootstrapWithUpdates()
-		if err != nil {
-			return err
+optimize:
+	newDst, err := navigator.Main.Optimize(nil)
+	if err != nil {
+		if errors.Is(err, navigator.ErrEmptyMap) {
+			// bootstrap to the network!
+			err := bootstrapWithUpdates()
+			if err != nil {
+				return err
+			}
+			goto optimize
 		}
-		// try again
-		newDst, err = navigator.Optimize(publicIdentity.Hub())
-		if err != nil {
-			return err
-		}
-	default:
+
 		return err
 	}
 
 	if newDst != nil {
 		log.Infof("spn/captain: network optimization suggests new connection to %s", newDst)
-		docks.EstablishRoute(publicIdentity, newDst)
+		_, err := EstablishPublicLane(newDst)
+		if err != nil {
+			log.Warningf("spn/captain: failed to establish public lane to %s: %s", newDst, err)
+		}
 	} else {
 		log.Info("spn/captain: network optimization suggests no further action")
 	}

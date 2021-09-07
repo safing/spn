@@ -8,17 +8,15 @@ import (
 	"github.com/safing/portmaster/network/netutils"
 )
 
-var (
-	BaselineCharset = regexp.MustCompile(
-		// Start of charset selection.
-		`^[` +
-			// Printable ASCII (character code 32-127), excluding common control characters of different languages: "$%&';<>\` and DELETE.
-			` !#()*+,\-\./0-9:=?@A-Z[\]^_a-z{|}~` +
-			// Only latin characters from extended ASCII (character code 128-255).
-			`ŠŒŽšœžŸ¡¿ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖØÙÚÛÜÝÞßàáâãäåæçèéêëìíîïðñòóôõöøùúûüýþÿ` +
-			// End of charset selection.
-			`]*$`,
-	)
+var BaselineCharset = regexp.MustCompile(
+	// Start of charset selection.
+	`^[` +
+		// Printable ASCII (character code 32-127), excluding common control characters of different languages: "$%&';<>\` and DELETE.
+		` !#()*+,\-\./0-9:=?@A-Z[\]^_a-z{|}~` +
+		// Only latin characters from extended ASCII (character code 128-255).
+		`ŠŒŽšœžŸ¡¿ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖØÙÚÛÜÝÞßàáâãäåæçèéêëìíîïðñòóôõöøùúûüýþÿ` +
+		// End of charset selection.
+		`]*$`,
 )
 
 func checkStringFormat(fieldName, value string, maxLength int) error {
@@ -54,6 +52,11 @@ func checkByteSliceFormat(fieldName string, value []byte, maxLength int) error {
 }
 
 func checkIPFormat(fieldName string, value net.IP) error {
+	// Check if there is an IP address.
+	if value == nil {
+		return nil
+	}
+
 	switch {
 	case len(value) != 4 && len(value) != 16:
 		return fmt.Errorf("field %s has an invalid length of %d for an IP address", fieldName, len(value))

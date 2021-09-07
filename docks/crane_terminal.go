@@ -77,7 +77,8 @@ func initCraneTerminal(
 	t.SetTerminalExtension(ct)
 
 	// Start workers.
-	module.StartWorker("crane terminal", ct.Handler)
+	module.StartWorker("crane terminal handler", ct.Handler)
+	module.StartWorker("crane terminal sender", ct.Sender)
 	module.StartWorker("crane terminal flow queue", ct.FlowHandler)
 
 	return ct
@@ -89,8 +90,8 @@ func (t *CraneTerminal) Deliver(c *container.Container) *terminal.Error {
 
 func (t *CraneTerminal) Abandon(err *terminal.Error) {
 	if t.Abandoned.SetToIf(false, true) {
-		// End all operations and stop all connected workers.
-		t.StopAll(nil)
+		// Send stop msg and end all operations.
+		t.Shutdown(err)
 
 		// Abandon terminal.
 		t.crane.AbandonTerminal(t.ID(), err)

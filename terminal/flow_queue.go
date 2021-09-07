@@ -220,6 +220,12 @@ func (dfq *DuplexFlowQueue) Send(c *container.Container) *Error {
 	}
 }
 
+// SendRaw sends the given raw data without any further processing.
+func (dfq *DuplexFlowQueue) SendRaw(c *container.Container) *Error {
+	dfq.submitUpstream(c)
+	return nil
+}
+
 // Receive receives a container from the recv queue.
 func (dfq *DuplexFlowQueue) Receive() <-chan *container.Container {
 	return dfq.recvQueue

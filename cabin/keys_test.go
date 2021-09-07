@@ -19,7 +19,7 @@ func TestKeyMaintenance(t *testing.T) {
 
 	now := time.Now()
 	for i := 0; i < iterations; i++ {
-		changed, err := id.MaintainExchKeys(now)
+		changed, err := id.MaintainExchKeys(id.Hub.Status, now)
 		if err != nil {
 			t.Fatal(err)
 		}

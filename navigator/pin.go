@@ -31,10 +31,8 @@ type Pin struct {
 	// This is connected to StateFailing.
 	FailingUntil time.Time
 
-	// API Status
-	ActiveAPI        *docks.API // API to active Pin
-	ConnectedThrough []*Pin     // list of Pins the connection to this Hub runs through
-	Dependants       []*Pin     // list of Pins that use this Hub for a connection
+	// Connection holds a information about a connection to the Hub of this Pin.
+	Connection *PinConnection
 
 	// Internal
 
@@ -42,6 +40,18 @@ type Pin struct {
 	// an update needs to be pushed by the database storage interface to whoever
 	// is listening.
 	pushChanges bool
+}
+
+// Session represents a terminal
+type PinConnection struct {
+	// Terminal holds the active terminal session.
+	Terminal *docks.ExpansionTerminal
+
+	// Route is the route built for this terminal.
+	Route *Route
+
+	// TODO: Next is the next alternative Router to the same Pin.
+	// Next *PinRoute
 }
 
 // Lane is a connection to another Hub.
@@ -97,6 +107,11 @@ func (pin *Pin) updateLocationData() {
 		pin.EntityV6 = nil
 		pin.LocationV6 = nil
 	}
+}
+
+func (pin *Pin) isConnected() bool {
+	return pin.Connection != nil &&
+		!pin.Connection.Terminal.IsAbandoned()
 }
 
 /*

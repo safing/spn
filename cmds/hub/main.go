@@ -27,7 +27,6 @@ func main() {
 	config.SetDefaultConfigOption(captain.CfgOptionEnableSPNKey, true)
 
 	// adapt portmaster updates module
-	updates.MandatoryUpdates = []string{}
 	updates.UserAgent = "Hub"
 
 	// start

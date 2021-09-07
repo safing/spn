@@ -50,6 +50,9 @@ func (e *Error) Is(target error) bool {
 
 // Unwrap returns the wrapped error.
 func (e *Error) Unwrap() error {
+	if e == nil || e.err == nil {
+		return nil
+	}
 	return e.err
 }
 
@@ -155,19 +158,31 @@ func registerError(id uint8, defaultMsg string) *Error {
 	return newErr
 }
 
+func (err *Error) IsSpecial() bool {
+	return err.id > 0 && err.id < 8
+}
+
 // Terminal Errors.
 var (
-	ErrUnknownError           = registerError(0, "unknown error")
-	ErrInternalError          = registerError(1, "internal error")
-	ErrStopping               = registerError(2, "stopping")
-	ErrMalformedData          = registerError(3, "malformed data")
-	ErrUnexpectedMsgType      = registerError(4, "unexpected message type")
-	ErrUnknownOperationType   = registerError(5, "unknown operation type")
-	ErrUnknownOperationID     = registerError(6, "unknown operation id")
-	ErrIntegrity              = registerError(7, "integrity violated")
-	ErrInvalidOptions         = registerError(8, "invalid options")
-	ErrHubNotReady            = registerError(9, "hub not ready")
+	// ErrUnknownError is the default error.
+	ErrUnknownError = registerError(0, "unknown error")
+
+	// Error IDs 1-7 are reserved for special values.
+
+	ErrStopping    = registerError(2, "stopping")
+	ErrExplicitAck = registerError(3, "explicit ack")
+
+	// Errors IDs 8 and up are for regular errors.
+
+	ErrInternalError          = registerError(8, "internal error")
+	ErrMalformedData          = registerError(9, "malformed data")
+	ErrUnexpectedMsgType      = registerError(10, "unexpected message type")
+	ErrUnknownOperationType   = registerError(11, "unknown operation type")
+	ErrUnknownOperationID     = registerError(12, "unknown operation id")
 	ErrPermissinDenied        = registerError(13, "permission denied")
+	ErrIntegrity              = registerError(14, "integrity violated")
+	ErrInvalidOptions         = registerError(15, "invalid options")
+	ErrHubNotReady            = registerError(16, "hub not ready")
 	ErrIncorrectUsage         = registerError(22, "incorrect usage")
 	ErrTimeout                = registerError(62, "timed out")
 	ErrQueueOverflow          = registerError(75, "queue overflowed")

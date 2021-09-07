@@ -32,6 +32,12 @@ type Ship interface {
 	// IsSecure returns whether the ship provides transport security.
 	IsSecure() bool
 
+	// Public returns whether the ship is marked as public.
+	Public() bool
+
+	// MarkPublic marks the ship as public.
+	MarkPublic()
+
 	// LoadSize returns the recommended data size that should be handed to Load().
 	// This value will be most likely somehow related to the connection's MTU.
 	// Alternatively, using a multiple of LoadSize is also recommended.
@@ -55,6 +61,10 @@ type Ship interface {
 
 	// Sink closes the underlying connection and cleans up any related resources.
 	Sink()
+
+	MaskAddress(addr net.Addr) string
+	MaskIP(ip net.IP) string
+	Mask(value []byte) string
 }
 
 // ShipBase implements common functions to comply with the Ship interface.
@@ -68,6 +78,8 @@ type ShipBase struct {
 	mine bool
 	// secure specifies whether the ship provides transport security.
 	secure bool
+	// public specifies whether the ship is public.
+	public *abool.AtomicBool
 	// bufSize specifies the size of the receive buffer.
 	bufSize int
 	// loadSize specifies the recommended data size that should be handed to Load().
@@ -82,6 +94,7 @@ type ShipBase struct {
 func (ship *ShipBase) initBase() {
 	// init
 	ship.sinking = abool.New()
+	ship.public = abool.New()
 
 	// set default
 	if ship.loadSize == 0 {
@@ -95,9 +108,9 @@ func (ship *ShipBase) initBase() {
 // String returns a human readable informational summary about the ship.
 func (ship *ShipBase) String() string {
 	if ship.mine {
-		return fmt.Sprintf("<Ship to %s using %s>", ship.RemoteAddr(), ship.transport)
+		return fmt.Sprintf("<Ship to %s using %s>", ship.MaskAddress(ship.RemoteAddr()), ship.transport)
 	}
-	return fmt.Sprintf("<Ship from %s using %s>", ship.RemoteAddr(), ship.transport)
+	return fmt.Sprintf("<Ship from %s using %s>", ship.MaskAddress(ship.RemoteAddr()), ship.transport)
 }
 
 // Transport returns the transport used for this ship.
@@ -115,6 +128,16 @@ func (ship *ShipBase) IsSecure() bool {
 	return ship.secure
 }
 
+// Public returns whether the ship is marked as public.
+func (ship *ShipBase) Public() bool {
+	return ship.public.IsSet()
+}
+
+// MarkPublic marks the ship as public.
+func (ship *ShipBase) MarkPublic() {
+	ship.public.Set()
+}
+
 // LoadSize returns the recommended data size that should be handed to Load().
 // This value will be most likely somehow related to the connection's MTU.
 // Alternatively, using a multiple of LoadSize is also recommended.
@@ -125,8 +148,6 @@ func (ship *ShipBase) LoadSize() int {
 // Load loads data into the ship - ie. sends the data via the connection.
 // Returns ErrSunk if the ship has already sunk earlier.
 func (ship *ShipBase) Load(data []byte) error {
-	// log.Debugf("ship: loading %s", string(data))
-
 	// Empty load is used as a signal to cease operaetion.
 	if len(data) == 0 {
 		if ship.sinking.SetToIf(false, true) {
@@ -139,18 +160,9 @@ func (ship *ShipBase) Load(data []byte) error {
 	n, err := ship.conn.Write(data)
 	switch {
 	case err != nil:
-		if ship.sinking.SetToIf(false, true) {
-			ship.conn.Close()
-			return fmt.Errorf("ship is sinking: %w", err)
-		}
-		return ErrSunk
+		return err
 	case n == 0:
-		// No error, but no data was written either.
-		if ship.sinking.SetToIf(false, true) {
-			ship.conn.Close()
-			return errors.New("ship failed to load")
-		}
-		return ErrSunk
+		return errors.New("loaded 0 bytes")
 	case n < len(data):
 		// If not all data was sent, try again.
 		log.Debugf("spn/ships: %s only loaded %d/%d bytes", ship, n, len(data))
@@ -168,8 +180,6 @@ func (ship *ShipBase) Load(data []byte) error {
 func (ship *ShipBase) UnloadTo(buf []byte) (n int, err error) {
 	// Process initial data, if there is any.
 	if ship.initial != nil {
-		// log.Debugf("ship: unloading initial %s", string(ship.initial))
-
 		// Copy as much data as possible.
 		copy(buf, ship.initial)
 
@@ -186,25 +196,7 @@ func (ship *ShipBase) UnloadTo(buf []byte) (n int, err error) {
 	}
 
 	// Receive data.
-	n, err = ship.conn.Read(buf)
-	switch {
-	case err != nil:
-		if ship.sinking.SetToIf(false, true) {
-			ship.conn.Close()
-			return 0, fmt.Errorf("ship is sinking: %w", err)
-		}
-		return 0, ErrSunk
-	case n == 0:
-		// No error, but no data was read either.
-		if ship.sinking.SetToIf(false, true) {
-			ship.conn.Close()
-			return 0, errors.New("ship failed to unload")
-		}
-		return 0, ErrSunk
-	}
-
-	// log.Debugf("ship: unloading %v", string(buf[:n]))
-	return n, nil
+	return ship.conn.Read(buf)
 }
 
 // LocalAddr returns the underlying local net.Addr of the connection.

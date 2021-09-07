@@ -158,9 +158,9 @@ func (op *CounterOp) Deliver(data *container.Container) *Error {
 	counter := op.getCounter(false, true)
 
 	// Debugging:
-	if counter < 1000 || counter%100 == 0 {
-		log.Errorf("terminal: counter %s>%d recvd, now at %d", op.t.FmtID(), op.id, counter)
-	}
+	// if counter < 1000 || counter%100 == 0 {
+	// 	log.Errorf("terminal: counter %s>%d recvd, now at %d", op.t.FmtID(), op.id, counter)
+	// }
 
 	if counter != nextStep {
 		log.Warningf(
@@ -206,9 +206,9 @@ func (op *CounterOp) SendCounter() *Error {
 	counter := op.getCounter(true, true)
 
 	// Debugging:
-	if counter < 1000 || counter%100 == 0 {
-		defer log.Errorf("terminal: counter %s>%d sent, now at %d", op.t.FmtID(), op.id, counter)
-	}
+	// if counter < 1000 || counter%100 == 0 {
+	// 	defer log.Errorf("terminal: counter %s>%d sent, now at %d", op.t.FmtID(), op.id, counter)
+	// }
 
 	return op.t.OpSend(op, container.New(varint.Pack64(counter)))
 }

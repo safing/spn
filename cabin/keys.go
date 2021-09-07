@@ -52,7 +52,7 @@ func initProvidedExchKeySchemes() error {
 	return nil
 }
 
-func (id *Identity) MaintainExchKeys(now time.Time) (changed bool, err error) {
+func (id *Identity) MaintainExchKeys(newStatus *hub.Status, now time.Time) (changed bool, err error) {
 	// create Keys map
 	if id.ExchKeys == nil {
 		id.ExchKeys = make(map[string]*ExchKey)
@@ -68,7 +68,7 @@ func (id *Identity) MaintainExchKeys(now time.Time) (changed bool, err error) {
 					"spn/cabin: failed to burn key %s (%s) of %s: %s",
 					keyID,
 					exchKey.tool.Info.Name,
-					id.Hub().ID,
+					id.Hub.ID,
 					err,
 				)
 			}
@@ -103,9 +103,9 @@ func (id *Identity) MaintainExchKeys(now time.Time) (changed bool, err error) {
 	}
 
 	// export most recent keys to HubStatus
-	if changed {
+	if changed || len(newStatus.Keys) == 0 {
 		// reset
-		id.Hub().Status.Keys = make(map[string]*hub.Key)
+		newStatus.Keys = make(map[string]*hub.Key)
 
 		// find longest valid key for every provided scheme
 		for _, eks := range provideExchKeySchemes {
@@ -133,7 +133,7 @@ func (id *Identity) MaintainExchKeys(now time.Time) (changed bool, err error) {
 				return false, fmt.Errorf("failed to export %s exchange key: %w", longestValid.tool.Info.Name, err)
 			}
 			// add
-			id.Hub().Status.Keys[longestValid.key.ID] = hubKey
+			newStatus.Keys[longestValid.key.ID] = hubKey
 		}
 	}
 

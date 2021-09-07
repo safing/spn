@@ -2,18 +2,11 @@ package hub
 
 import (
 	"fmt"
-	"net"
 	"testing"
 
 	"github.com/safing/jess"
 	"github.com/safing/portbase/formats/dsd"
 )
-
-func init() {
-	SetHubIPValidationFn(func(hub *Hub, ip net.IP) error {
-		return nil
-	})
-}
 
 func TestHubUpdate(t *testing.T) {
 	// message signing
@@ -41,6 +34,8 @@ func TestHubUpdate(t *testing.T) {
 	s1e.ID = createHubID(s1e.Scheme, s1e.Key)
 	s1.ID = s1e.ID
 
+	t.Logf("generated hub ID: %s", s1.ID)
+
 	env := jess.NewUnconfiguredEnvelope()
 	env.SuiteID = jess.SuiteSignV1
 	env.Senders = []*jess.Signet{s1}
@@ -58,7 +53,7 @@ func TestHubUpdate(t *testing.T) {
 	letter.Keys = append(letter.Keys, &jess.Seal{
 		Value: s1e.Key,
 	})
-	fmt.Printf("letter: %+v\n", letter)
+	t.Logf("letter with smuggled key: %+v", letter)
 
 	// pack
 	data, err := letter.ToDSD(dsd.JSON)
@@ -66,7 +61,7 @@ func TestHubUpdate(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, _, err = OpenHubMsg(data, ScopePublic, true)
+	_, _, err = OpenHubMsg(nil, data, ScopePublic, true)
 	if err != nil {
 		t.Fatal(err)
 	}

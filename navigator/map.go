@@ -3,10 +3,9 @@ package navigator
 import (
 	"sync"
 
+	"github.com/safing/portbase/log"
 	"github.com/safing/spn/hub"
 )
-
-var ()
 
 var (
 	Main = NewMap("main")
@@ -29,6 +28,35 @@ func NewMap(name string) *Map {
 		Name: name,
 		All:  make(map[string]*Pin),
 	}
+}
+
+// SetHome sets the given Hub as the new home.
+func (m *Map) SetHome(id string) (ok bool) {
+	m.Lock()
+	defer m.Unlock()
+
+	// Get pin from map.
+	newHome, ok := m.All[id]
+	if !ok {
+		return false
+	}
+
+	// Remove home hub state from all pins.
+	for _, pin := range m.All {
+		pin.removeStates(StateIsHomeHub)
+	}
+
+	// Set pin as home.
+	m.Home = newHome
+	m.Home.addStates(StateIsHomeHub)
+
+	// Recalculate reachable.
+	err := m.recalculateReachableHubs()
+	if err != nil {
+		log.Warningf("spn/navigator: failed to recalculate reachable hubs: %s", err)
+	}
+
+	return true
 }
 
 // isEmpty returns whether the Map is regarded as empty.
