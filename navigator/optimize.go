@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	optimizationHopDistanceTarget = 2
+	optimizationHopDistanceTarget = 3
 )
 
 // FindNearestHubs searches for the nearest Hubs to the given IP address. The returned Hubs must not be modified in any way.

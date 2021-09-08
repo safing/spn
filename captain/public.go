@@ -53,12 +53,21 @@ func loadPublicIdentity() (err error) {
 		}
 	}
 
-	// Always update the navigator in any case in order to sync the reference to the active struct of the identity.
-	navigator.Main.UpdateHub(publicIdentity.Hub)
+	// Set Home Hub before updating the hub on the map, as this would trigger a
+	// recalculation without a Home Hub.
 	ok := navigator.Main.SetHome(publicIdentity.ID)
+	// Always update the navigator in any case in order to sync the reference to
+	// the active struct of the identity.
+	navigator.Main.UpdateHub(publicIdentity.Hub)
+	// Setting the Home Hub will have failed if the identidy was only just
+	// created - try again if it failed.
 	if !ok {
-		return errors.New("failed to set self as home hub")
+		ok = navigator.Main.SetHome(publicIdentity.ID)
+		if !ok {
+			return errors.New("failed to set self as home hub")
+		}
 	}
+
 	return nil
 }
 
@@ -95,6 +104,10 @@ func maintainPublicIdentity(ctx context.Context, task *modules.Task) error {
 		return nil
 	}
 
+	// Update on map.
+	navigator.Main.UpdateHub(publicIdentity.Hub)
+	log.Debug("spn/captain: updated own hub on map after announcement change")
+
 	// export announcement
 	announcementData, err := publicIdentity.ExportAnnouncement()
 	if err != nil {
@@ -121,6 +134,10 @@ func maintainPublicStatus(ctx context.Context, task *modules.Task) error {
 	if !changed {
 		return nil
 	}
+
+	// Update on map.
+	navigator.Main.UpdateHub(publicIdentity.Hub)
+	log.Debug("spn/captain: updated own hub on map after status change")
 
 	// export status
 	statusData, err := publicIdentity.ExportStatus()

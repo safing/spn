@@ -2,6 +2,7 @@ package navigator
 
 import (
 	"context"
+	"path"
 	"time"
 
 	"github.com/safing/portbase/database"
@@ -30,11 +31,11 @@ func (m *Map) InitializeFromDatabase(databasePrefix string) {
 
 	// update navigator
 	var hubCount int
-	log.Tracef("spn/navigator: starting to initialize %s map with data...", m.Name)
+	log.Tracef("spn/navigator: starting to initialize %s map from database", m.Name)
 	for r := range iter.Next {
 		h, err := hub.EnsureHub(r)
 		if err != nil {
-			log.Warningf("spn/navigator: could not parse Hub %q while initializing %s map: %s", r.Key(), m.Name, err)
+			log.Warningf("spn/navigator: could not parse hub %q while initializing %s map: %s", r.Key(), m.Name, err)
 			continue
 		}
 
@@ -46,9 +47,9 @@ func (m *Map) InitializeFromDatabase(databasePrefix string) {
 	case iter.Err() != nil:
 		log.Warningf("spn/navigator: failed to (fully) initialize %s map: %s", m.Name, err)
 	case hubCount == 0:
-		log.Warningf("spn/navigator: no Hubs available for %s map - this is normal on first start", m.Name)
+		log.Warningf("spn/navigator: no hubs available for %s map - this is normal on first start", m.Name)
 	default:
-		log.Infof("spn/navigator: added %d Hubs to %s map", hubCount, m.Name)
+		log.Infof("spn/navigator: added %d hubs from database to %s map", hubCount, m.Name)
 	}
 }
 
@@ -64,6 +65,12 @@ func (hook *UpdateHook) UsesPrePut() bool {
 
 // PrePut implements the Hook interface.
 func (hook *UpdateHook) PrePut(r record.Record) (record.Record, error) {
+	// Remove deleted hubs from the map.
+	if r.Meta().IsDeleted() {
+		hook.m.RemoveHub(path.Base(r.Key()))
+		return r, nil
+	}
+
 	// Ensure we have a hub and update it in navigation map.
 	h, err := hub.EnsureHub(r)
 	if err != nil {
@@ -229,6 +236,8 @@ func (m *Map) updateHub(h *hub.Hub, lockMap, lockHub bool) {
 			log.Warningf("navigator: failed to recalculate reachable Hubs: %s", err)
 		}
 	}
+
+	// log.Debugf("navigator: updated %s on map %s", h.StringWithoutLocking(), m.Name)
 }
 
 // updateHubLane updates a lane between two Hubs on the Map.
@@ -284,11 +293,12 @@ func (m *Map) updateHubLane(pin *Pin, lane *hub.Lane, peer *Pin) {
 	}
 
 	// Check for reachability.
-	switch {
-	case pin.State.has(StateReachable):
-		peer.addStates(StateReachable)
-	case peer.State.has(StateReachable):
-		pin.addStates(StateReachable)
+
+	if pin.State.has(StateReachable) {
+		peer.markReachable(pin.HopDistance + 1)
+	}
+	if peer.State.has(StateReachable) {
+		pin.markReachable(peer.HopDistance + 1)
 	}
 }
 
@@ -303,11 +313,16 @@ func (m *Map) updateStates(ctx context.Context, task *modules.Task) error {
 		}
 
 		// Delete stale Hubs that haven't been updated in over a month.
-		if pin.Hub.Info.Timestamp < oneMonthAgo &&
+		if pin.Hub.Info.Timestamp > 0 &&
+			pin.Hub.Info.Timestamp < oneMonthAgo &&
 			pin.Hub.Status.Timestamp < oneMonthAgo {
-			err := db.Delete(pin.Hub.Key())
-			if err != nil {
-				log.Warningf("spn/navigator: failed to delete stale %s: %s", pin.Hub, err)
+			if pin.Hub.KeyIsSet() {
+				err := db.Delete(pin.Hub.Key())
+				if err != nil {
+					log.Warningf("spn/navigator: failed to delete stale %s: %s", pin.Hub, err)
+				}
+			} else {
+				m.RemoveHub(pin.Hub.ID)
 			}
 		}
 	}

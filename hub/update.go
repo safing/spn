@@ -100,7 +100,7 @@ func OpenHubMsg(hub *Hub, data []byte, scope Scope, tofu bool) (msg []byte, send
 		hub, err = GetHub(scope, seal.ID)
 		if err != nil {
 			if err != database.ErrNotFound {
-				return nil, nil, fmt.Errorf("failed to get existing hub: %s", err)
+				return nil, nil, fmt.Errorf("failed to get existing hub %s: %s", seal.ID, err)
 			}
 			hub = nil
 		}
@@ -110,14 +110,14 @@ func OpenHubMsg(hub *Hub, data []byte, scope Scope, tofu bool) (msg []byte, send
 	if hub != nil && hub.PublicKey != nil { // bootstrap entries will not have a public key
 		// check ID integrity
 		if hub.ID != seal.ID {
-			return nil, nil, errors.New("ID mismatch")
+			return nil, nil, fmt.Errorf("ID mismatch with hub msg ID %s and hub ID %s", seal.ID, hub.ID)
 		}
 		if !verifyHubID(seal.ID, hub.PublicKey.Scheme, hub.PublicKey.Key) {
-			return nil, nil, errors.New("ID integrity violated with existing key")
+			return nil, nil, fmt.Errorf("ID integrity of %s violated with existing key", seal.ID)
 		}
 	} else {
 		if !tofu {
-			return nil, nil, errors.New("hub msg sender unknown")
+			return nil, nil, fmt.Errorf("hub msg ID %s unknown (missing announcement)", seal.ID)
 		}
 
 		// trust on first use, extract key from keys
@@ -127,16 +127,16 @@ func OpenHubMsg(hub *Hub, data []byte, scope Scope, tofu bool) (msg []byte, send
 		var pubkey *jess.Seal
 		switch len(letter.Keys) {
 		case 0:
-			return nil, nil, errors.New("missing key for TOFU")
+			return nil, nil, fmt.Errorf("missing key for TOFU of %s", seal.ID)
 		case 1:
 			pubkey = letter.Keys[0]
 		default:
-			return nil, nil, fmt.Errorf("too many keys for TOFU (%d)", len(letter.Keys))
+			return nil, nil, fmt.Errorf("too many keys (%d) for TOFU of %s", len(letter.Keys), seal.ID)
 		}
 
 		// check ID integrity
 		if !verifyHubID(seal.ID, seal.Scheme, pubkey.Value) {
-			return nil, nil, errors.New("ID integrity violated with new key")
+			return nil, nil, fmt.Errorf("ID integrity of %s violated with new key", seal.ID)
 		}
 
 		hub = &Hub{
@@ -217,7 +217,7 @@ func ApplyAnnouncement(hub *Hub, data []byte, scope Scope, selfcheck bool) (_ *H
 			return hub, false, nil
 		case announcement.Timestamp < hub.Info.Timestamp:
 			// Received an old version, do not update.
-			return nil, false, errors.New("newer announcement version present")
+			return nil, false, fmt.Errorf("newer announcement version of %s present", hub)
 		}
 	}
 
@@ -225,10 +225,10 @@ func ApplyAnnouncement(hub *Hub, data []byte, scope Scope, selfcheck bool) (_ *H
 	err = hub.validateAnnouncement(announcement, scope)
 	if err != nil {
 		if selfcheck || hub.FirstSeen.IsZero() {
-			return nil, false, fmt.Errorf("failed to validate: %w", err)
+			return nil, false, fmt.Errorf("failed to validate announcement of %s: %w", hub, err)
 		}
 
-		log.Warningf("received an invalid announcement from %s: %s", hub, err)
+		log.Warningf("received an invalid announcement of %s: %s", hub, err)
 		// If a previously fully validated Hub publishes an update that breaks it, a
 		// soft-fail will accept the faulty changes, but mark is as invalid and
 		// forward it to neighbors. This way the invalid update is propagated through
@@ -370,7 +370,7 @@ func ApplyStatus(hub *Hub, data []byte, scope Scope, selfcheck bool) (_ *Hub, fo
 			return hub, false, nil
 		case status.Timestamp < hub.Status.Timestamp:
 			// Received an old version, do not update.
-			return hub, false, errors.New("newer status version present")
+			return hub, false, fmt.Errorf("newer status version of %s present", hub)
 		}
 	}
 
@@ -378,10 +378,10 @@ func ApplyStatus(hub *Hub, data []byte, scope Scope, selfcheck bool) (_ *Hub, fo
 	err = hub.validateStatus(status)
 	if err != nil {
 		if selfcheck {
-			return nil, false, fmt.Errorf("failed to validate: %w", err)
+			return nil, false, fmt.Errorf("failed to validate status of %s: %w", hub, err)
 		}
 
-		log.Warningf("spn/hub: received an invalid status from %s: %s", hub, err)
+		log.Warningf("spn/hub: received an invalid status of %s: %s", hub, err)
 		// If a previously fully validated Hub publishes an update that breaks it, a
 		// soft-fail will accept the faulty changes, but mark is as invalid and
 		// forward it to neighbors. This way the invalid update is propagated through

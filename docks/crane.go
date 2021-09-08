@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"sync"
 	"time"
 
@@ -294,7 +295,11 @@ func (crane *Crane) unloader(ctx context.Context) error {
 		lenBuf := make([]byte, 2)
 		err := crane.unloadUntilFull(lenBuf)
 		if err != nil {
-			crane.Stop(terminal.ErrInternalError.With("failed to unload: %w", err))
+			if errors.Is(err, io.EOF) {
+				crane.Stop(terminal.ErrStopping.With("connection closed"))
+			} else {
+				crane.Stop(terminal.ErrInternalError.With("failed to unload: %w", err))
+			}
 			return nil
 		}
 
@@ -926,7 +931,7 @@ func (crane *Crane) Stop(err *terminal.Error) {
 	// Log error message.
 	if err != nil {
 		if err.IsSpecial() {
-			log.Debugf("spn/docks: %s is done", crane)
+			log.Infof("spn/docks: %s is done", crane)
 		} else {
 			log.Warningf("spn/docks: %s is stopping: %s", crane, err)
 		}
@@ -938,7 +943,6 @@ func (crane *Crane) Stop(err *terminal.Error) {
 	// Stop controller.
 	if crane.Controller != nil {
 		crane.Controller.Abandon(err)
-		crane.Controller.Flush()
 	}
 
 	// Wait shortly in order for the controller end message to be sent.

@@ -58,6 +58,7 @@ func updateConnectionStatus() {
 	if changed {
 		// Update hub in map.
 		navigator.Main.UpdateHub(publicIdentity.Hub)
+		log.Debug("spn/captain: updated own hub on map after status change")
 
 		// Export status data.
 		statusData, err := publicIdentity.ExportStatus()

@@ -27,6 +27,13 @@ const (
 	ScopeTest Scope = 0xFF
 )
 
+type MsgType string
+
+const (
+	MsgTypeAnnouncement = "announcement"
+	MsgTypeStatus       = "status"
+)
+
 // Hub represents a network node in the SPN.
 type Hub struct {
 	sync.Mutex
@@ -117,6 +124,11 @@ func (h *Hub) String() string {
 	h.Lock()
 	defer h.Unlock()
 
+	return "<Hub " + h.getName() + ">"
+}
+
+// String returns a human-readable representation of the Hub without locking it.
+func (h *Hub) StringWithoutLocking() string {
 	return "<Hub " + h.getName() + ">"
 }
 

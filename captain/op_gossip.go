@@ -115,7 +115,8 @@ func (op *GossipOp) Deliver(c *container.Container) *terminal.Error {
 	h, forward, tErr := docks.ImportAndVerifyHubInfo(module.Ctx, "", announcementData, statusData, hub.ScopePublic)
 	if tErr != nil {
 		log.Warningf("spn/captain: failed to import %s from %s: %s", gossipMsgType, op.controller.Crane.ID, tErr)
-	} else {
+	} else if forward {
+		// Only log if we received something to save/forward.
 		log.Infof("spn/captain: received %s for %s", gossipMsgType, h)
 	}
 

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/safing/portbase/database/record"
+	"github.com/safing/portbase/log"
 
 	"github.com/safing/jess/tools"
 
@@ -125,6 +126,12 @@ func (id *Identity) MaintainAnnouncement(selfcheck bool) (changed bool, err erro
 			return false, fmt.Errorf("failed to apply new status: %s", err)
 		}
 		id.infoExportCache = newInfoData
+
+		// Save message to hub message storage.
+		err = hub.SaveHubMsg(id.ID, id.Scope, hub.MsgTypeAnnouncement, newInfoData)
+		if err != nil {
+			log.Warningf("spn/cabin: failed to save own new/updated announcement of %s: %s", id.ID, err)
+		}
 	}
 
 	return changed, nil
@@ -179,6 +186,12 @@ func (id *Identity) MaintainStatus(lanes []*hub.Lane, selfcheck bool) (changed b
 			return false, fmt.Errorf("failed to apply new status: %s", err)
 		}
 		id.statusExportCache = newStatusData
+
+		// Save message to hub message storage.
+		err = hub.SaveHubMsg(id.ID, id.Scope, hub.MsgTypeStatus, newStatusData)
+		if err != nil {
+			log.Warningf("spn/cabin: failed to save own new/updated status of %s: %s", id.ID, err)
+		}
 	}
 
 	return changed, nil

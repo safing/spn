@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/safing/portbase/database"
+	"github.com/safing/portbase/database/iterator"
+	"github.com/safing/portbase/database/query"
 	"github.com/safing/portbase/database/record"
 )
 
@@ -20,10 +22,13 @@ var (
 	// PublicHubs is the database scope for public hubs
 	PublicHubs = AllHubs + "public/"
 
-	// RawMsgsScope is for storing raw msgs. The path spec for this scope is cache:spn/rawMsgs/<scope>/<msgType>/<ID>
-	RawMsgsScope = "cache:spn/rawMsgs/"
+	// HubMsgScope is for storing raw msgs. The path spec for this scope is cache:spn/gossip/raw/<scope>/<msgType>/<ID>
+	HubMsgScope = "cache:spn/msgs"
 
-	db = database.NewInterface(nil)
+	db = database.NewInterface(&database.Options{
+		Local:    true,
+		Internal: true,
+	})
 
 	getFromNavigator func(id string) *Hub
 )
@@ -148,14 +153,14 @@ type HubMsg struct {
 
 	ID    string
 	Scope Scope
-	Type  string
+	Type  MsgType
 	Data  []byte
 
 	Received int64
 }
 
-// SaveRawHubMsg saves a raw (and signed) message received by another Hub.
-func SaveRawHubMsg(id string, scope Scope, msgType string, data []byte) error {
+// SaveHubMsg saves a raw (and signed) message received by another Hub.
+func SaveHubMsg(id string, scope Scope, msgType MsgType, data []byte) error {
 	// create wrapper record
 	msg := &HubMsg{
 		ID:       id,
@@ -166,14 +171,24 @@ func SaveRawHubMsg(id string, scope Scope, msgType string, data []byte) error {
 	}
 	// set key
 	msg.SetKey(fmt.Sprintf(
-		"%s%s/%s/%s",
-		RawMsgsScope,
+		"%s/%s/%s/%s",
+		HubMsgScope,
 		msg.Scope,
 		msg.Type,
 		msg.ID,
 	))
 	// save
 	return db.PutNew(msg)
+}
+
+func QueryRawGossipMsgs(scope Scope, msgType MsgType) (it *iterator.Iterator, err error) {
+	it, err = db.Query(query.New(fmt.Sprintf(
+		"%s/%s/%s/",
+		HubMsgScope,
+		scope,
+		msgType,
+	)))
+	return
 }
 
 // EnsureHubMsg makes sure a database record is a HubMsg.

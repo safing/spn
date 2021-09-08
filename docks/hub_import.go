@@ -60,13 +60,13 @@ func ImportAndVerifyHubInfo(ctx context.Context, hubID string, announcementData,
 		if h.Info.IPv4 != nil {
 			err = verifyHubIP(ctx, h, h.Info.IPv4)
 			if err != nil {
-				return nil, forward, terminal.ErrIntegrity.With("failed to verify IPv4 address %s: %w", h.Info.IPv4, err)
+				return nil, forward, terminal.ErrIntegrity.With("failed to verify IPv4 address %s of %s: %w", h.Info.IPv4, h, err)
 			}
 		}
 		if h.Info.IPv6 != nil {
 			err = verifyHubIP(ctx, h, h.Info.IPv6)
 			if err != nil {
-				return nil, forward, terminal.ErrIntegrity.With("failed to verify IPv6 address %s: %w", h.Info.IPv6, err)
+				return nil, forward, terminal.ErrIntegrity.With("failed to verify IPv6 address %s of %s: %w", h.Info.IPv6, h, err)
 			}
 		}
 		h.Lock()
@@ -78,20 +78,20 @@ func ImportAndVerifyHubInfo(ctx context.Context, hubID string, announcementData,
 	// Save the Hub to the database.
 	err = h.Save()
 	if err != nil {
-		return nil, forward, terminal.ErrInternalError.With("failed to persist hub: %w", err)
+		return nil, forward, terminal.ErrInternalError.With("failed to persist %s: %w", h, err)
 	}
 
 	// Save the raw messages to the database.
 	if announcementData != nil {
-		err = hub.SaveRawHubMsg(h.ID, h.Scope, "announcement", announcementData)
+		err = hub.SaveHubMsg(h.ID, h.Scope, "announcement", announcementData)
 		if err != nil {
-			log.Warningf("spn/docks: failed to save raw announcement msg: %w", err)
+			log.Warningf("spn/docks: failed to save raw announcement msg of %s: %w", h, err)
 		}
 	}
 	if statusData != nil {
-		err = hub.SaveRawHubMsg(h.ID, h.Scope, "status", statusData)
+		err = hub.SaveHubMsg(h.ID, h.Scope, "status", statusData)
 		if err != nil {
-			log.Warningf("spn/docks: failed to save raw status msg: %w", err)
+			log.Warningf("spn/docks: failed to save raw status msg of %s: %w", h, err)
 		}
 	}
 

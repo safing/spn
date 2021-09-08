@@ -14,8 +14,8 @@ import (
 	"github.com/safing/portbase/log"
 	"github.com/safing/portmaster/updates"
 	"github.com/safing/spn/conf"
-
 	"github.com/safing/spn/hub"
+	"github.com/safing/spn/navigator"
 )
 
 type BootstrapFile struct {
@@ -103,10 +103,8 @@ func processBootstrapHub(bootstrapTransport string, save bool) error {
 		bootstrapHub.Info.IPv6 = ip
 	}
 
-	err = bootstrapHub.Save()
-	if err != nil {
-		return fmt.Errorf("failed to save bootstrap hub to db: %w", err)
-	}
+	// Add to map for bootstrapping.
+	navigator.Main.UpdateHub(bootstrapHub)
 
 	log.Infof("spn/captain: added bootstrap %s", bootstrapHub)
 	return nil

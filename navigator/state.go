@@ -264,17 +264,24 @@ func (m *Map) recalculateReachableHubs() error {
 }
 
 func (pin *Pin) markReachable(hopDistance int) {
-	// Set states for this Pin.
+	switch {
+	case !pin.State.has(StateReachable):
+		// Pin wasn't reachable before.
+	case hopDistance < pin.HopDistance:
+		// New path has a shorter distance.
+	default:
+		// Pin is already reachable at same or better distance.
+		return
+	}
+
+	// Update reachability.
 	pin.addStates(StateReachable)
 	pin.HopDistance = hopDistance
 
 	// Propagate to connected Pins.
 	hopDistance += 1
 	for _, lane := range pin.ConnectedTo {
-		if !lane.Pin.State.has(StateReachable) ||
-			hopDistance < lane.Pin.HopDistance {
-			lane.Pin.markReachable(hopDistance)
-		}
+		lane.Pin.markReachable(hopDistance)
 	}
 }
 

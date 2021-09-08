@@ -1,8 +1,11 @@
 package captain
 
 import (
+	"errors"
 	"fmt"
 
+	"github.com/safing/portbase/log"
+	"github.com/safing/spn/conf"
 	"github.com/safing/spn/docks"
 	"github.com/safing/spn/hub"
 	"github.com/safing/spn/ships"
@@ -10,6 +13,9 @@ import (
 )
 
 func EstablishCrane(dst *hub.Hub) (*docks.Crane, error) {
+	if conf.PublicHub() && dst.ID == publicIdentity.ID {
+		return nil, errors.New("connecting to self")
+	}
 	if docks.GetAssignedCrane(dst.ID) != nil {
 		return nil, fmt.Errorf("route to %s already exists", dst.ID)
 	}
@@ -62,6 +68,15 @@ func EstablishPublicLane(dst *hub.Hub) (*docks.Crane, error) {
 	case <-crane.Controller.Ctx().Done():
 		defer crane.Stop(nil)
 		return nil, terminal.ErrStopping
+	}
+
+	// Query all gossip msgs on first connection.
+	if gossipQueryInitiated.SetToIf(false, true) {
+		_, tErr = NewGossipQueryOp(crane.Controller)
+		if tErr != nil {
+			log.Warningf("spn/captain: failed to start initial gossip query: %s", tErr)
+			gossipQueryInitiated.UnSet()
+		}
 	}
 
 	return crane, nil
