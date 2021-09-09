@@ -7,30 +7,30 @@ import (
 
 var (
 	module *modules.Module
+
+	entrypointInfoMsg = []byte("You have reached the local SPN entry port, but your connection could not be matched to an SPN tunnel.\n")
 )
 
 func init() {
-	module = modules.Register("sluice", nil, start, stop, "base", "docks")
+	module = modules.Register("sluice", nil, start, stop, "base")
 }
 
 func start() error {
-	if conf.Client() {
-		StartStreamSluice("tcp4", "0.0.0.0:717")
-		// StartPacketSluice("udp4", "127.0.0.17:717")
-		StartStreamSluice("tcp6", "[::]:717")
-		// StartPacketSluice("udp6", "[fd17::17]:717")
+	// TODO:
+	// Listening on all interfaces for now, as we need this for Windows.
+	// Handle similarly to the nameserver listener.
+
+	if !conf.Client() {
+		StartSluice("tcp4", "0.0.0.0:717")
+		StartSluice("udp4", "0.0.0.0:717")
+		StartSluice("tcp6", "[::]:717")
+		StartSluice("udp6", "[::]:717")
 	}
 
 	return nil
 }
 
 func stop() error {
-	// TODO: dont use goroutines directly
-	sluicesLock.Lock()
-	for _, sluice := range sluices {
-		go sluice.Abandon()
-	}
-	sluicesLock.Unlock()
-
+	stopAllSluices()
 	return nil
 }

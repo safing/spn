@@ -3,6 +3,7 @@ package sluice
 import (
 	"errors"
 	"fmt"
+	"net"
 
 	"github.com/safing/portmaster/network/packet"
 )
@@ -16,31 +17,35 @@ var (
 )
 
 type Request struct {
-	Domain string
-	Info   *packet.Info
+	Domain     string
+	Network    string
+	Info       *packet.Info
+	CallbackFn RequestCallbackFunc
 }
 
-func AwaitRequest(pkt *packet.Info, domain string) error {
-	network := getNetwork(pkt)
+type RequestCallbackFunc func(r *Request, conn net.Conn)
+
+func AwaitRequest(pkt *packet.Info, domain string, callbackFn RequestCallbackFunc) error {
+	network := getNetworkFromPacket(pkt)
 	if network == "" {
 		return ErrUnsupported
 	}
 
-	sluicesLock.Lock()
-	sluice, ok := sluices[network]
-	sluicesLock.Unlock()
+	sluice, ok := getSluice(network)
 	if !ok {
 		return fmt.Errorf("sluice for network %s %w", network, ErrSluiceOffline)
 	}
 
 	sluice.AwaitRequest(&Request{
-		Domain: domain,
-		Info:   pkt,
+		Domain:     domain,
+		Network:    network,
+		Info:       pkt,
+		CallbackFn: callbackFn,
 	})
 	return nil
 }
 
-func getNetwork(pkt *packet.Info) string {
+func getNetworkFromPacket(pkt *packet.Info) string {
 	var network string
 
 	// protocol
