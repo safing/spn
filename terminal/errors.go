@@ -41,6 +41,10 @@ func (e *Error) IsExternal() bool {
 
 // Is returns whether the given error is of the same type.
 func (e *Error) Is(target error) bool {
+	if e == nil || target == nil {
+		return false
+	}
+
 	t, ok := target.(*Error)
 	if !ok {
 		return false
@@ -185,9 +189,10 @@ var (
 	ErrHubNotReady            = registerError(16, "hub not ready")
 	ErrIncorrectUsage         = registerError(22, "incorrect usage")
 	ErrTimeout                = registerError(62, "timed out")
-	ErrQueueOverflow          = registerError(75, "queue overflowed")
 	ErrUnsupportedVersion     = registerError(93, "unsupported version")
 	ErrHubUnavailable         = registerError(101, "hub unavailable")
+	ErrShipSunk               = registerError(108, "ship sunk")
 	ErrDestinationUnavailable = registerError(113, "destination unavailable")
-	ErrShipSunk               = registerError(121, "ship sunk")
+	ErrConnectionError        = registerError(121, "connection error")
+	ErrQueueOverflow          = registerError(122, "queue overflowed")
 )

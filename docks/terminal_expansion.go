@@ -25,7 +25,7 @@ func ExpandTo(t terminal.OpTerminal, routeTo string, encryptFor *hub.Hub) (*Expa
 	}
 	tBase, initData, tErr := terminal.NewLocalBaseTerminal(module.Ctx, 0, t.FmtID(), encryptFor, opts)
 	if tErr != nil {
-		return nil, fmt.Errorf("failed to create expansion terminal base: %s", tErr)
+		return nil, tErr.Wrap("failed to create expansion terminal base")
 	}
 	expansion := &ExpansionTerminal{
 		TerminalBase: tBase,
@@ -42,7 +42,7 @@ func ExpandTo(t terminal.OpTerminal, routeTo string, encryptFor *hub.Hub) (*Expa
 	// Initialize expansion.
 	tErr = t.OpInit(expansion, opMsg)
 	if tErr != nil {
-		return nil, fmt.Errorf("failed to init expansion: %w", tErr)
+		return nil, tErr.Wrap("failed to init expansion")
 	}
 
 	module.StartWorker("expansion terminal handler handler", expansion.Handler)

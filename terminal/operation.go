@@ -8,6 +8,7 @@ import (
 
 	"github.com/safing/portbase/container"
 	"github.com/safing/portbase/log"
+	"github.com/safing/portbase/utils"
 	"github.com/tevino/abool"
 )
 
@@ -79,7 +80,7 @@ func (t *TerminalBase) runOperation(ctx context.Context, opTerminal OpTerminal, 
 	// Get the operation parameters from the registry.
 	params, ok := opRegistry[string(opType)]
 	if !ok {
-		t.OpEnd(&unknownOp{id: opID}, ErrUnknownOperationType)
+		t.OpEnd(&unknownOp{id: opID}, ErrUnknownOperationType.With(utils.SafeFirst16Bytes(opType)))
 		return
 	}
 

@@ -66,5 +66,5 @@ func checkAccessCode(t terminal.OpTerminal, opID uint32, initData *container.Con
 	log.Debugf("spn/access: granted %s permissions via %s zone", t.FmtID(), code.Zone)
 
 	// End successfully.
-	return nil, nil
+	return nil, terminal.ErrExplicitAck
 }
