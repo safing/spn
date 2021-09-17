@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/safing/portbase/container"
+	"github.com/safing/spn/conf"
 	"github.com/safing/spn/terminal"
 	"github.com/tevino/abool"
 )
@@ -62,6 +63,11 @@ func init() {
 }
 
 func expand(t terminal.OpTerminal, opID uint32, data *container.Container) (terminal.Operation, *terminal.Error) {
+	// Check if we are running a public hub.
+	if !conf.PublicHub() {
+		return nil, terminal.ErrPermissinDenied.With("expanding is only allowed on public hubs")
+	}
+
 	// Parse destination hub ID.
 	dstData, err := data.GetNextBlock()
 	if err != nil {
