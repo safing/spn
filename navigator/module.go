@@ -4,6 +4,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/safing/portbase/config"
 	"github.com/safing/portbase/modules"
 	"github.com/safing/spn/hub"
 )
@@ -18,6 +19,8 @@ var (
 
 var (
 	module *modules.Module
+
+	devMode config.BoolOption
 )
 
 func init() {
@@ -25,10 +28,12 @@ func init() {
 }
 
 func prep() error {
-	return nil
+	return registerAPIEndpoints()
 }
 
 func start() error {
+	devMode = config.Concurrent.GetAsBool(config.CfgDevModeKey, false)
+
 	Main.InitializeFromDatabase(hub.PublicHubs)
 	err := Main.RegisterHubUpdateHook(hub.PublicHubs)
 	if err != nil {
