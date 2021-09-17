@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"strconv"
 	"sync"
 	"time"
 
@@ -18,7 +19,7 @@ type Sluice struct {
 
 	lock            sync.Mutex
 	listener        net.Listener
-	pendingRequests map[uint16]*Request
+	pendingRequests map[string]*Request
 	abandoned       bool
 }
 
@@ -28,7 +29,7 @@ func StartSluice(network, address string) {
 	s := &Sluice{
 		network:         network,
 		address:         address,
-		pendingRequests: make(map[uint16]*Request),
+		pendingRequests: make(map[string]*Request),
 	}
 
 	switch s.network {
@@ -53,14 +54,21 @@ func (s *Sluice) AwaitRequest(r *Request) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
-	s.pendingRequests[r.Info.SrcPort] = r
+	// TODO: Make requests expire eventually.
+
+	key := net.JoinHostPort(r.ConnInfo.LocalIP.String(), strconv.Itoa(int(r.ConnInfo.LocalPort)))
+	log.Errorf("spn/sluice: adding request for %s", key)
+
+	s.pendingRequests[key] = r
 }
 
-func (s *Sluice) getRequest(port uint16) (r *Request, ok bool) {
+func (s *Sluice) getRequest(address string) (r *Request, ok bool) {
+	log.Errorf("spn/sluice: getting request for %s", address)
+
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
-	r, ok = s.pendingRequests[port]
+	r, ok = s.pendingRequests[address]
 	return
 }
 
@@ -101,7 +109,7 @@ func (s *Sluice) abandon() {
 
 	// Notify pending requests.
 	for i, r := range s.pendingRequests {
-		r.CallbackFn(r, nil)
+		r.CallbackFn(r.ConnInfo, nil)
 		delete(s.pendingRequests, i)
 	}
 }
@@ -115,16 +123,13 @@ func (s *Sluice) handleConnection(conn net.Conn) {
 		}
 	}()
 
-	// Get IP address and network.
+	// Get IP address.
 	var remoteIP net.IP
-	var remotePort int
 	switch typedAddr := conn.RemoteAddr().(type) {
 	case *net.TCPAddr:
 		remoteIP = typedAddr.IP
-		remotePort = typedAddr.Port
 	case *net.UDPAddr:
 		remoteIP = typedAddr.IP
-		remotePort = typedAddr.Port
 	default:
 		log.Warningf("spn/sluice: cannot handle connection for unsupported network %s", conn.RemoteAddr().Network())
 		return
@@ -142,7 +147,7 @@ func (s *Sluice) handleConnection(conn net.Conn) {
 	}
 
 	// Get waiting request.
-	r, ok := s.getRequest(uint16(remotePort))
+	r, ok := s.getRequest(conn.RemoteAddr().String())
 	if !ok {
 		_, err := conn.Write(entrypointInfoMsg)
 		if err != nil {
@@ -154,8 +159,12 @@ func (s *Sluice) handleConnection(conn net.Conn) {
 	}
 
 	// Hand over to callback.
-	log.Tracef("spn/sluice: new %s request from %s for %s %s:%d", s.network, conn.RemoteAddr(), r.Domain, r.Info.Dst, r.Info.DstPort)
-	r.CallbackFn(r, conn)
+	log.Tracef(
+		"spn/sluice: new %s request from %s for %s (%s:%d)",
+		s.network, conn.RemoteAddr(),
+		r.ConnInfo.Entity.Domain, r.ConnInfo.Entity.IP, r.ConnInfo.Entity.Port,
+	)
+	r.CallbackFn(r.ConnInfo, conn)
 	success = true
 }
 

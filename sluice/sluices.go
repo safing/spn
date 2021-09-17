@@ -29,12 +29,19 @@ func removeSluice(network string) {
 	delete(sluices, network)
 }
 
-func stopAllSluices() {
+func copySluices() map[string]*Sluice {
 	sluicesLock.Lock()
 	defer sluicesLock.Unlock()
 
-	for network, sluice := range sluices {
+	copied := make(map[string]*Sluice, len(sluices))
+	for k, v := range sluices {
+		copied[k] = v
+	}
+	return copied
+}
+
+func stopAllSluices() {
+	for _, sluice := range copySluices() {
 		sluice.abandon()
-		delete(sluices, network)
 	}
 }

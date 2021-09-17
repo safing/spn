@@ -132,6 +132,7 @@ func (ln *PacketListener) reader(_ context.Context) error {
 		conn = &PacketConn{
 			ln:            ln,
 			addr:          addr,
+			closed:        abool.New(),
 			buf:           buf,
 			in:            make(chan []byte, 1),
 			inactivityCnt: new(uint32),

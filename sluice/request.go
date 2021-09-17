@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 
+	"github.com/safing/portmaster/network"
 	"github.com/safing/portmaster/network/packet"
 )
 
@@ -17,16 +18,14 @@ var (
 )
 
 type Request struct {
-	Domain     string
-	Network    string
-	Info       *packet.Info
+	ConnInfo   *network.Connection
 	CallbackFn RequestCallbackFunc
 }
 
-type RequestCallbackFunc func(r *Request, conn net.Conn)
+type RequestCallbackFunc func(connInfo *network.Connection, conn net.Conn)
 
-func AwaitRequest(pkt *packet.Info, domain string, callbackFn RequestCallbackFunc) error {
-	network := getNetworkFromPacket(pkt)
+func AwaitRequest(connInfo *network.Connection, callbackFn RequestCallbackFunc) error {
+	network := getNetworkFromConnInfo(connInfo)
 	if network == "" {
 		return ErrUnsupported
 	}
@@ -37,19 +36,17 @@ func AwaitRequest(pkt *packet.Info, domain string, callbackFn RequestCallbackFun
 	}
 
 	sluice.AwaitRequest(&Request{
-		Domain:     domain,
-		Network:    network,
-		Info:       pkt,
+		ConnInfo:   connInfo,
 		CallbackFn: callbackFn,
 	})
 	return nil
 }
 
-func getNetworkFromPacket(pkt *packet.Info) string {
+func getNetworkFromConnInfo(connInfo *network.Connection) string {
 	var network string
 
 	// protocol
-	switch pkt.Protocol {
+	switch connInfo.IPProtocol {
 	case packet.TCP:
 		network = "tcp"
 	case packet.UDP:
@@ -59,7 +56,7 @@ func getNetworkFromPacket(pkt *packet.Info) string {
 	}
 
 	// IP version
-	switch pkt.Version {
+	switch connInfo.IPVersion {
 	case packet.IPv4:
 		network += "4"
 	case packet.IPv6:
