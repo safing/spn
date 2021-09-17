@@ -25,7 +25,7 @@ func EstablishCrane(dst *hub.Hub) (*docks.Crane, error) {
 		return nil, fmt.Errorf("failed to launch ship: %w", err)
 	}
 
-	crane, err := docks.NewCrane(module.Ctx, ship, dst, nil)
+	crane, err := docks.NewCrane(module.Ctx, ship, dst, publicIdentity)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create crane: %w", err)
 	}

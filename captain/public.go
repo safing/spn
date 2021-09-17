@@ -55,14 +55,14 @@ func loadPublicIdentity() (err error) {
 
 	// Set Home Hub before updating the hub on the map, as this would trigger a
 	// recalculation without a Home Hub.
-	ok := navigator.Main.SetHome(publicIdentity.ID)
+	ok := navigator.Main.SetHome(publicIdentity.ID, nil)
 	// Always update the navigator in any case in order to sync the reference to
 	// the active struct of the identity.
 	navigator.Main.UpdateHub(publicIdentity.Hub)
 	// Setting the Home Hub will have failed if the identidy was only just
 	// created - try again if it failed.
 	if !ok {
-		ok = navigator.Main.SetHome(publicIdentity.ID)
+		ok = navigator.Main.SetHome(publicIdentity.ID, nil)
 		if !ok {
 			return errors.New("failed to set self as home hub")
 		}
