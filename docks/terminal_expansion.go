@@ -17,7 +17,7 @@ type ExpansionTerminal struct {
 	relayOp terminal.OpTerminal
 }
 
-func ExpandTo(t terminal.OpTerminal, routeTo string, encryptFor *hub.Hub) (*ExpansionTerminal, error) {
+func ExpandTo(t terminal.OpTerminal, routeTo string, encryptFor *hub.Hub) (*ExpansionTerminal, *terminal.Error) {
 	// Create expansion terminal.
 	opts := &terminal.TerminalOpts{
 		Version:   1,
@@ -32,6 +32,7 @@ func ExpandTo(t terminal.OpTerminal, routeTo string, encryptFor *hub.Hub) (*Expa
 		relayOp:      t,
 	}
 	expansion.TerminalBase.SetTerminalExtension(expansion)
+	expansion.TerminalBase.SetTimeout(expansionClientTimeout)
 	expansion.DuplexFlowQueue = terminal.NewDuplexFlowQueue(expansion, opts.QueueSize, expansion.submitUpstream)
 
 	// Create setup message.

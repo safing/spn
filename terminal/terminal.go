@@ -19,9 +19,7 @@ import (
 )
 
 const (
-	// DefaultTerminalTimeout is the default time duration after which an idle
-	// terminal session times out and is abandoned.
-	DefaultTerminalTimeout = 1 * time.Minute
+	timeoutTicks = 5
 )
 
 type TerminalInterface interface {
@@ -112,7 +110,7 @@ func createTerminalBase(
 		opMsgQueue:      make(chan *container.Container),
 		waitForFlush:    abool.New(),
 		flush:           make(chan func()),
-		idleTicker:      time.NewTicker(1 * time.Minute),
+		idleTicker:      time.NewTicker(time.Minute),
 		idleCounter:     new(uint32),
 		encryptionReady: make(chan struct{}),
 		operations:      make(map[uint32]Operation),
@@ -120,6 +118,7 @@ func createTerminalBase(
 		opts:            initMsg,
 		Abandoned:       abool.New(),
 	}
+	t.idleTicker.Stop() // Stop ticking to disable timeout.
 	if remote {
 		atomic.AddUint32(t.nextOpID, 4)
 	}
@@ -142,6 +141,12 @@ func (t *TerminalBase) Ctx() context.Context {
 // guarded and may only be used during initialization.
 func (t *TerminalBase) SetTerminalExtension(ext TerminalExtension) {
 	t.ext = ext
+}
+
+// SetTimeout sets the Terminal's idle timeout duration.
+// It is broken down into slots internally.
+func (t *TerminalBase) SetTimeout(d time.Duration) {
+	t.idleTicker.Reset(d / timeoutTicks)
 }
 
 // Deliver on TerminalBase only exists to conform to the interface. It must be
@@ -167,9 +172,6 @@ func (t *TerminalBase) Handler(_ context.Context) error {
 	defer t.ext.Abandon(ErrInternalError.With("handler died"))
 
 	for {
-		// Register activity.
-		atomic.StoreUint32(t.idleCounter, 0)
-
 		select {
 		case <-t.ctx.Done():
 			t.ext.Abandon(nil)
@@ -177,7 +179,7 @@ func (t *TerminalBase) Handler(_ context.Context) error {
 
 		case <-t.idleTicker.C:
 			// If nothing happens for a while, end the session.
-			if atomic.AddUint32(t.idleCounter, 1) > 5 {
+			if atomic.AddUint32(t.idleCounter, 1) > timeoutTicks {
 				t.ext.Abandon(ErrTimeout.With("no activity"))
 				return nil // Controlled worker exit.
 			}
@@ -199,6 +201,9 @@ func (t *TerminalBase) Handler(_ context.Context) error {
 					return nil // Controlled worker exit.
 				}
 			}
+
+			// Register activity.
+			atomic.StoreUint32(t.idleCounter, 0)
 		}
 	}
 }
@@ -253,9 +258,6 @@ func (t *TerminalBase) Sender(_ context.Context) error {
 	}
 
 	for {
-		// Register activity.
-		atomic.StoreUint32(t.idleCounter, 0)
-
 		select {
 		case <-t.ctx.Done():
 			t.ext.Abandon(nil)
@@ -263,7 +265,7 @@ func (t *TerminalBase) Sender(_ context.Context) error {
 
 		case <-t.idleTicker.C:
 			// If nothing happens for a while, end the session.
-			if atomic.AddUint32(t.idleCounter, 1) > 5 {
+			if atomic.AddUint32(t.idleCounter, 1) > timeoutTicks {
 				t.ext.Abandon(ErrTimeout.With("no activity"))
 				return nil // Controlled worker exit.
 			}
@@ -283,6 +285,9 @@ func (t *TerminalBase) Sender(_ context.Context) error {
 			if msgBufferLen >= sendMaxLength {
 				msgBufferLimitReached = true
 			}
+
+			// Register activity.
+			atomic.StoreUint32(t.idleCounter, 0)
 
 		case <-getSendMaxWait():
 			// The timer for waiting for more data has ended.
@@ -607,6 +612,7 @@ func (t *TerminalBase) Shutdown(err *Error) {
 
 	// Stop all other connected workers.
 	t.cancelCtx()
+	t.idleTicker.Stop()
 }
 
 func (t *TerminalBase) allOps() []Operation {

@@ -1,6 +1,7 @@
 package docks
 
 import (
+	"net"
 	"time"
 
 	"github.com/safing/portbase/container"
@@ -10,6 +11,9 @@ import (
 
 const (
 	sendThresholdMaxWait = 100 * time.Microsecond
+
+	expansionClientTimeout = 2 * time.Minute
+	expansionServerTimeout = 5 * time.Minute
 )
 
 type CraneTerminal struct {
