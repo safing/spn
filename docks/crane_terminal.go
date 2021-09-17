@@ -25,6 +25,11 @@ func NewLocalCraneTerminal(
 	initMsg *terminal.TerminalOpts,
 	submitUpstream func(*container.Container),
 ) (*CraneTerminal, *container.Container, *terminal.Error) {
+	// Default to terminal msg submit function.
+	if submitUpstream == nil {
+		submitUpstream = crane.submitTerminalMsg
+	}
+
 	// Create Terminal Base.
 	t, initData, err := terminal.NewLocalBaseTerminal(
 		crane.ctx,
@@ -86,6 +91,18 @@ func initCraneTerminal(
 
 func (t *CraneTerminal) Deliver(c *container.Container) *terminal.Error {
 	return t.DuplexFlowQueue.Deliver(c)
+}
+
+func (t *CraneTerminal) LocalAddr() net.Addr {
+	return t.crane.LocalAddr()
+}
+
+func (t *CraneTerminal) RemoteAddr() net.Addr {
+	return t.crane.RemoteAddr()
+}
+
+func (t *CraneTerminal) IsAbandoned() bool {
+	return t.Abandoned.IsSet()
 }
 
 func (t *CraneTerminal) Abandon(err *terminal.Error) {

@@ -111,6 +111,22 @@ func (a *Announcement) Copy() (*Announcement, error) {
 	return copied.(*Announcement), nil
 }
 
+// GetInfo returns the hub info.
+func (h *Hub) GetInfo() *Announcement {
+	h.Lock()
+	defer h.Unlock()
+
+	return h.Info
+}
+
+// GetInfo returns the hub status.
+func (h *Hub) GetStatus() *Status {
+	h.Lock()
+	defer h.Unlock()
+
+	return h.Status
+}
+
 // Verified return whether the Hub has been verified.
 func (h *Hub) Verified() bool {
 	h.Lock()
