@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"sync"
 	"time"
 
@@ -168,6 +169,14 @@ func (crane *Crane) Publish() error {
 
 	log.Infof("spn/docks: %s (was %s) is now public", crane, maskedID)
 	return nil
+}
+
+func (crane *Crane) LocalAddr() net.Addr {
+	return crane.ship.LocalAddr()
+}
+
+func (crane *Crane) RemoteAddr() net.Addr {
+	return crane.ship.RemoteAddr()
 }
 
 func (crane *Crane) getNextTerminalID() uint32 {

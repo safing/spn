@@ -9,13 +9,15 @@ import (
 	"github.com/safing/spn/terminal"
 )
 
+const MainZone = "alpha2"
+
 var (
 	module         *modules.Module
 	accessCodeFlag string
 )
 
 func init() {
-	module = modules.Register("access-codes", nil, nil, nil)
+	module = modules.Register("access-codes", prep, nil, nil)
 	flag.StringVar(&accessCodeFlag, "access-code", "", "Supply an SPN Special Access Code")
 }
 
@@ -30,7 +32,7 @@ func prep() error {
 	}
 	RegisterZone("alpha2", alpha2Handler, terminal.AddPermissions(
 		terminal.MayExpand,
-		terminal.MayTunnel,
+		terminal.MayConnect,
 	))
 
 	// parse access code flag

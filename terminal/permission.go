@@ -4,7 +4,7 @@ type Permission uint16
 
 const (
 	MayExpand         Permission = 0x1
-	MayTunnel         Permission = 0x2
+	MayConnect        Permission = 0x2
 	IsHubOwner        Permission = 0x100
 	IsHubAdvisor      Permission = 0x200
 	IsCraneController Permission = 0x8000

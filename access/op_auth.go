@@ -29,7 +29,7 @@ func AuthorizeToTerminal(t terminal.OpTerminal) (*AuthorizeOp, *terminal.Error) 
 	op := &AuthorizeOp{}
 	op.Init(0)
 
-	code, err := Get()
+	code, err := GetCode(MainZone)
 	if err != nil {
 		return nil, terminal.ErrInternalError.With("failed to get access code: %w", err)
 	}

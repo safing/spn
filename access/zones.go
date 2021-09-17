@@ -35,7 +35,7 @@ func GetZone(zoneID string) (*Zone, error) {
 
 	zone, ok := zones[zoneID]
 	if !ok {
-		return nil, fmt.Errorf("zone %q not registered", zone)
+		return nil, fmt.Errorf("zone %q not registered", zoneID)
 	}
 
 	return zone, nil
@@ -82,16 +82,11 @@ func Import(code *Code) error {
 	return zone.handler.Import(code)
 }
 
-func Get() (code *Code, err error) {
-	zonesLock.Lock()
-	defer zonesLock.Unlock()
-
-	// TODO: priorities preferred methods
-	for _, zone := range zones {
-		code, err = zone.handler.Get()
-		if err == nil {
-			return code, nil
-		}
+func GetCode(zoneID string) (code *Code, err error) {
+	zone, err := GetZone(zoneID)
+	if err != nil {
+		return nil, err
 	}
-	return nil, err
+
+	return zone.handler.Get()
 }

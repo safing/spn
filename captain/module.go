@@ -9,6 +9,7 @@ import (
 	"github.com/safing/portbase/modules/subsystems"
 	"github.com/safing/portbase/rng"
 	"github.com/safing/spn/conf"
+	"github.com/safing/spn/crew"
 	"github.com/safing/spn/ships"
 	"github.com/tevino/abool"
 
@@ -22,7 +23,7 @@ var (
 )
 
 func init() {
-	module = modules.Register("captain", prep, start, nil, "base", "cabin", "docks", "navigator", "sluice")
+	module = modules.Register("captain", prep, start, nil, "base", "cabin", "docks", "crew", "navigator", "sluice", "netenv")
 	subsystems.Register(
 		"spn",
 		"SPN",
@@ -73,6 +74,9 @@ func start() error {
 		if err := startPierMgmt(); err != nil {
 			return err
 		}
+
+		// Enable connect operation.
+		crew.EnableConnecting(publicIdentity.Hub)
 	}
 
 	// bootstrapping

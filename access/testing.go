@@ -33,7 +33,7 @@ func registerTestCode() {
 	}
 	RegisterZone("test", testHandler, terminal.AddPermissions(
 		terminal.MayExpand,
-		terminal.MayTunnel,
+		terminal.MayConnect,
 	))
 
 	// test code
