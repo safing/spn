@@ -30,11 +30,17 @@ type Options struct {
 	// HubPolicy is an endpoint list that all Hubs must pass in order to be taken into account for the operation.
 	HubPolicy endpoints.Endpoints
 
-	// HomeHubPolicy is an enpoint list that Home Hubs must pass in order to be taken into account for the operation.
+	// HomeHubPolicy is an endpoint list that Home Hubs must pass in order to be taken into account for the operation.
 	HomeHubPolicy endpoints.Endpoints
 
-	// DestinationHubPolicy is an enpoint list that Destination Hubs must pass in order to be taken into account for the operation.
+	// DestinationHubPolicy is an endpoint list that Destination Hubs must pass in order to be taken into account for the operation.
 	DestinationHubPolicy endpoints.Endpoints
+
+	// FIXME
+	CheckHubEntryPolicy bool
+
+	// FIXME
+	CheckHubExitPolicy bool
 
 	// NoDefaults declares whether default and recommended Regard and Disregard states should not be used.
 	NoDefaults bool
@@ -44,6 +50,21 @@ type Options struct {
 
 	// RoutingProfile defines the algorithm to use to find a route.
 	RoutingProfile string
+}
+
+func (o *Options) Copy() *Options {
+	return &Options{
+		Regard:                        o.Regard,
+		Disregard:                     o.Disregard,
+		HubPolicy:                     o.HubPolicy,
+		HomeHubPolicy:                 o.HomeHubPolicy,
+		DestinationHubPolicy:          o.DestinationHubPolicy,
+		CheckHubEntryPolicy:           o.CheckHubEntryPolicy,
+		CheckHubExitPolicy:            o.CheckHubExitPolicy,
+		NoDefaults:                    o.NoDefaults,
+		RequireTrustedDestinationHubs: o.RequireTrustedDestinationHubs,
+		RoutingProfile:                o.RoutingProfile,
+	}
 }
 
 type PinMatcher func(pin *Pin) bool
@@ -61,10 +82,10 @@ func (m *Map) defaultOptions() *Options {
 		RoutingProfile: RoutingProfileDefaultName,
 	}
 
-	if m.Intel != nil && m.Intel.Parsed() != nil {
-		opts.HubPolicy = m.Intel.Parsed().HubAdvisory
-		opts.HomeHubPolicy = m.Intel.Parsed().HomeHubAdvisory
-		opts.DestinationHubPolicy = m.Intel.Parsed().DestinationHubAdvisory
+	if m.intel != nil && m.intel.Parsed() != nil {
+		opts.HubPolicy = m.intel.Parsed().HubAdvisory
+		opts.HomeHubPolicy = m.intel.Parsed().HomeHubAdvisory
+		opts.DestinationHubPolicy = m.intel.Parsed().DestinationHubAdvisory
 	}
 
 	return opts
@@ -78,8 +99,8 @@ func (o *Options) Matcher(hubType HubType) PinMatcher {
 	// Add default states.
 	if !o.NoDefaults {
 		// Add default States.
-		regard |= StateSummaryRegard
-		disregard |= StateSummaryDisregard
+		regard = regard.add(StateSummaryRegard)
+		disregard = disregard.add(StateSummaryDisregard)
 
 		// Add type based Advisories.
 		switch hubType {

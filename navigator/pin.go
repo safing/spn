@@ -71,6 +71,14 @@ type Lane struct {
 	active bool
 }
 
+func (pin *Pin) Lock() {
+	pin.Hub.Lock()
+}
+
+func (pin *Pin) Unlock() {
+	pin.Hub.Unlock()
+}
+
 // String returns a human-readable representation of the Pin.
 func (pin *Pin) String() string {
 	return "<Pin " + pin.Hub.Name() + ">"
@@ -85,7 +93,7 @@ func (pin *Pin) updateLocationData() {
 		var ok bool
 		pin.LocationV4, ok = pin.EntityV4.GetLocation(context.TODO())
 		if !ok {
-			log.Warningf("navigator: failed to get location of %s of %s", pin.Hub.Info.IPv4, pin)
+			log.Warningf("navigator: failed to get location of %s of %s", pin.Hub.Info.IPv4, pin.Hub.StringWithoutLocking())
 			return
 		}
 	} else {
@@ -100,7 +108,7 @@ func (pin *Pin) updateLocationData() {
 		var ok bool
 		pin.LocationV6, ok = pin.EntityV6.GetLocation(context.TODO())
 		if !ok {
-			log.Warningf("navigator: failed to get location of %s of %s", pin.Hub.Info.IPv6, pin)
+			log.Warningf("navigator: failed to get location of %s of %s", pin.Hub.Info.IPv6, pin.Hub.StringWithoutLocking())
 			return
 		}
 	} else {
@@ -109,7 +117,14 @@ func (pin *Pin) updateLocationData() {
 	}
 }
 
-func (pin *Pin) isConnected() bool {
+func (pin *Pin) HasActiveTerminal() bool {
+	pin.Lock()
+	defer pin.Unlock()
+
+	return pin.hasActiveTerminal()
+}
+
+func (pin *Pin) hasActiveTerminal() bool {
 	return pin.Connection != nil &&
 		!pin.Connection.Terminal.IsAbandoned()
 }

@@ -12,10 +12,10 @@ func (m *Map) UpdateIntel(update *hub.Intel) {
 	defer m.Unlock()
 
 	// update reference
-	m.Intel = update
+	m.intel = update
 
 	// go through map
-	for _, pin := range m.All {
+	for _, pin := range m.all {
 		m.updateIntelStatuses(pin)
 	}
 }
@@ -25,12 +25,12 @@ func (m *Map) updateIntelStatuses(pin *Pin) {
 	pin.removeStates(StateTrusted | StateUsageDiscouraged | StateUsageAsHomeDiscouraged | StateUsageAsDestinationDiscouraged)
 
 	// Check if Intel data is loaded.
-	if m.Intel == nil {
+	if m.intel == nil {
 		return
 	}
 
 	// Check if Hub is trusted.
-	for _, hubID := range m.Intel.TrustedHubs {
+	for _, hubID := range m.intel.TrustedHubs {
 		if pin.Hub.ID == hubID {
 			pin.addStates(StateTrusted)
 			break
@@ -42,22 +42,22 @@ func (m *Map) updateIntelStatuses(pin *Pin) {
 	checkStatusList(
 		pin,
 		StateUsageDiscouraged,
-		m.Intel.AdviseOnlyTrustedHubs,
-		m.Intel.Parsed().HubAdvisory,
+		m.intel.AdviseOnlyTrustedHubs,
+		m.intel.Parsed().HubAdvisory,
 	)
 	// Check for UsageAsHomeDiscouraged.
 	checkStatusList(
 		pin,
 		StateUsageAsHomeDiscouraged,
-		m.Intel.AdviseOnlyTrustedHomeHubs,
-		m.Intel.Parsed().HomeHubAdvisory,
+		m.intel.AdviseOnlyTrustedHomeHubs,
+		m.intel.Parsed().HomeHubAdvisory,
 	)
 	// Check for UsageAsDestinationDiscouraged.
 	checkStatusList(
 		pin,
 		StateUsageAsDestinationDiscouraged,
-		m.Intel.AdviseOnlyTrustedDestinationHubs,
-		m.Intel.Parsed().DestinationHubAdvisory,
+		m.intel.AdviseOnlyTrustedDestinationHubs,
+		m.intel.Parsed().DestinationHubAdvisory,
 	)
 }
 

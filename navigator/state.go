@@ -164,7 +164,7 @@ func (m *Map) updateStateSuperseded(pin *Pin) {
 
 	// IPv4 Loop
 	if pin.Hub.Info.IPv4 != nil {
-		for _, mapPin := range m.All {
+		for _, mapPin := range m.all {
 			// Skip Pin itself
 			if mapPin.Hub.ID == pin.Hub.ID {
 				continue
@@ -188,7 +188,7 @@ func (m *Map) updateStateSuperseded(pin *Pin) {
 
 	// IPv6 Loop
 	if pin.Hub.Info.IPv6 != nil {
-		for _, mapPin := range m.All {
+		for _, mapPin := range m.all {
 			// Skip Pin itself
 			if mapPin.Hub.ID == pin.Hub.ID {
 				continue
@@ -230,7 +230,7 @@ func (pin *Pin) updateStateHasRequiredInfo() {
 
 func (m *Map) updateActiveHubs() {
 	now := time.Now().Unix()
-	for _, pin := range m.All {
+	for _, pin := range m.all {
 		pin.updateStateActive(now)
 	}
 }
@@ -248,18 +248,18 @@ func (pin *Pin) updateStateActive(now int64) {
 }
 
 func (m *Map) recalculateReachableHubs() error {
-	if m.Home == nil {
+	if m.home == nil {
 		return ErrHomeHubUnset
 	}
 
 	// reset
-	for _, pin := range m.All {
+	for _, pin := range m.all {
 		pin.removeStates(StateReachable)
 		pin.HopDistance = 0
 	}
 
 	// find all connected Hubs
-	m.Home.markReachable(1)
+	m.home.markReachable(1)
 	return nil
 }
 

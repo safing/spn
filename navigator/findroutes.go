@@ -1,6 +1,7 @@
 package navigator
 
 import (
+	"errors"
 	"fmt"
 	"net"
 
@@ -11,8 +12,14 @@ func (m *Map) FindRoutes(ip net.IP, opts *Options, maxRoutes int) (*Routes, erro
 	m.Lock()
 	defer m.Unlock()
 
+	// Check if map is populated.
 	if m.isEmpty() {
 		return nil, ErrEmptyMap
+	}
+
+	// Set default options if unset.
+	if opts == nil {
+		opts = m.defaultOptions()
 	}
 
 	// Get the location of the given IP address.
@@ -38,7 +45,7 @@ func (m *Map) FindRoutes(ip net.IP, opts *Options, maxRoutes int) (*Routes, erro
 }
 
 func (m *Map) findRoutes(dsts *nearbyPins, opts *Options, maxRoutes int) (*Routes, error) {
-	if m.Home == nil {
+	if m.home == nil {
 		return nil, ErrHomeHubUnset
 	}
 
@@ -59,10 +66,10 @@ func (m *Map) findRoutes(dsts *nearbyPins, opts *Options, maxRoutes int) (*Route
 	// Create initial route.
 	route := &Route{
 		// Estimate how much space we will need, else it'll just expand.
-		Path: make([]*Hop, 1, routingProfile.MinHops*2+routingProfile.MaxExtraHops),
+		Path: make([]*Hop, 1, routingProfile.MinHops+routingProfile.MaxExtraHops),
 	}
 	route.Path[0] = &Hop{
-		pin: m.Home,
+		pin: m.home,
 		// TODO: add initial cost
 	}
 
@@ -132,5 +139,11 @@ func (m *Map) findRoutes(dsts *nearbyPins, opts *Options, maxRoutes int) (*Route
 	// routes to the list.
 	exploreLanes(route)
 
+	// Check if we found anything.
+	if len(routes.All) == 0 {
+		return nil, errors.New("failed to find any routes")
+	}
+
+	routes.makeExportReady(opts.RoutingProfile)
 	return routes, nil
 }

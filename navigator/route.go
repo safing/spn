@@ -115,7 +115,7 @@ func (r *Route) removeHop() {
 func (r *Route) recalculateTotalCost() {
 	r.TotalCost = r.DstCost
 	for _, hop := range r.Path {
-		if hop.pin.isConnected() {
+		if hop.pin.HasActiveTerminal() {
 			// If we have an active connection, only take 90% of the cost.
 			r.TotalCost += (hop.Cost * 9) / 10
 		} else {
@@ -124,18 +124,18 @@ func (r *Route) recalculateTotalCost() {
 	}
 }
 
-// CopyUpTo makes a somewhat deep copy of the Route up to the specified index
+// CopyUpTo makes a somewhat deep copy of the Route up to the specified amount
 // and returns it. Hops themselves are not copied, because their data does not
 // change. Therefore, returned Hops may not be edited.
-// Specify an index of 0 to copy all.
-func (r *Route) CopyUpTo(index int) *Route {
-	// Check index.
-	if index == 0 || index > len(r.Path) {
-		index = len(r.Path)
+// Specify an amount of 0 to copy all.
+func (r *Route) CopyUpTo(n int) *Route {
+	// Check amount.
+	if n == 0 || n > len(r.Path) {
+		n = len(r.Path)
 	}
 
 	newRoute := &Route{
-		Path:      make([]*Hop, index),
+		Path:      make([]*Hop, n),
 		TotalCost: r.TotalCost,
 	}
 	copy(newRoute.Path, r.Path)
@@ -163,6 +163,10 @@ func (r *Route) makeExportReady(algorithm string) {
 // exporting only.
 func (hop *Hop) makeExportReady() {
 	hop.HubID = hop.pin.Hub.ID
+}
+
+func (hop *Hop) Pin() *Pin {
+	return hop.pin
 }
 
 func (r *Route) String() string {

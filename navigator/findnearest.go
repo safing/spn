@@ -86,8 +86,14 @@ func (m *Map) FindNearestHubs(locationV4, locationV6 *geoip.Location, opts *Opti
 	m.RLock()
 	defer m.RUnlock()
 
+	// Check if map is populated.
 	if m.isEmpty() {
 		return nil, ErrEmptyMap
+	}
+
+	// Set default options if unset.
+	if opts == nil {
+		opts = m.defaultOptions()
 	}
 
 	// Find nearest Pins.
@@ -115,7 +121,7 @@ func (m *Map) findNearestPins(locationV4, locationV6 *geoip.Location, matcher Pi
 	}
 
 	// Iterate over all Pins in the Map to find the nearest ones.
-	for _, pin := range m.All {
+	for _, pin := range m.all {
 		// Check if the Pin matches the criteria.
 		if !matcher(pin) {
 			// Debugging:

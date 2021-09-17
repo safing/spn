@@ -136,7 +136,7 @@ func (m *Map) RemoveHub(id string) {
 	m.Lock()
 	defer m.Unlock()
 
-	delete(m.All, id)
+	delete(m.all, id)
 }
 
 // UpdateHub updates a Hub on the Map.
@@ -160,7 +160,7 @@ func (m *Map) updateHub(h *hub.Hub, lockMap, lockHub bool) {
 	}
 
 	// Create or update Pin.
-	pin, ok := m.All[h.ID]
+	pin, ok := m.all[h.ID]
 	if ok {
 		pin.Hub = h
 	} else {
@@ -168,7 +168,7 @@ func (m *Map) updateHub(h *hub.Hub, lockMap, lockHub bool) {
 			Hub:         h,
 			ConnectedTo: make(map[string]*Lane),
 		}
-		m.All[h.ID] = pin
+		m.all[h.ID] = pin
 	}
 
 	// Update the invalid status of the Pin.
@@ -205,7 +205,7 @@ func (m *Map) updateHub(h *hub.Hub, lockMap, lockHub bool) {
 		}
 
 		// First, get the Lane peer.
-		peer, ok := m.All[lane.ID]
+		peer, ok := m.all[lane.ID]
 		if !ok {
 			// We need to wait for peer to be added to the Map.
 			continue
@@ -222,7 +222,7 @@ func (m *Map) updateHub(h *hub.Hub, lockMap, lockHub bool) {
 			delete(pin.ConnectedTo, id)
 			removedLanes = true
 			// Remove Lane from peer.
-			peer, ok := m.All[id]
+			peer, ok := m.all[id]
 			if ok {
 				delete(peer.ConnectedTo, pin.Hub.ID)
 			}
@@ -306,7 +306,7 @@ func (m *Map) updateStates(ctx context.Context, task *modules.Task) error {
 	now := time.Now()
 	oneMonthAgo := now.Add(-33 * 24 * time.Hour).Unix()
 
-	for _, pin := range m.All {
+	for _, pin := range m.all {
 		// Update StateFailing
 		if pin.State.has(StateFailing) && now.After(pin.FailingUntil) {
 			pin.removeStates(StateFailing)

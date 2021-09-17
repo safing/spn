@@ -28,7 +28,7 @@ func (m *Map) Stats() *MapStats {
 	}
 
 	// Iterate over all Pins to collect data.
-	for _, pin := range m.All {
+	for _, pin := range m.all {
 		// Check all states.
 		for _, state := range allStates {
 			if pin.State.has(state) {
