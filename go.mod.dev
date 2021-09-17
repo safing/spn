@@ -1,6 +1,0 @@
-replace (
-	github.com/safing/portbase => ../portbase
-	github.com/safing/portmaster => ../portmaster
-	github.com/safing/spn => ../spn
-	github.com/safing/jess => ../jess
-)
