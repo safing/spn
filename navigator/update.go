@@ -93,44 +93,6 @@ func (m *Map) RegisterHubUpdateHook(databasePrefix string) error {
 	return err
 }
 
-/*
-func (m *Map) SubscriptionFeeder(databasePrefix string) func(context.Context) error {
-	return func(ctx context.Context) error {
-		sub, err := db.Subscribe(query.New(databasePrefix))
-		if err != nil {
-			return err
-		}
-
-		for {
-			select {
-			case <-ctx.Done():
-				sub.Cancel()
-				return nil
-			case r := <-sub.Feed:
-				if r == nil {
-					return errors.New("subscription ended")
-				}
-
-				if r.Meta().IsDeleted() {
-					m.RemoveHub(path.Base(r.Key()))
-					continue
-				}
-
-				// Get a fresh copy from the database in order to ensure that there are
-				// no other references to it.
-				fresh, err := hub.GetHubByKey(r.Key())
-				if err != nil {
-					log.Warningf("spn/navigator: subscription feeder on %s map failed to fetch fresh record of %s: %s", m.Name, r.Key(), err)
-					continue
-				}
-
-				m.UpdateHub(fresh)
-			}
-		}
-	}
-}
-*/
-
 // RemoveHub removes a Hub from the Map.
 func (m *Map) RemoveHub(id string) {
 	m.Lock()
