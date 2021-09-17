@@ -2,6 +2,7 @@ package captain
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/safing/portbase/container"
@@ -154,7 +155,7 @@ func (op *GossipQueryOp) Deliver(c *container.Container) *terminal.Error {
 	}
 
 	// Import and verify.
-	h, _, tErr := docks.ImportAndVerifyHubInfo(module.Ctx, "", announcementData, statusData, hub.ScopePublic)
+	h, forward, tErr := docks.ImportAndVerifyHubInfo(module.Ctx, "", announcementData, statusData, hub.ScopePublic)
 	if tErr != nil {
 		log.Warningf("spn/captain: failed to import %s from gossip query: %s", gossipMsgType, tErr)
 	} else {
@@ -162,6 +163,12 @@ func (op *GossipQueryOp) Deliver(c *container.Container) *terminal.Error {
 		op.importCnt++
 	}
 
+	// Relay data.
+	if forward {
+		// FIXME: Find better way to get craneID.
+		craneID := strings.SplitN(op.t.FmtID(), "#", 2)[0]
+		gossipRelayMsg(craneID, gossipMsgType, data)
+	}
 	return nil
 }
 

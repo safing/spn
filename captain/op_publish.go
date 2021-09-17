@@ -78,12 +78,18 @@ func runPublishOp(t terminal.OpTerminal, opID uint32, data *container.Container)
 	if err != nil {
 		return nil, terminal.ErrMalformedData.With("failed to get status: %w", err)
 	}
-	h, _, tErr := docks.ImportAndVerifyHubInfo(module.Ctx, "", announcementData, statusData, hub.ScopePublic)
+	h, forward, tErr := docks.ImportAndVerifyHubInfo(module.Ctx, "", announcementData, statusData, hub.ScopePublic)
 	if tErr != nil {
 		return nil, tErr.Wrap("failed to import and verify hub")
 	}
 	// Update reference in case it was changed by the import.
 	controller.Crane.ConnectedHub = h
+
+	// Relay data.
+	if forward {
+		gossipRelayMsg(controller.Crane.ID, GossipHubAnnouncementMsg, announcementData)
+		gossipRelayMsg(controller.Crane.ID, GossipHubStatusMsg, statusData)
+	}
 
 	// Create verification request.
 	v, request, err := cabin.CreateVerificationRequest(PublishOpType, "", "")
