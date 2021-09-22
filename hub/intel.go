@@ -1,8 +1,11 @@
 package hub
 
 import (
+	"errors"
 	"fmt"
+	"net"
 
+	"github.com/safing/jess/lhash"
 	"github.com/safing/portbase/formats/dsd"
 	"github.com/safing/portmaster/profile/endpoints"
 )
@@ -53,7 +56,7 @@ func (i *Intel) Parsed() *ParsedIntel {
 // ParseIntel parses Hub intelligence data.
 func ParseIntel(data []byte) (*Intel, error) {
 	// Load data into struct.
-	var intel *Intel
+	intel := &Intel{}
 	_, err := dsd.Load(data, intel)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse data: %w", err)
@@ -88,4 +91,49 @@ func (i *Intel) ParseAdvisories() (err error) {
 	}
 
 	return nil
+}
+
+func ParseBootstrapHub(bootstrapTransport string, mapName string) (*Hub, error) {
+	// Parse transport and check Hub ID.
+	t, err := ParseTransport(bootstrapTransport)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse transport: %s", err)
+	}
+	if t.Option == "" {
+		return nil, errors.New("missing hub ID in URL fragment")
+	}
+	if _, err := lhash.FromBase58(t.Option); err != nil {
+		return nil, fmt.Errorf("hub ID is invalid: %w", err)
+	}
+
+	// Parse IP address from transport.
+	ip := net.ParseIP(t.Domain)
+	if ip == nil {
+		return nil, errors.New("invalid IP address (domains are not supported for bootstrapping)")
+	}
+
+	// Clean up transport for hub info.
+	id := t.Option
+	t.Domain = ""
+	t.Option = ""
+
+	// Create bootstrap hub.
+	bootstrapHub := &Hub{
+		ID:  id,
+		Map: mapName,
+		Info: &Announcement{
+			ID:         id,
+			Transports: []string{t.String()},
+		},
+		Status: &Status{},
+	}
+
+	// Set IP address.
+	if ip4 := ip.To4(); ip4 != nil {
+		bootstrapHub.Info.IPv4 = ip4
+	} else {
+		bootstrapHub.Info.IPv6 = ip
+	}
+
+	return bootstrapHub, nil
 }

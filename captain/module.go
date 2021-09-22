@@ -87,6 +87,14 @@ func start() error {
 		return err
 	}
 
+	// Initialize intel updates.
+	if err := registerIntelUpdateHook(); err != nil {
+		return err
+	}
+	if err := updateSPNIntel(module.Ctx, nil); err != nil {
+		return err
+	}
+
 	// network optimizer
 	if conf.PublicHub() {
 		module.NewTask("optimize network", optimizeNetwork).
@@ -94,7 +102,7 @@ func start() error {
 			Schedule(time.Now().Add(15 * time.Second))
 	}
 
-	// client + primary hub manager
+	// client + home hub manager
 	if conf.Client() {
 		module.StartServiceWorker("client manager", 0, clientManager)
 	}

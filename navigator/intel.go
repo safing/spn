@@ -2,22 +2,40 @@ package navigator
 
 import (
 	"context"
+	"errors"
 
+	"github.com/safing/portbase/log"
 	"github.com/safing/portmaster/profile/endpoints"
 	"github.com/safing/spn/hub"
 )
 
-func (m *Map) UpdateIntel(update *hub.Intel) {
+// UpdateIntel supplies the map with new intel data. The data is not copied, so
+// it must not be modified after being supplied. If the map is empty, the
+// bootstrap hubs will be added to the map.
+func (m *Map) UpdateIntel(update *hub.Intel) error {
+	// Check if intel data is already parsed.
+	if update.Parsed() == nil {
+		return errors.New("intel data is not parsed")
+	}
+
 	m.Lock()
 	defer m.Unlock()
 
-	// update reference
+	// Update the map's reference to the intel data.
 	m.intel = update
 
 	// go through map
 	for _, pin := range m.all {
 		m.updateIntelStatuses(pin)
 	}
+
+	log.Infof("spn/navigator: updated intel on map %s", m.Name)
+
+	// Add bootstrap hubs if map is empty.
+	if m.isEmpty() {
+		return m.addBootstrapHubs(m.intel.BootstrapHubs)
+	}
+	return nil
 }
 
 func (m *Map) updateIntelStatuses(pin *Pin) {

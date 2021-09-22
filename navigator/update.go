@@ -2,6 +2,8 @@ package navigator
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"path"
 	"time"
 
@@ -294,4 +296,55 @@ func (m *Map) updateStates(ctx context.Context, task *modules.Task) error {
 
 	// Update StateReachable
 	return m.recalculateReachableHubs()
+}
+
+// AddBootstrapHubs adds the given bootstrap hubs to the map
+func (m *Map) AddBootstrapHubs(bootstrapTransports []string) error {
+	m.Lock()
+	defer m.Unlock()
+
+	return m.addBootstrapHubs(bootstrapTransports)
+}
+
+func (m *Map) addBootstrapHubs(bootstrapTransports []string) error {
+	var anyAdded bool
+	var lastErr error
+	var failed int
+	for _, bootstrapTransport := range bootstrapTransports {
+		err := m.addBootstrapHub(bootstrapTransport)
+		if err != nil {
+			log.Warningf("spn/navigator: failed to add bootstrap hub %q to map %s: %s", bootstrapTransport, m.Name, err)
+			lastErr = err
+			failed++
+		} else {
+			anyAdded = true
+		}
+	}
+
+	if lastErr != nil && !anyAdded {
+		return lastErr
+	}
+	return nil
+}
+
+func (m *Map) addBootstrapHub(bootstrapTransport string) error {
+	// Parse bootstrap hub.
+	bootstrapHub, err := hub.ParseBootstrapHub(bootstrapTransport, m.Name)
+	if err != nil {
+		return fmt.Errorf("invalid bootstrap hub: %w", err)
+	}
+
+	// Check if hub already exists.
+	_, err = hub.GetHub(bootstrapHub.Map, bootstrapHub.ID)
+	if err == nil {
+		return nil
+	}
+	if !errors.Is(err, database.ErrNotFound) {
+		return err
+	}
+
+	// Add to map for bootstrapping.
+	m.updateHub(bootstrapHub, false, false)
+	log.Infof("spn/navigator: added bootstrap %s to map %s", bootstrapHub, m.Name)
+	return nil
 }

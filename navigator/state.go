@@ -269,6 +269,9 @@ func (pin *Pin) markReachable(hopDistance int) {
 		// Pin wasn't reachable before.
 	case hopDistance < pin.HopDistance:
 		// New path has a shorter distance.
+	case pin.State.hasAnyOf(StateSummaryDisregard):
+		// Ignore disregarded pins for reachability calculation.
+		return
 	default:
 		// Pin is already reachable at same or better distance.
 		return

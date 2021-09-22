@@ -5,7 +5,6 @@ import (
 	"sync"
 
 	"github.com/safing/portbase/log"
-	"github.com/safing/spn/conf"
 	"github.com/safing/spn/docks"
 	"github.com/safing/spn/hub"
 )
@@ -82,9 +81,10 @@ func (m *Map) SetHome(id string, t *docks.CraneTerminal) (ok bool) {
 
 // isEmpty returns whether the Map is regarded as empty.
 func (m *Map) isEmpty() bool {
-	if conf.PublicHub() {
-		// We also regard a map with only one entry to be empty, as this will be the
-		// case for Hubs, which will have their own entry in the Map.
+	if m.home != nil {
+		// When a home hub is set, we also regard a map with only one entry to be
+		// empty, as this will be the case for Hubs, which will have their own
+		// entry in the Map.
 		return len(m.all) <= 1
 	}
 
