@@ -594,10 +594,10 @@ func (t *TerminalBase) addToOpMsgSendBuffer(
 // ends all operations with a nil error and finally cancels the terminal
 // context. This function is usually not called directly, but at the end of an
 // Abandon() implementation.
-func (t *TerminalBase) Shutdown(err *Error) {
-	if !err.IsExternal() {
+func (t *TerminalBase) Shutdown(err *Error, sendError bool) {
+	if sendError {
 		stopMsg := container.New(err.Pack())
-		MakeMsg(container.New(err.Pack()), t.id, MsgTypeStop)
+		MakeMsg(stopMsg, t.id, MsgTypeStop)
 
 		tErr := t.ext.SendRaw(stopMsg)
 		if tErr != nil {

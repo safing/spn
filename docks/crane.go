@@ -231,12 +231,13 @@ func (crane *Crane) AbandonTerminal(id uint32, err *terminal.Error) {
 	}
 
 	// Log reason the terminal is ending. Override stopping error with nil.
-	if err == nil {
+	switch {
+	case err == nil:
 		log.Debugf("spn/docks: %T %s is being abandoned", t, t.FmtID())
-	} else if errors.Is(err, terminal.ErrStopping) {
+	case errors.Is(err, terminal.ErrStopping):
 		err = nil
 		log.Debugf("spn/docks: %T %s is being abandoned by peer", t, t.FmtID())
-	} else {
+	default:
 		log.Warningf("spn/docks: %T %s: %s", t, t.FmtID(), err)
 	}
 

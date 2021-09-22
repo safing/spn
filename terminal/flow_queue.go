@@ -241,7 +241,7 @@ func (dfq *DuplexFlowQueue) Deliver(c *container.Container) *Error {
 	// Get and add new reported space.
 	addSpace, err := c.GetNextN16()
 	if err != nil {
-		return ErrMalformedData
+		return ErrMalformedData.With("failed to parse reported space: %w", err)
 	}
 	if addSpace > 0 {
 		dfq.addToSendSpace(int32(addSpace))

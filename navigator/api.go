@@ -134,8 +134,6 @@ func handleMapRequest(w http.ResponseWriter, hr *http.Request) {
 				}
 				// Add edge.
 				graph.AddEdge(pin.Hub.ID, lane.Pin.Hub.ID, false, edgeOptions)
-			} else {
-				log.Errorf("not adding %s to %s", pin, lane.Pin)
 			}
 		}
 	}

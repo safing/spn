@@ -217,7 +217,10 @@ func ApplyAnnouncement(hub *Hub, data []byte, mapName string, scope Scope, selfc
 			return hub, false, nil
 		case announcement.Timestamp < hub.Info.Timestamp:
 			// Received an old version, do not update.
-			return nil, false, fmt.Errorf("newer announcement version of %s present", hub)
+			return hub, false, fmt.Errorf(
+				"announcement from %s @ %s is older than current status @ %s",
+				hub, time.Unix(announcement.Timestamp, 0), time.Unix(hub.Info.Timestamp, 0),
+			)
 		}
 	}
 
@@ -261,7 +264,7 @@ func (hub *Hub) validateAnnouncement(announcement *Announcement, scope Scope) er
 	// check timestamp
 	if announcement.Timestamp > time.Now().Add(clockSkewTolerance).Unix() {
 		return fmt.Errorf(
-			"announcement from %s is from the future: %s",
+			"announcement from %s @ %s is from the future",
 			announcement.ID,
 			time.Unix(announcement.Timestamp, 0),
 		)
@@ -370,7 +373,10 @@ func ApplyStatus(hub *Hub, data []byte, mapName string, scope Scope, selfcheck b
 			return hub, false, nil
 		case status.Timestamp < hub.Status.Timestamp:
 			// Received an old version, do not update.
-			return hub, false, fmt.Errorf("newer status version of %s present", hub)
+			return hub, false, fmt.Errorf(
+				"status from %s @ %s is older than current status @ %s",
+				hub, time.Unix(status.Timestamp, 0), time.Unix(hub.Status.Timestamp, 0),
+			)
 		}
 	}
 
@@ -410,7 +416,7 @@ func (hub *Hub) validateStatus(status *Status) error {
 	// check timestamp
 	if status.Timestamp > time.Now().Add(clockSkewTolerance).Unix() {
 		return fmt.Errorf(
-			"status from %s is from the future: %s",
+			"status from %s @ %s is from the future",
 			hub.ID,
 			time.Unix(status.Timestamp, 0),
 		)

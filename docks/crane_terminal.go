@@ -112,7 +112,7 @@ func (t *CraneTerminal) IsAbandoned() bool {
 func (t *CraneTerminal) Abandon(err *terminal.Error) {
 	if t.Abandoned.SetToIf(false, true) {
 		// Send stop msg and end all operations.
-		t.Shutdown(err)
+		t.Shutdown(err, err.IsExternal())
 
 		// Abandon terminal.
 		t.crane.AbandonTerminal(t.ID(), err)

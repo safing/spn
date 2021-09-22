@@ -1,6 +1,7 @@
 package docks
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/safing/portbase/container"
@@ -86,14 +87,20 @@ func (t *ExpansionTerminal) Abandon(err *terminal.Error) {
 
 func (t *ExpansionTerminal) stop(err *terminal.Error) {
 	if t.Abandoned.SetToIf(false, true) {
-		if err != nil {
-			log.Warningf("spn/docks: expansion terminal %s: %s", t.FmtID(), err)
-		} else {
+		switch {
+		case err == nil:
 			log.Debugf("spn/docks: expansion terminal %s is being abandoned", t.FmtID())
+		case errors.Is(err, terminal.ErrTimeout):
+			log.Debugf("spn/docks: expansion terminal %s %s", t.FmtID(), err)
+		default:
+			log.Warningf("spn/docks: expansion terminal %s: %s", t.FmtID(), err)
 		}
 
-		// Send stop msg and end all operations.
-		t.Shutdown(nil)
+		// Send stop message.
+		t.relayOp.OpEnd(t, nil)
+
+		// End all operations.
+		t.Shutdown(nil, false)
 	}
 }
 

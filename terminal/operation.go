@@ -48,7 +48,7 @@ var (
 func RegisterOpType(params OpParams) {
 	// Check if we can still register an operation type.
 	if opRegistryLocked.IsSet() {
-		log.Errorf("terminal: failed to register operation %s: operation registry is already locked", params.Type)
+		log.Errorf("spn/terminal: failed to register operation %s: operation registry is already locked", params.Type)
 		return
 	}
 
@@ -57,7 +57,7 @@ func RegisterOpType(params OpParams) {
 
 	// Check if the operation type was already registered.
 	if _, ok := opRegistry[params.Type]; ok {
-		log.Errorf("terminal: failed to register operation type %s: type already registered", params.Type)
+		log.Errorf("spn/terminal: failed to register operation type %s: type already registered", params.Type)
 		return
 	}
 
@@ -104,7 +104,7 @@ func (t *TerminalBase) runOperation(ctx context.Context, opTerminal OpTerminal, 
 		}, opErr)
 	case op == nil:
 		// The Operation was successful and is done already.
-		log.Debugf("terminal: operation %s %s executed", params.Type, fmtOperationID(t.parentID, t.id, opID))
+		log.Debugf("spn/terminal: operation %s %s executed", params.Type, fmtOperationID(t.parentID, t.id, opID))
 		t.OpEnd(&unknownOp{
 			id:     opID,
 			opType: params.Type,
@@ -112,7 +112,7 @@ func (t *TerminalBase) runOperation(ctx context.Context, opTerminal OpTerminal, 
 	default:
 		// The operation started successfully and requires persistence.
 		t.SetActiveOp(opID, op)
-		log.Debugf("terminal: operation %s %s started", params.Type, fmtOperationID(t.parentID, t.id, opID))
+		log.Debugf("spn/terminal: operation %s %s started", params.Type, fmtOperationID(t.parentID, t.id, opID))
 	}
 }
 
@@ -145,7 +145,7 @@ func (t *TerminalBase) OpInit(op Operation, data *container.Container) *Error {
 	// reply in any case.
 	t.SetActiveOp(op.ID(), op)
 
-	log.Debugf("terminal: operation %s %s started", op.Type(), fmtOperationID(t.parentID, t.id, op.ID()))
+	log.Debugf("spn/terminal: operation %s %s started", op.Type(), fmtOperationID(t.parentID, t.id, op.ID()))
 
 	// Add or create the operation type block.
 	if data == nil {
@@ -179,12 +179,13 @@ func (t *TerminalBase) OpEnd(op Operation, err *Error) {
 	}
 
 	// Log reason the Operation is ending. Override stopping error with nil.
-	if err == nil {
-		log.Debugf("terminal: operation %s %s ended", op.Type(), fmtOperationID(t.parentID, t.id, op.ID()))
-	} else if err.IsSpecial() {
-		log.Debugf("terminal: operation %s %s ended: %s", op.Type(), fmtOperationID(t.parentID, t.id, op.ID()), err)
-	} else {
-		log.Warningf("terminal: operation %s %s failed: %s", op.Type(), fmtOperationID(t.parentID, t.id, op.ID()), err)
+	switch {
+	case err == nil:
+		log.Debugf("spn/terminal: operation %s %s ended", op.Type(), fmtOperationID(t.parentID, t.id, op.ID()))
+	case err.IsSpecial():
+		log.Debugf("spn/terminal: operation %s %s ended: %s", op.Type(), fmtOperationID(t.parentID, t.id, op.ID()), err)
+	default:
+		log.Warningf("spn/terminal: operation %s %s failed: %s", op.Type(), fmtOperationID(t.parentID, t.id, op.ID()), err)
 	}
 
 	// Call operation end function.
