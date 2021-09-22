@@ -3,6 +3,7 @@ package captain
 import (
 	"github.com/safing/portbase/container"
 	"github.com/safing/spn/cabin"
+	"github.com/safing/spn/conf"
 	"github.com/safing/spn/docks"
 	"github.com/safing/spn/hub"
 	"github.com/safing/spn/terminal"
@@ -78,7 +79,7 @@ func runPublishOp(t terminal.OpTerminal, opID uint32, data *container.Container)
 	if err != nil {
 		return nil, terminal.ErrMalformedData.With("failed to get status: %w", err)
 	}
-	h, forward, tErr := docks.ImportAndVerifyHubInfo(module.Ctx, "", announcementData, statusData, hub.ScopePublic)
+	h, forward, tErr := docks.ImportAndVerifyHubInfo(module.Ctx, "", announcementData, statusData, conf.MainMapName, conf.MainMapScope)
 	if tErr != nil {
 		return nil, tErr.Wrap("failed to import and verify hub")
 	}

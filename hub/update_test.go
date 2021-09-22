@@ -61,7 +61,7 @@ func TestHubUpdate(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, _, err = OpenHubMsg(nil, data, ScopePublic, true)
+	_, _, err = OpenHubMsg(nil, data, "test", true)
 	if err != nil {
 		t.Fatal(err)
 	}

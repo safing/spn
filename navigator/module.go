@@ -6,7 +6,6 @@ import (
 
 	"github.com/safing/portbase/config"
 	"github.com/safing/portbase/modules"
-	"github.com/safing/spn/hub"
 )
 
 var (
@@ -34,8 +33,8 @@ func prep() error {
 func start() error {
 	devMode = config.Concurrent.GetAsBool(config.CfgDevModeKey, false)
 
-	Main.InitializeFromDatabase(hub.PublicHubs)
-	err := Main.RegisterHubUpdateHook(hub.PublicHubs)
+	Main.InitializeFromDatabase()
+	err := Main.RegisterHubUpdateHook()
 	if err != nil {
 		return err
 	}

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/safing/spn/conf"
 	"github.com/safing/spn/hub"
 	"github.com/stretchr/testify/assert"
 )
@@ -17,7 +18,7 @@ func TestIdentity(t *testing.T) {
 
 	// Create new identity.
 	identityTestKey := "core:spn/public/identity"
-	id, err := CreateIdentity(context.Background(), hub.ScopePublic)
+	id, err := CreateIdentity(context.Background(), conf.MainMapName)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -26,13 +27,13 @@ func TestIdentity(t *testing.T) {
 	// Check values
 	// Identity
 	assert.NotEmpty(t, id.ID, "id.ID must be set")
-	assert.NotEmpty(t, id.Scope, "id.Scope must be set")
+	assert.NotEmpty(t, id.Map, "id.Map must be set")
 	assert.NotNil(t, id.Signet, "id.Signet must be set")
 	assert.NotNil(t, id.infoExportCache, "id.infoExportCache must be set")
 	assert.NotNil(t, id.statusExportCache, "id.statusExportCache must be set")
 	// Hub
 	assert.NotEmpty(t, id.Hub.ID, "hub.ID must be set")
-	assert.NotEmpty(t, id.Hub.Scope, "hub.Scope must be set")
+	assert.NotEmpty(t, id.Hub.Map, "hub.Map must be set")
 	assert.NotZero(t, id.Hub.FirstSeen, "hub.FirstSeen must be set")
 	// Info
 	assert.NotEmpty(t, id.Hub.Info.ID, "info.ID must be set")

@@ -12,6 +12,7 @@ import (
 	"github.com/safing/jess/tools"
 
 	"github.com/safing/jess"
+	"github.com/safing/spn/conf"
 	"github.com/safing/spn/hub"
 )
 
@@ -28,7 +29,7 @@ type Identity struct {
 	record.Base
 
 	ID     string
-	Scope  hub.Scope
+	Map    string
 	Hub    *hub.Hub
 	Signet *jess.Signet
 
@@ -57,9 +58,9 @@ type ExchKey struct {
 }
 
 // CreateIdentity creates a new identity.
-func CreateIdentity(ctx context.Context, scope hub.Scope) (*Identity, error) {
+func CreateIdentity(ctx context.Context, mapName string) (*Identity, error) {
 	id := &Identity{
-		Scope:    scope,
+		Map:      mapName,
 		ExchKeys: make(map[string]*ExchKey),
 	}
 
@@ -72,7 +73,7 @@ func CreateIdentity(ctx context.Context, scope hub.Scope) (*Identity, error) {
 	id.ID = signet.ID
 	id.Hub = &hub.Hub{
 		ID:        id.ID,
-		Scope:     id.Scope,
+		Map:       mapName,
 		PublicKey: recipient,
 	}
 
@@ -95,14 +96,10 @@ func (id *Identity) MaintainAnnouncement(selfcheck bool) (changed bool, err erro
 	defer id.Unlock()
 
 	// Populate new info with data.
-	var newInfo *hub.Announcement
-	switch id.Hub.Scope {
-	case hub.ScopePublic:
-		newInfo = getPublicHubInfo()
-		newInfo.ID = id.Hub.ID
-		if id.Hub.Info != nil {
-			newInfo.Timestamp = id.Hub.Info.Timestamp
-		}
+	newInfo := getPublicHubInfo()
+	newInfo.ID = id.Hub.ID
+	if id.Hub.Info != nil {
+		newInfo.Timestamp = id.Hub.Info.Timestamp
 	}
 	if !newInfo.Equal(id.Hub.Info) {
 		changed = true
@@ -121,14 +118,14 @@ func (id *Identity) MaintainAnnouncement(selfcheck bool) (changed bool, err erro
 		}
 
 		// Apply the status as all other Hubs would in order to check if it's valid.
-		_, _, err = hub.ApplyAnnouncement(id.Hub, newInfoData, id.Hub.Scope, true)
+		_, _, err = hub.ApplyAnnouncement(id.Hub, newInfoData, conf.MainMapName, conf.MainMapScope, true)
 		if err != nil {
 			return false, fmt.Errorf("failed to apply new status: %s", err)
 		}
 		id.infoExportCache = newInfoData
 
 		// Save message to hub message storage.
-		err = hub.SaveHubMsg(id.ID, id.Scope, hub.MsgTypeAnnouncement, newInfoData)
+		err = hub.SaveHubMsg(id.ID, conf.MainMapName, hub.MsgTypeAnnouncement, newInfoData)
 		if err != nil {
 			log.Warningf("spn/cabin: failed to save own new/updated announcement of %s: %s", id.ID, err)
 		}
@@ -181,14 +178,14 @@ func (id *Identity) MaintainStatus(lanes []*hub.Lane, selfcheck bool) (changed b
 		}
 
 		// Apply the status as all other Hubs would in order to check if it's valid.
-		_, _, err = hub.ApplyStatus(id.Hub, newStatusData, id.Hub.Scope, true)
+		_, _, err = hub.ApplyStatus(id.Hub, newStatusData, conf.MainMapName, conf.MainMapScope, true)
 		if err != nil {
 			return false, fmt.Errorf("failed to apply new status: %s", err)
 		}
 		id.statusExportCache = newStatusData
 
 		// Save message to hub message storage.
-		err = hub.SaveHubMsg(id.ID, id.Scope, hub.MsgTypeStatus, newStatusData)
+		err = hub.SaveHubMsg(id.ID, conf.MainMapName, hub.MsgTypeStatus, newStatusData)
 		if err != nil {
 			log.Warningf("spn/cabin: failed to save own new/updated status of %s: %s", id.ID, err)
 		}

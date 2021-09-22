@@ -8,6 +8,7 @@ import (
 	"github.com/safing/portbase/container"
 	"github.com/safing/portbase/formats/varint"
 	"github.com/safing/portbase/log"
+	"github.com/safing/spn/conf"
 	"github.com/safing/spn/docks"
 	"github.com/safing/spn/hub"
 	"github.com/safing/spn/terminal"
@@ -64,13 +65,13 @@ func runGossipQueryOp(t terminal.OpTerminal, opID uint32, data *container.Contai
 }
 
 func (op *GossipQueryOp) handler(_ context.Context) error {
-	tErr := op.sendMsgs(hub.ScopePublic, hub.MsgTypeAnnouncement)
+	tErr := op.sendMsgs(hub.MsgTypeAnnouncement)
 	if tErr != nil {
 		op.t.OpEnd(op, tErr)
 		return nil // Clean worker exit.
 	}
 
-	tErr = op.sendMsgs(hub.ScopePublic, hub.MsgTypeStatus)
+	tErr = op.sendMsgs(hub.MsgTypeStatus)
 	if tErr != nil {
 		op.t.OpEnd(op, tErr)
 		return nil // Clean worker exit.
@@ -80,8 +81,8 @@ func (op *GossipQueryOp) handler(_ context.Context) error {
 	return nil // Clean worker exit.
 }
 
-func (op *GossipQueryOp) sendMsgs(scope hub.Scope, msgType hub.MsgType) *terminal.Error {
-	it, err := hub.QueryRawGossipMsgs(scope, msgType)
+func (op *GossipQueryOp) sendMsgs(msgType hub.MsgType) *terminal.Error {
+	it, err := hub.QueryRawGossipMsgs(conf.MainMapName, msgType)
 	if err != nil {
 		return terminal.ErrInternalError.With("failed to query: %w", err)
 	}
@@ -155,7 +156,7 @@ func (op *GossipQueryOp) Deliver(c *container.Container) *terminal.Error {
 	}
 
 	// Import and verify.
-	h, forward, tErr := docks.ImportAndVerifyHubInfo(module.Ctx, "", announcementData, statusData, hub.ScopePublic)
+	h, forward, tErr := docks.ImportAndVerifyHubInfo(module.Ctx, "", announcementData, statusData, conf.MainMapName, conf.MainMapScope)
 	if tErr != nil {
 		log.Warningf("spn/captain: failed to import %s from gossip query: %s", gossipMsgType, tErr)
 	} else {

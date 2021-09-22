@@ -6,8 +6,8 @@ import (
 	"github.com/safing/portbase/container"
 	"github.com/safing/portbase/formats/varint"
 	"github.com/safing/portbase/log"
+	"github.com/safing/spn/conf"
 	"github.com/safing/spn/docks"
-	"github.com/safing/spn/hub"
 	"github.com/safing/spn/terminal"
 )
 
@@ -112,7 +112,7 @@ func (op *GossipOp) Deliver(c *container.Container) *terminal.Error {
 	}
 
 	// Import and verify.
-	h, forward, tErr := docks.ImportAndVerifyHubInfo(module.Ctx, "", announcementData, statusData, hub.ScopePublic)
+	h, forward, tErr := docks.ImportAndVerifyHubInfo(module.Ctx, "", announcementData, statusData, conf.MainMapName, conf.MainMapScope)
 	if tErr != nil {
 		log.Warningf("spn/captain: failed to import %s from %s: %s", gossipMsgType, op.controller.Crane.ID, tErr)
 	} else if forward {

@@ -73,7 +73,7 @@ func SignHubMsg(msg []byte, env *jess.Envelope, enableTofu bool) ([]byte, error)
 // OpenHubMsg opens a signed hub msg and verifies the signature using the
 // provided hub or the local database. If TOFU is enabled, the signature is
 // always accepted, if valid.
-func OpenHubMsg(hub *Hub, data []byte, scope Scope, tofu bool) (msg []byte, sendingHub *Hub, err error) {
+func OpenHubMsg(hub *Hub, data []byte, mapName string, tofu bool) (msg []byte, sendingHub *Hub, err error) {
 	letter, err := jess.LetterFromDSD(data)
 	if err != nil {
 		return nil, nil, fmt.Errorf("malformed letter: %s", err)
@@ -97,7 +97,7 @@ func OpenHubMsg(hub *Hub, data []byte, scope Scope, tofu bool) (msg []byte, send
 
 	// get hub for public key
 	if hub == nil {
-		hub, err = GetHub(scope, seal.ID)
+		hub, err = GetHub(mapName, seal.ID)
 		if err != nil {
 			if err != database.ErrNotFound {
 				return nil, nil, fmt.Errorf("failed to get existing hub %s: %s", seal.ID, err)
@@ -140,8 +140,8 @@ func OpenHubMsg(hub *Hub, data []byte, scope Scope, tofu bool) (msg []byte, send
 		}
 
 		hub = &Hub{
-			ID:    seal.ID,
-			Scope: scope,
+			ID:  seal.ID,
+			Map: mapName,
 			PublicKey: &jess.Signet{
 				ID:     seal.ID,
 				Scheme: seal.Scheme,
@@ -183,9 +183,9 @@ func (ha *Announcement) Export(env *jess.Envelope) ([]byte, error) {
 
 // ApplyAnnouncement applies the announcement to the Hub if it passes all the
 // checks. If no Hub is provided, it is loaded from the database or created.
-func ApplyAnnouncement(hub *Hub, data []byte, scope Scope, selfcheck bool) (_ *Hub, forward bool, err error) {
+func ApplyAnnouncement(hub *Hub, data []byte, mapName string, scope Scope, selfcheck bool) (_ *Hub, forward bool, err error) {
 	// open and verify
-	msg, hub, err := OpenHubMsg(hub, data, scope, true)
+	msg, hub, err := OpenHubMsg(hub, data, mapName, true)
 	if err != nil {
 		return nil, false, err
 	}
@@ -346,9 +346,9 @@ func (hs *Status) Export(env *jess.Envelope) ([]byte, error) {
 }
 
 // ApplyStatus applies a status update if it passes all the checks.
-func ApplyStatus(hub *Hub, data []byte, scope Scope, selfcheck bool) (_ *Hub, forward bool, err error) {
+func ApplyStatus(hub *Hub, data []byte, mapName string, scope Scope, selfcheck bool) (_ *Hub, forward bool, err error) {
 	// open and verify
-	msg, hub, err := OpenHubMsg(hub, data, scope, false)
+	msg, hub, err := OpenHubMsg(hub, data, mapName, false)
 	if err != nil {
 		return nil, false, err
 	}

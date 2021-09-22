@@ -18,12 +18,12 @@ var (
 )
 
 // InitializeFromDatabase loads all Hubs from the given database prefix and adds them to the Map.
-func (m *Map) InitializeFromDatabase(databasePrefix string) {
+func (m *Map) InitializeFromDatabase() {
 	m.Lock()
 	defer m.Unlock()
 
 	// start query for Hubs
-	iter, err := db.Query(query.New(databasePrefix))
+	iter, err := db.Query(query.New(hub.MakeHubDBKey(m.Name, "")))
 	if err != nil {
 		log.Warningf("spn/navigator: failed to start query for initialization feed of %s map: %s", m.Name, err)
 		return
@@ -84,9 +84,9 @@ func (hook *UpdateHook) PrePut(r record.Record) (record.Record, error) {
 
 // RegisterHubUpdateHook registers a database pre-put hook that updates all
 // Hubs saved at the given database prefix.
-func (m *Map) RegisterHubUpdateHook(databasePrefix string) error {
+func (m *Map) RegisterHubUpdateHook() error {
 	_, err := database.RegisterHook(
-		query.New(databasePrefix),
+		query.New(hub.MakeHubDBKey(m.Name, "")),
 		&UpdateHook{m: m},
 	)
 	// TODO: Save registered hook and cancel it when shutting down the module.

@@ -6,7 +6,6 @@ import (
 
 	"github.com/safing/portbase/database"
 	"github.com/safing/portbase/database/record"
-	"github.com/safing/spn/hub"
 )
 
 var db = database.NewInterface(nil)
@@ -36,10 +35,10 @@ func LoadIdentity(key string) (id *Identity, changed bool, err error) {
 		return nil, false, errors.New("hub.ID mismatch")
 	case id.ID != id.Hub.Info.ID:
 		return nil, false, errors.New("hub.Info.ID mismatch")
-	case id.Scope == hub.ScopeInvalid:
-		return nil, false, errors.New("invalid id.Scope")
-	case id.Hub.Scope == hub.ScopeInvalid:
-		return nil, false, errors.New("invalid hub.Scope")
+	case id.Map == "":
+		return nil, false, errors.New("invalid id.Map")
+	case id.Hub.Map == "":
+		return nil, false, errors.New("invalid hub.Map")
 	case id.Hub.FirstSeen.IsZero():
 		return nil, false, errors.New("missing hub.FirstSeen")
 	case id.Hub.Info.Timestamp == 0:

@@ -4,12 +4,10 @@ import (
 	"context"
 	"fmt"
 	"testing"
-
-	"github.com/safing/spn/hub"
 )
 
 func TestVerification(t *testing.T) {
-	id, err := CreateIdentity(context.Background(), hub.ScopeTest)
+	id, err := CreateIdentity(context.Background(), "test")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -41,8 +41,8 @@ type Hub struct {
 
 	ID        string
 	PublicKey *jess.Signet
+	Map       string
 
-	Scope  Scope
 	Info   *Announcement
 	Status *Status
 

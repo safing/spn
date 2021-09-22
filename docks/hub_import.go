@@ -15,7 +15,7 @@ import (
 
 var hubImportLock sync.Mutex
 
-func ImportAndVerifyHubInfo(ctx context.Context, hubID string, announcementData, statusData []byte, scope hub.Scope) (h *hub.Hub, forward bool, tErr *terminal.Error) {
+func ImportAndVerifyHubInfo(ctx context.Context, hubID string, announcementData, statusData []byte, mapName string, scope hub.Scope) (h *hub.Hub, forward bool, tErr *terminal.Error) {
 	// Synchronize import, as we might easily learn of a new hub from different
 	// gossip channels simultaneously.
 	hubImportLock.Lock()
@@ -30,7 +30,7 @@ func ImportAndVerifyHubInfo(ctx context.Context, hubID string, announcementData,
 	var err error
 	var forwardPart bool
 	if announcementData != nil {
-		h, forwardPart, err = hub.ApplyAnnouncement(nil, announcementData, scope, false)
+		h, forwardPart, err = hub.ApplyAnnouncement(nil, announcementData, mapName, scope, false)
 		if err != nil {
 			return h, false, terminal.ErrInternalError.With("failed to apply announcement: %w", err)
 		}
@@ -41,7 +41,7 @@ func ImportAndVerifyHubInfo(ctx context.Context, hubID string, announcementData,
 
 	// Import Status, if given.
 	if statusData != nil {
-		h, forwardPart, err = hub.ApplyStatus(h, statusData, scope, false)
+		h, forwardPart, err = hub.ApplyStatus(h, statusData, mapName, scope, false)
 		if err != nil {
 			return h, false, terminal.ErrInternalError.With("failed to apply status: %w", err)
 		}
@@ -83,13 +83,13 @@ func ImportAndVerifyHubInfo(ctx context.Context, hubID string, announcementData,
 
 	// Save the raw messages to the database.
 	if announcementData != nil {
-		err = hub.SaveHubMsg(h.ID, h.Scope, "announcement", announcementData)
+		err = hub.SaveHubMsg(h.ID, h.Map, hub.MsgTypeAnnouncement, announcementData)
 		if err != nil {
 			log.Warningf("spn/docks: failed to save raw announcement msg of %s: %w", h, err)
 		}
 	}
 	if statusData != nil {
-		err = hub.SaveHubMsg(h.ID, h.Scope, "status", statusData)
+		err = hub.SaveHubMsg(h.ID, h.Map, hub.MsgTypeStatus, statusData)
 		if err != nil {
 			log.Warningf("spn/docks: failed to save raw status msg of %s: %w", h, err)
 		}

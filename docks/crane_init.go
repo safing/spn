@@ -10,7 +10,7 @@ import (
 	"github.com/safing/jess"
 	"github.com/safing/portbase/container"
 	"github.com/safing/portbase/formats/varint"
-	"github.com/safing/spn/hub"
+	"github.com/safing/spn/conf"
 	"github.com/safing/spn/terminal"
 )
 
@@ -108,7 +108,7 @@ func (crane *Crane) startLocal() *terminal.Error {
 		h, _, tErr := ImportAndVerifyHubInfo(
 			crane.ctx,
 			crane.ConnectedHub.ID,
-			announcementData, statusData, hub.ScopePublic,
+			announcementData, statusData, conf.MainMapName, conf.MainMapScope,
 		)
 		if tErr != nil {
 			return tErr.Wrap("failed to import and verify hub")
