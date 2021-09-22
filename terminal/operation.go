@@ -249,32 +249,3 @@ func (op unknownOp) Deliver(data *container.Container) *Error {
 }
 
 func (op unknownOp) End(err *Error) {}
-
-// Terminal Message Types.
-// FIXME: Delete after commands are implemented.
-const (
-	// Informational
-	TerminalCmdInfo          uint8 = 1
-	TerminalCmdLoad          uint8 = 2
-	TerminalCmdStats         uint8 = 3
-	TerminalCmdPublicHubFeed uint8 = 4
-
-	// Diagnostics
-	TerminalCmdEcho      uint8 = 16
-	TerminalCmdSpeedtest uint8 = 17
-
-	// User Access
-	TerminalCmdUserAuth uint8 = 32
-
-	// Tunneling
-	TerminalCmdHop    uint8 = 40
-	TerminalCmdTunnel uint8 = 41
-	TerminalCmdPing   uint8 = 42
-
-	// Admin/Mod Access
-	TerminalCmdAdminAuth uint8 = 128
-
-	// Mgmt
-	TerminalCmdEstablishRoute uint8 = 144
-	TerminalCmdShutdown       uint8 = 145
-)
