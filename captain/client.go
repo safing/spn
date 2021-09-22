@@ -59,6 +59,11 @@ func preFlightCheck(ctx context.Context) error {
 			"SPN Requires Access Code",
 			"Please enter your special access code for the testing phase in the settings.",
 			notifications.Action{
+				Text:    "Test Phase Info",
+				Type:    notifications.ActionTypeOpenURL,
+				Payload: "https://github.com/safing/spn/wiki/SPN-Testing-Goals-and-Status",
+			},
+			notifications.Action{
 				Text: "Enter Code",
 				Type: notifications.ActionTypeOpenSetting,
 				Payload: &notifications.ActionTypeOpenSettingPayload{
@@ -81,6 +86,11 @@ func preFlightCheck(ctx context.Context) error {
 			"SPN Access Code Invalid",
 			"Your special access code is invalid: "+err.Error(),
 			notifications.Action{
+				Text:    "Test Phase Info",
+				Type:    notifications.ActionTypeOpenURL,
+				Payload: "https://github.com/safing/spn/wiki/SPN-Testing-Goals-and-Status",
+			},
+			notifications.Action{
 				Text: "Enter Code",
 				Type: notifications.ActionTypeOpenSetting,
 				Payload: &notifications.ActionTypeOpenSettingPayload{
@@ -99,6 +109,11 @@ func preFlightCheck(ctx context.Context) error {
 			"spn:internal-access-code-error",
 			"SPN Access Code Invalid",
 			"Internal access code error: "+err.Error(),
+			notifications.Action{
+				Text:    "Test Phase Info",
+				Type:    notifications.ActionTypeOpenURL,
+				Payload: "https://github.com/safing/spn/wiki/SPN-Testing-Goals-and-Status",
+			},
 			notifications.Action{
 				Text: "Enter Code",
 				Type: notifications.ActionTypeOpenSetting,

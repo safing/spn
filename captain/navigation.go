@@ -48,6 +48,11 @@ managing:
 					"SPN Failed to Connect",
 					fmt.Sprintf("Failed to connect to a home hub: %s. The Portmaster will retry to connect automatically.", err),
 					notifications.Action{
+						Text:    "Test Phase Info",
+						Type:    notifications.ActionTypeOpenURL,
+						Payload: "https://github.com/safing/spn/wiki/SPN-Testing-Goals-and-Status",
+					},
+					notifications.Action{
 						Text: "Configure",
 						Type: notifications.ActionTypeOpenSetting,
 						Payload: &notifications.ActionTypeOpenSettingPayload{
@@ -68,6 +73,11 @@ managing:
 				"spn:connected-to-home-hub",
 				"Connected to SPN Alpha Two",
 				fmt.Sprintf("You are connected to the SPN network with the Hub at %s. This notification is for awareness that you are connected to the SPN test network.", homeTerminal.RemoteAddr()),
+				notifications.Action{
+					Text:    "Test Phase Info",
+					Type:    notifications.ActionTypeOpenURL,
+					Payload: "https://github.com/safing/spn/wiki/SPN-Testing-Goals-and-Status",
+				},
 				notifications.Action{
 					Text: "Configure",
 					Type: notifications.ActionTypeOpenSetting,
