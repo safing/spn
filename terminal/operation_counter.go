@@ -28,7 +28,7 @@ type CounterOp struct {
 	counterLock   sync.Mutex
 	ClientCounter uint64
 	ServerCounter uint64
-	Ended         *abool.AtomicBool
+	ended         *abool.AtomicBool
 	Error         error
 }
 
@@ -53,7 +53,7 @@ func NewCounterOp(t OpTerminal, opts CounterOpts) (*CounterOp, *Error) {
 	op := &CounterOp{
 		t:     t,
 		opts:  &opts,
-		Ended: abool.New(),
+		ended: abool.New(),
 	}
 	op.wg.Add(1)
 
@@ -82,7 +82,7 @@ func runCounterOp(t OpTerminal, opID uint32, data *container.Container) (Operati
 		t:      t,
 		id:     opID,
 		server: true,
-		Ended:  abool.New(),
+		ended:  abool.New(),
 	}
 	op.wg.Add(1)
 
@@ -117,9 +117,9 @@ func (op *CounterOp) Type() string {
 func (op *CounterOp) HasEnded(end bool) bool {
 	if end {
 		// Return false if we just only it to ended.
-		return !op.Ended.SetToIf(false, true)
+		return !op.ended.SetToIf(false, true)
 	}
-	return op.Ended.IsSet()
+	return op.ended.IsSet()
 }
 
 func (op *CounterOp) getCounter(sending, increase bool) uint64 {
@@ -208,7 +208,7 @@ func (op *CounterOp) End(err *Error) {
 }
 
 func (op *CounterOp) SendCounter() *Error {
-	if op.Ended.IsSet() {
+	if op.ended.IsSet() {
 		return ErrStopping
 	}
 
