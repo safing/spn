@@ -92,7 +92,7 @@ func NewLocalBaseTerminal(
 		initMsg.Version = 1
 	}
 	if initMsg.QueueSize == 0 {
-		initMsg.QueueSize = 100
+		initMsg.QueueSize = DefaultQueueSize
 	}
 
 	// Setup encryption if enabled.
@@ -146,7 +146,7 @@ func NewRemoteBaseTerminal(
 	}
 
 	// Check boundaries.
-	if initMsg.QueueSize <= 0 || initMsg.QueueSize > 100 {
+	if initMsg.QueueSize <= 0 || initMsg.QueueSize > MaxQueueSize {
 		return nil, nil, ErrInvalidOptions.With("invalid queue size of %d", initMsg.QueueSize)
 	}
 

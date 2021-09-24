@@ -114,6 +114,14 @@ func (op *CounterOp) Type() string {
 	return CounterOpType
 }
 
+func (op *CounterOp) HasEnded(end bool) bool {
+	if end {
+		// Return false if we just only it to ended.
+		return !op.Ended.SetToIf(false, true)
+	}
+	return op.Ended.IsSet()
+}
+
 func (op *CounterOp) getCounter(sending, increase bool) uint64 {
 	op.counterLock.Lock()
 	defer op.counterLock.Unlock()
@@ -158,7 +166,11 @@ func (op *CounterOp) Deliver(data *container.Container) *Error {
 	counter := op.getCounter(false, true)
 
 	// Debugging:
-	// if counter < 1000 || counter%100 == 0 {
+	// if counter < 100 ||
+	// 	counter < 1000 && counter%100 == 0 ||
+	// 	counter < 10000 && counter%1000 == 0 ||
+	// 	counter < 100000 && counter%10000 == 0 ||
+	// 	counter < 1000000 && counter%100000 == 0 {
 	// 	log.Errorf("terminal: counter %s>%d recvd, now at %d", op.t.FmtID(), op.id, counter)
 	// }
 
@@ -204,7 +216,11 @@ func (op *CounterOp) SendCounter() *Error {
 	counter := op.getCounter(true, true)
 
 	// Debugging:
-	// if counter < 1000 || counter%100 == 0 {
+	// if counter < 100 ||
+	// 	counter < 1000 && counter%100 == 0 ||
+	// 	counter < 10000 && counter%1000 == 0 ||
+	// 	counter < 100000 && counter%10000 == 0 ||
+	// 	counter < 1000000 && counter%100000 == 0 {
 	// 	defer log.Errorf("terminal: counter %s>%d sent, now at %d", op.t.FmtID(), op.id, counter)
 	// }
 
@@ -216,7 +232,7 @@ func (op *CounterOp) Wait() {
 }
 
 type flusher interface {
-	Flush()
+	Flush() <-chan struct{}
 }
 
 func (op *CounterOp) CounterWorker(ctx context.Context) error {

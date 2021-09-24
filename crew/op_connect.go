@@ -24,6 +24,12 @@ type ConnectOp struct {
 	// FIXME: add flow queue
 
 	terminal.OpBase
+	*terminal.DuplexFlowQueue
+
+	// ctx is the context of the Terminal.
+	ctx context.Context
+	// cancelCtx cancels ctx.
+	cancelCtx context.CancelFunc
 
 	t       terminal.OpTerminal
 	conn    net.Conn
@@ -35,11 +41,16 @@ func (op *ConnectOp) Type() string {
 	return ConnectOpType
 }
 
+func (op *ConnectOp) Ctx() context.Context {
+	return op.ctx
+}
+
 type ConnectRequest struct {
-	Domain   string
-	IP       net.IP
-	Protocol packet.IPProtocol
-	Port     uint16
+	Domain    string
+	IP        net.IP
+	Protocol  packet.IPProtocol
+	Port      uint16
+	QueueSize uint16
 }
 
 func (r *ConnectRequest) Address() string {
@@ -62,6 +73,11 @@ func init() {
 }
 
 func NewConnectOp(t terminal.OpTerminal, request *ConnectRequest, conn net.Conn) (*ConnectOp, *terminal.Error) {
+	// Set defaults.
+	if request.QueueSize == 0 {
+		request.QueueSize = terminal.DefaultQueueSize
+	}
+
 	// Create new op.
 	op := &ConnectOp{
 		t:       t,
@@ -69,6 +85,9 @@ func NewConnectOp(t terminal.OpTerminal, request *ConnectRequest, conn net.Conn)
 		entry:   true,
 		request: request,
 	}
+	op.OpBase.Init()
+	op.ctx, op.cancelCtx = context.WithCancel(module.Ctx)
+	op.DuplexFlowQueue = terminal.NewDuplexFlowQueue(op, request.QueueSize, op.submitUpstream)
 
 	// Prepare init msg.
 	data, err := dsd.Dump(request, dsd.JSON)
@@ -83,6 +102,8 @@ func NewConnectOp(t terminal.OpTerminal, request *ConnectRequest, conn net.Conn)
 	}
 
 	module.StartWorker("connect op conn reader", op.connReader)
+	module.StartWorker("connect op conn writer", op.connWriter)
+	module.StartWorker("connect op flow handler", op.DuplexFlowQueue.FlowHandler)
 	return op, nil
 }
 
@@ -97,6 +118,9 @@ func runConnectOp(t terminal.OpTerminal, opID uint32, data *container.Container)
 	_, err := dsd.Load(data.CompileData(), request)
 	if err != nil {
 		return nil, terminal.ErrMalformedData.With("failed to parse connect request: %w", err)
+	}
+	if request.QueueSize == 0 || request.QueueSize > terminal.MaxQueueSize {
+		return nil, terminal.ErrInvalidOptions.With("invalid queue size of %d", request.QueueSize)
 	}
 
 	// Check if connection target is in global scope.
@@ -133,13 +157,25 @@ func runConnectOp(t terminal.OpTerminal, opID uint32, data *container.Container)
 		conn:    conn,
 		request: request,
 	}
-	op.SetID(opID)
+	op.OpBase.Init()
+	op.OpBase.SetID(opID)
+	op.ctx, op.cancelCtx = context.WithCancel(module.Ctx)
+	op.DuplexFlowQueue = terminal.NewDuplexFlowQueue(op, request.QueueSize, op.submitUpstream)
 
 	// Start worker.
 	module.StartWorker("connect op conn reader", op.connReader)
+	module.StartWorker("connect op conn writer", op.connWriter)
+	module.StartWorker("connect op flow handler", op.DuplexFlowQueue.FlowHandler)
 
 	log.Infof("spn/crew: connected op %s#%d to %s", op.t.FmtID(), op.ID(), request)
 	return op, nil
+}
+
+func (op *ConnectOp) submitUpstream(c *container.Container) {
+	tErr := op.t.OpSend(op, c)
+	if tErr != nil {
+		op.t.OpEnd(op, tErr.Wrap("failed to send data (op) read from %s", op.connectedType()))
+	}
 }
 
 func (op *ConnectOp) connReader(_ context.Context) error {
@@ -154,31 +190,57 @@ func (op *ConnectOp) connReader(_ context.Context) error {
 			}
 			return nil
 		}
+		if n == 0 {
+			log.Tracef("spn/crew: connect op %s>%d read 0 bytes from %s", op.t.FmtID(), op.ID(), op.connectedType())
+			continue
+		}
 
-		tErr := op.t.OpSend(op, container.New(buf[:n]))
+		tErr := op.DuplexFlowQueue.Send(container.New(buf[:n]))
 		if tErr != nil {
-			op.t.OpEnd(op, tErr.Wrap("failed to send data read from %s", op.connectedType()))
+			op.t.OpEnd(op, tErr.Wrap("failed to send data (dfq) read from %s", op.connectedType()))
 			return nil
 		}
 	}
 }
 
 func (op *ConnectOp) Deliver(c *container.Container) *terminal.Error {
-	data := c.CompileData()
+	return op.DuplexFlowQueue.Deliver(c)
+}
 
+func (op *ConnectOp) connWriter(_ context.Context) error {
+writing:
 	for {
-		// Send all given data.
-		n, err := op.conn.Write(data)
-		switch {
-		case err != nil:
-			return terminal.ErrConnectionError.With("failed to send to %s: %w", op.connectedType(), err)
-		case n == 0:
-			return terminal.ErrConnectionError.With("sent 0 bytes to %s", op.connectedType())
-		case n < len(data):
-			// If not all data was sent, try again.
-			log.Debugf("spn/crew: %s#%d only sent %d/%d bytes to %s", op.t.FmtID(), op.ID(), n, len(data), op.connectedType())
-			data = data[n:]
-		default:
+		select {
+		case c := <-op.DuplexFlowQueue.Receive():
+			data := c.CompileData()
+			if len(data) == 0 {
+				continue writing
+			}
+
+			// Send all given data.
+			for {
+				n, err := op.conn.Write(data)
+				switch {
+				case err != nil:
+					if errors.Is(err, io.EOF) {
+						op.t.OpEnd(op, nil)
+					} else {
+						op.t.OpEnd(op, terminal.ErrConnectionError.With("failed to send to %s: %w", op.connectedType(), err))
+					}
+					return nil
+				case n == 0:
+					op.t.OpEnd(op, terminal.ErrConnectionError.With("sent 0 bytes to %s", op.connectedType()))
+					return nil
+				case n < len(data):
+					// If not all data was sent, try again.
+					log.Debugf("spn/crew: %s#%d only sent %d/%d bytes to %s", op.t.FmtID(), op.ID(), n, len(data), op.connectedType())
+					data = data[n:]
+				default:
+					continue writing
+				}
+			}
+
+		case <-op.ctx.Done():
 			return nil
 		}
 	}
@@ -192,7 +254,23 @@ func (op *ConnectOp) connectedType() string {
 }
 
 func (op *ConnectOp) End(err *terminal.Error) {
+	// Send all data before closing.
+	op.DuplexFlowQueue.Flush()
+
+	// Cancel workers.
+	op.cancelCtx()
+
+	// Close connection.
 	if op.conn != nil {
 		_ = op.conn.Close()
 	}
+}
+
+func (op *ConnectOp) Abandon(err *terminal.Error) {
+	// Proxy for DuplexFlowQueue
+	op.End(err)
+}
+
+func (op *ConnectOp) FmtID() string {
+	return fmt.Sprintf("%s>%d", op.t.FmtID(), op.ID())
 }
