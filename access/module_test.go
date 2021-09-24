@@ -7,6 +7,5 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	TestMode()
 	pmtesting.TestMain(m, module)
 }

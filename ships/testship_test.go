@@ -8,7 +8,7 @@ import (
 )
 
 func TestTestShip(t *testing.T) {
-	tShip := NewTestShip()
+	tShip := NewTestShip(true, 100)
 
 	// interface conformance test
 	var ship Ship = tShip
@@ -17,22 +17,16 @@ func TestTestShip(t *testing.T) {
 
 	for i := 0; i < 100; i++ {
 		// client send
-		ok, err := ship.Load(testData)
+		err := ship.Load(testData)
 		if err != nil {
 			t.Fatalf("%s failed: %s", ship, err)
-		}
-		if !ok {
-			t.Fatalf("%s sunk", ship)
 		}
 
 		// server recv
 		buf := getTestBuf()
-		_, ok, err = srvShip.UnloadTo(buf)
+		_, err = srvShip.UnloadTo(buf)
 		if err != nil {
 			t.Fatalf("%s failed: %s", ship, err)
-		}
-		if !ok {
-			t.Fatalf("%s sunk", ship)
 		}
 
 		// check data
@@ -40,22 +34,16 @@ func TestTestShip(t *testing.T) {
 		fmt.Print(".")
 
 		// server send
-		ok, err = srvShip.Load(testData)
+		err = srvShip.Load(testData)
 		if err != nil {
 			t.Fatalf("%s failed: %s", ship, err)
-		}
-		if !ok {
-			t.Fatalf("%s sunk", ship)
 		}
 
 		// client recv
 		buf = getTestBuf()
-		_, ok, err = ship.UnloadTo(buf)
+		_, err = ship.UnloadTo(buf)
 		if err != nil {
 			t.Fatalf("%s failed: %s", ship, err)
-		}
-		if !ok {
-			t.Fatalf("%s sunk", ship)
 		}
 
 		// check data

@@ -31,25 +31,36 @@ func launchKCPShip(ctx context.Context, transport *hub.Transport, ip net.IP) (Sh
 		return nil, err
 	}
 
-	ship := &KCPShip{}
-	ship.initBase(ctx, transport, true, conn)
+	ship := &KCPShip{
+		ShipBase: ShipBase{
+			conn:      conn,
+			transport: transport,
+			mine:      true,
+			secure:    false,
+			// Calculate KCP's MSS.
+			loadSize: kcp.IKCP_MTU_DEF - kcp.IKCP_OVERHEAD,
+		},
+	}
+
+	ship.initBase()
 	return ship, nil
 }
 
-func establishKCPPier(ctx context.Context, transport *hub.Transport, dockingRequests chan *DockingRequest) (Pier, error) {
+func establishKCPPier(transport *hub.Transport, dockingRequests chan *DockingRequest) (Pier, error) {
 	listener, err := kcp.Listen(net.JoinHostPort("", portToA(transport.Port)))
 	if err != nil {
 		return nil, err
 	}
 
-	pier := &KCPPier{}
-	pier.initBase(
-		ctx,
-		transport,
-		listener,
-		pier.dockShip,
-		dockingRequests,
-	)
+	pier := &KCPPier{
+		PierBase: PierBase{
+			transport:       transport,
+			listener:        listener,
+			dockingRequests: dockingRequests,
+		},
+	}
+	pier.PierBase.dockShip = pier.dockShip
+	pier.initBase()
 	return pier, nil
 }
 
@@ -59,7 +70,17 @@ func (pier *KCPPier) dockShip() (Ship, error) {
 		return nil, err
 	}
 
-	ship := &KCPShip{}
-	ship.initBase(pier.ctx, pier.transport, false, conn)
+	ship := &KCPShip{
+		ShipBase: ShipBase{
+			conn:      conn,
+			transport: pier.transport,
+			mine:      false,
+			secure:    false,
+			// Calculate KCP's MSS.
+			loadSize: kcp.IKCP_MTU_DEF - kcp.IKCP_OVERHEAD,
+		},
+	}
+
+	ship.initBase()
 	return ship, nil
 }

@@ -6,16 +6,17 @@ import (
 	"sort"
 	"time"
 
+	"github.com/mitchellh/copystructure"
 	"github.com/safing/jess"
 )
 
-// HubStatus is the message type used to update changing Hub Information. Changes are made automatically.
-type HubStatus struct {
+// Status is the message type used to update changing Hub Information. Changes are made automatically.
+type Status struct {
 	Timestamp int64
 
 	// Routing Information
-	Keys        map[string]*HubKey // public keys (with type)
-	Connections []*HubConnection
+	Keys  map[string]*Key // public keys (with type)
+	Lanes []*Lane         // Connections to other Hubs.
 
 	// Load describes max(CPU, Memory) in percent, averages over the last hour
 	// only update if change is significant in terms of impact on routing
@@ -23,18 +24,27 @@ type HubStatus struct {
 	Load int
 }
 
-// HubKey represents a semi-ephemeral public key used for 0-RTT connection establishment.
-type HubKey struct {
+// Key represents a semi-ephemeral public key used for 0-RTT connection establishment.
+type Key struct {
 	Scheme  string
 	Key     []byte
 	Expires int64
 }
 
-// HubConnection represents a link to another Hub.
-type HubConnection struct {
+// Lane represents a connection to another Hub.
+type Lane struct {
 	ID       string // ID of peer
 	Capacity int    // max available bandwidth in Mbit/s (measure actively!)
 	Latency  int    // ping in msecs
+}
+
+// Copy returns a deep copy of the Status.
+func (s *Status) Copy() (*Status, error) {
+	copied, err := copystructure.Copy(s)
+	if err != nil {
+		return nil, err
+	}
+	return copied.(*Status), nil
 }
 
 // SelectSignet selects the public key to use for initiating connections to that Hub.
@@ -42,9 +52,15 @@ func (h *Hub) SelectSignet() *jess.Signet {
 	h.Lock()
 	defer h.Unlock()
 
-	// TODO: select key based preferred alg?
+	// Return no Signet if we don't have a Status.
+	if h.Status == nil {
+		return nil
+	}
+
+	// TODO: select key based on preferred alg?
+	now := time.Now().Unix()
 	for id, key := range h.Status.Keys {
-		if time.Now().Unix() < key.Expires {
+		if now < key.Expires {
 			return &jess.Signet{
 				ID:     id,
 				Scheme: key.Scheme,
@@ -80,8 +96,8 @@ func (h *Hub) GetSignet(id string, recipient bool) (*jess.Signet, error) {
 	}, nil
 }
 
-// AddConnection adds a new Hub Connection to the Hub Status.
-func (h *Hub) AddConnection(newConn *HubConnection) error {
+// AddLane adds a new Lane to the Hub Status.
+func (h *Hub) AddLane(newLane *Lane) error {
 	h.Lock()
 	defer h.Unlock()
 
@@ -91,19 +107,19 @@ func (h *Hub) AddConnection(newConn *HubConnection) error {
 	}
 
 	// check if duplicate
-	for _, connection := range h.Status.Connections {
-		if newConn.ID == connection.ID {
-			return errors.New("connection to this Hub already added")
+	for _, lane := range h.Status.Lanes {
+		if newLane.ID == lane.ID {
+			return errors.New("lane already exists")
 		}
 	}
 
 	// add
-	h.Status.Connections = append(h.Status.Connections, newConn)
+	h.Status.Lanes = append(h.Status.Lanes, newLane)
 	return nil
 }
 
-// RemoveConnection removes a Hub Connection from the Hub Status.
-func (h *Hub) RemoveConnection(hubID string) error {
+// RemoveLane removes a Lane from the Hub Status.
+func (h *Hub) RemoveLane(hubID string) error {
 	h.Lock()
 	defer h.Unlock()
 
@@ -112,9 +128,9 @@ func (h *Hub) RemoveConnection(hubID string) error {
 		return ErrMissingInfo
 	}
 
-	for key, connection := range h.Status.Connections {
-		if connection.ID == hubID {
-			h.Status.Connections = append(h.Status.Connections[:key], h.Status.Connections[key+1:]...)
+	for key, lane := range h.Status.Lanes {
+		if lane.ID == hubID {
+			h.Status.Lanes = append(h.Status.Lanes[:key], h.Status.Lanes[key+1:]...)
 			break
 		}
 	}
@@ -122,31 +138,83 @@ func (h *Hub) RemoveConnection(hubID string) error {
 	return nil
 }
 
-// Equal returns whether the HubConnection is equal to the given one.
-func (c *HubConnection) Equal(other *HubConnection) bool {
+// GetLaneTo returns the lane to the given Hub, if it exists.
+func (h *Hub) GetLaneTo(hubID string) *Lane {
+	h.Lock()
+	defer h.Unlock()
+
+	// validity check
+	if h.Status == nil {
+		return nil
+	}
+
+	for _, lane := range h.Status.Lanes {
+		if lane.ID == hubID {
+			return lane
+		}
+	}
+
+	return nil
+}
+
+// Equal returns whether the Lane is equal to the given one.
+func (l *Lane) Equal(other *Lane) bool {
 	switch {
-	case c.ID != other.ID:
+	case l == nil || other == nil:
 		return false
-	case c.Capacity != other.Capacity:
+	case l.ID != other.ID:
 		return false
-	case c.Latency != other.Latency:
+	case l.Capacity != other.Capacity:
+		return false
+	case l.Latency != other.Latency:
 		return false
 	}
 	return true
 }
 
-func (c *HubConnection) String() string {
-	return fmt.Sprintf("<%s cap=%d lat=%d>", c.ID, c.Capacity, c.Latency)
+// validateFormatting check if all values conform to the basic format.
+func (s *Status) validateFormatting() (err error) {
+	// public keys
+	if len(s.Keys) > 255 {
+		return fmt.Errorf("field Keys with array/slice length of %d exceeds max length of %d", len(s.Keys), 255)
+	}
+	for keyID, key := range s.Keys {
+		if err = checkStringFormat("Keys#ID", keyID, 255); err != nil {
+			return err
+		}
+		if err = checkStringFormat("Keys.Scheme", key.Scheme, 255); err != nil {
+			return err
+		}
+		if err = checkByteSliceFormat("Keys.Key", key.Key, 1024); err != nil {
+			return err
+		}
+	}
+
+	// connections
+	if len(s.Lanes) > 255 {
+		return fmt.Errorf("field Lanes with array/slice length of %d exceeds max length of %d", len(s.Lanes), 255)
+	}
+	for _, lanes := range s.Lanes {
+		if err = checkStringFormat("Lanes.ID", lanes.ID, 255); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
-// ConnectionsEqual returns whether the given []*HubConnection are equal.
-func ConnectionsEqual(a, b []*HubConnection) bool {
+func (l *Lane) String() string {
+	return fmt.Sprintf("<%s cap=%d lat=%d>", l.ID, l.Capacity, l.Latency)
+}
+
+// LanesEqual returns whether the given []*Lane are equal.
+func LanesEqual(a, b []*Lane) bool {
 	if len(a) != len(b) {
 		return false
 	}
 
-	for i, c := range a {
-		if !c.Equal(b[i]) {
+	for i, l := range a {
+		if !l.Equal(b[i]) {
 			return false
 		}
 	}
@@ -154,13 +222,13 @@ func ConnectionsEqual(a, b []*HubConnection) bool {
 	return true
 }
 
-type connections []*HubConnection
+type lanes []*Lane
 
-func (c connections) Len() int           { return len(c) }
-func (c connections) Swap(i, j int)      { c[i], c[j] = c[j], c[i] }
-func (c connections) Less(i, j int) bool { return c[i].ID < c[j].ID }
+func (l lanes) Len() int           { return len(l) }
+func (l lanes) Swap(i, j int)      { l[i], l[j] = l[j], l[i] }
+func (l lanes) Less(i, j int) bool { return l[i].ID < l[j].ID }
 
-// SortConnections sorts a slice of HubConnections.
-func SortConnections(c []*HubConnection) {
-	sort.Sort(connections(c))
+// SortLanes sorts a slice of Lanes.
+func SortLanes(l []*Lane) {
+	sort.Sort(lanes(l))
 }

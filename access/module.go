@@ -6,11 +6,13 @@ import (
 
 	"github.com/safing/jess/lhash"
 	"github.com/safing/portbase/modules"
+	"github.com/safing/spn/terminal"
 )
 
 var (
+	MainZone = "alpha2"
+
 	module         *modules.Module
-	testMode       bool
 	accessCodeFlag string
 )
 
@@ -20,34 +22,18 @@ func init() {
 }
 
 func prep() error {
-	if testMode {
-		// test handler
-		testHandler, err := NewSaticCodeHandler(
-			"GSDDwb5BopqDHKqsA9haIQpYo2JHnIEAkvOVPAt7b7MH1Q",
-			lhash.BLAKE2b_256,
-		)
-		if err != nil {
-			return fmt.Errorf("failed to create test handler: %s", err)
-		}
-		RegisterZone("test", testHandler)
-
-		// test code
-		code, err := ParseCode("test:TVVvR5NSDNUauXh36YAzggE728kWOx0ZcUi9zh4W834")
-		if err != nil {
-			return fmt.Errorf("failed to parse test code: %s", err)
-		}
-		return Import(code)
-	}
-
-	// alpha1 handler
-	alpha1Handler, err := NewSaticCodeHandler(
-		"GSB7goxRH9wfV0zbo2SzGIs5qpK_6kPfz8COMfWjcc1BbQ",
+	// alpha2 handler
+	alpha2Handler, err := NewSaticCodeHandler(
+		"ZwojEvXZmAv7SZdNe7m94Xzu7F9J8vULqKf7QYtoTpN2tH",
 		lhash.BLAKE2b_256,
 	)
 	if err != nil {
-		return fmt.Errorf("failed to create alpha1 handler: %s", err)
+		return fmt.Errorf("failed to create alpha2 handler: %s", err)
 	}
-	RegisterZone("alpha1", alpha1Handler)
+	RegisterZone("alpha2", alpha2Handler, terminal.AddPermissions(
+		terminal.MayExpand,
+		terminal.MayConnect,
+	))
 
 	// parse access code flag
 	if accessCodeFlag != "" {
@@ -63,9 +49,4 @@ func prep() error {
 	}
 
 	return nil
-}
-
-// TestMode activates test mode and only uses a fixed testing access code.
-func TestMode() {
-	testMode = true
 }

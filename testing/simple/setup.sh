@@ -14,12 +14,12 @@ if [[ $leftovers != "" ]]; then
   docker rm $leftovers
 fi
 
-if [[ ! -f "../../spn" ]]; then
-  echo "please compile main.go in main directory (output: spn)"
+if [[ ! -f "../../cmds/hub/hub" ]]; then
+  echo "please build the hub cmd using cmds/hub/build"
   exit 1
 fi
 
-bin_path="$(realpath ../../spn)"
+bin_path="$(realpath ../../cmds/hub/hub)"
 data_path="$(realpath ./data)"
 if [[ ! -d "$data_path" ]]; then
   mkdir "$data_path"

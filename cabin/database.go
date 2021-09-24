@@ -4,52 +4,60 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/safing/spn/hub"
-
 	"github.com/safing/portbase/database"
 	"github.com/safing/portbase/database/record"
-	"github.com/safing/portbase/log"
 )
 
-var (
-	db = database.NewInterface(nil)
-)
+var db = database.NewInterface(nil)
 
 // LoadIdentity loads an identify with the given key.
-func LoadIdentity(key string) (*Identity, error) {
+func LoadIdentity(key string) (id *Identity, changed bool, err error) {
 	r, err := db.Get(key)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	id, err := EnsureIdentity(r)
+	id, err = EnsureIdentity(r)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse identity: %w", err)
+		return nil, false, fmt.Errorf("failed to parse identity: %w", err)
 	}
 
-	// load Hub
-	h, err := hub.GetHub(id.Scope, id.ID)
-	if err != nil {
-		log.Warningf("spn/cabin: re-initializing hub for identity %s", id.ID)
-		recipient, err := id.Signet.AsRecipient()
-		if err != nil {
-			return nil, fmt.Errorf("failed to get recipient from identity signet: %w", err)
-		}
-		id.initializeIdentityHub(recipient)
-	} else {
-		id.hub = h
+	// Check if required fields are present.
+	switch {
+	case id.Hub == nil:
+		return nil, false, errors.New("missing id.Hub")
+	case id.Signet == nil:
+		return nil, false, errors.New("missing id.Signet")
+	case id.Hub.Info == nil:
+		return nil, false, errors.New("missing hub.Info")
+	case id.Hub.Status == nil:
+		return nil, false, errors.New("missing hub.Status")
+	case id.ID != id.Hub.ID:
+		return nil, false, errors.New("hub.ID mismatch")
+	case id.ID != id.Hub.Info.ID:
+		return nil, false, errors.New("hub.Info.ID mismatch")
+	case id.Map == "":
+		return nil, false, errors.New("invalid id.Map")
+	case id.Hub.Map == "":
+		return nil, false, errors.New("invalid hub.Map")
+	case id.Hub.FirstSeen.IsZero():
+		return nil, false, errors.New("missing hub.FirstSeen")
+	case id.Hub.Info.Timestamp == 0:
+		return nil, false, errors.New("missing hub.Info.Timestamp")
+	case id.Hub.Status.Timestamp == 0:
+		return nil, false, errors.New("missing hub.Status.Timestamp")
 	}
 
 	// initial maintenance routine
-	_, err = id.MaintainAnnouncement()
+	infoChanged, err := id.MaintainAnnouncement(true)
 	if err != nil {
-		return nil, fmt.Errorf("failed to initialize announcement: %w", err)
+		return nil, false, fmt.Errorf("failed to initialize announcement: %w", err)
 	}
-	_, err = id.MaintainStatus(nil)
+	statusChanged, err := id.MaintainStatus(nil, true)
 	if err != nil {
-		return nil, fmt.Errorf("failed to initialize status: %w", err)
+		return nil, false, fmt.Errorf("failed to initialize status: %w", err)
 	}
 
-	return id, nil
+	return id, infoChanged || statusChanged, nil
 }
 
 // EnsureIdentity makes sure a database record is an Identity.
@@ -57,29 +65,19 @@ func EnsureIdentity(r record.Record) (*Identity, error) {
 	// unwrap
 	if r.IsWrapped() {
 		// only allocate a new struct, if we need it
-		new := &Identity{}
-		err := record.Unwrap(r, new)
+		id := &Identity{}
+		err := record.Unwrap(r, id)
 		if err != nil {
 			return nil, err
 		}
-		return new.loadIdentityHub()
+		return id, nil
 	}
 
 	// or adjust type
-	new, ok := r.(*Identity)
+	id, ok := r.(*Identity)
 	if !ok {
 		return nil, fmt.Errorf("record not of type *Identity, but %T", r)
 	}
-	return new.loadIdentityHub()
-}
-
-func (id *Identity) loadIdentityHub() (*Identity, error) {
-	h, err := hub.GetHub(id.Scope, id.ID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to load identity Hub: %w", err)
-	}
-
-	id.hub = h
 	return id, nil
 }
 

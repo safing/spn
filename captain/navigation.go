@@ -2,27 +2,26 @@ package captain
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"net"
 	"time"
 
+	"github.com/safing/portmaster/netenv"
 	"github.com/safing/spn/access"
-	"github.com/safing/spn/hub"
-
-	"github.com/safing/spn/conf"
 	"github.com/safing/spn/docks"
+	"github.com/safing/spn/hub"
 	"github.com/safing/spn/navigator"
+	"github.com/safing/spn/terminal"
 
 	"github.com/safing/portbase/log"
 	"github.com/safing/portbase/modules"
-	"github.com/safing/portmaster/netenv"
-	"github.com/safing/spn/api"
+	"github.com/safing/portbase/notifications"
 )
 
-func primaryHubManager(ctx context.Context) (err error) {
-	var primaryPort *navigator.Port
+func homeHubManager(ctx context.Context) (err error) {
 	defer ready.UnSet()
 
+managing:
 	for {
 		select {
 		case <-ctx.Done():
@@ -30,186 +29,192 @@ func primaryHubManager(ctx context.Context) (err error) {
 		case <-time.After(1 * time.Second):
 		}
 
-		if primaryPort == nil || !primaryPort.HasActiveRoute() {
+		home, homeTerminal := navigator.Main.GetHome()
+		if home == nil || homeTerminal == nil || homeTerminal.IsAbandoned() {
 			if ready.SetToIf(true, false) {
 				log.Infof("spn/captain: client not ready")
 			}
 
 			module.Hint(
-				"spn:establishing-primary-hub",
-				"SPN Starting",
+				"spn:establishing-home-hub",
+				"Connecting to SPN...",
 				"Connecting to the SPN network is in progress.",
 			)
-			primaryPort, err = establishPrimaryHub(ctx)
+			err = establishHomeHub(ctx)
 			if err != nil {
-				log.Warningf("failed to establish connection to primary hub: %s", err)
-				module.Warning(
-					"spn:primary-hub-failure",
-					"SPN Failed to Start",
-					fmt.Sprintf("Failed to connect to a primary hub: %s. The Portmaster will retry to connect automatically.", err),
-				)
+				log.Warningf("failed to establish connection to home hub: %s", err)
+				notifications.NotifyWarn(
+					"spn:home-hub-failure",
+					"SPN Failed to Connect",
+					fmt.Sprintf("Failed to connect to a home hub: %s. The Portmaster will retry to connect automatically.", err),
+					notifications.Action{
+						Text:    "Test Phase Info",
+						Type:    notifications.ActionTypeOpenURL,
+						Payload: "https://github.com/safing/spn/wiki/SPN-Testing-Goals-and-Status",
+					},
+					notifications.Action{
+						Text: "Configure",
+						Type: notifications.ActionTypeOpenSetting,
+						Payload: &notifications.ActionTypeOpenSettingPayload{
+							Key: CfgOptionEnableSPNKey,
+						},
+					},
+				).AttachToModule(module)
 				select {
 				case <-ctx.Done():
-				case <-time.After(5 * time.Second):
+				case <-time.After(4 * time.Second):
 				}
-				continue
+				continue managing
 			}
 
 			// success!
-			module.Hint(
-				"spn:connected-to-primary-hub",
-				"SPN Online",
-				fmt.Sprintf("You are connected to the SPN network with the Hub at %s. This notification is for awareness that the SPN is active during the alpha testing phase.", primaryPort.Hub.Info.IPv4),
-			)
+			home, homeTerminal := navigator.Main.GetHome()
+			notifications.NotifyInfo(
+				"spn:connected-to-home-hub",
+				"Connected to SPN Test Network",
+				fmt.Sprintf("You are connected to the SPN test network at %s. This notification is persistent for awareness.", homeTerminal.RemoteAddr()),
+				notifications.Action{
+					Text:    "Test Phase Info",
+					Type:    notifications.ActionTypeOpenURL,
+					Payload: "https://github.com/safing/spn/wiki/SPN-Testing-Goals-and-Status",
+				},
+				notifications.Action{
+					Text: "Configure",
+					Type: notifications.ActionTypeOpenSetting,
+					Payload: &notifications.ActionTypeOpenSettingPayload{
+						Key: CfgOptionEnableSPNKey,
+					},
+				},
+			).AttachToModule(module)
 			ready.Set()
-			log.Infof("spn/captain: established new primary %s", primaryPort.Hub)
+			log.Infof("spn/captain: established new home %s", home.Hub)
 			log.Infof("spn/captain: client is ready")
 		}
 	}
+	return nil
 }
 
-func establishPrimaryHub(ctx context.Context) (*navigator.Port, error) {
-	var primaryPortCandidate *navigator.Port
-	var bootstrapped bool
+func establishHomeHub(ctx context.Context) error {
+	// Get own IP.
+	locations, ok := netenv.GetInternetLocation()
+	if !ok {
+		return errors.New("failed to locate own device")
+	}
+	log.Debugf(
+		"spn/captain: looking for new home hub near %s and %s",
+		locations.BestV4(),
+		locations.BestV6(),
+	)
 
-findCandidate:
-	// find approximate network location
-	ip, err := netenv.GetApproximateInternetLocation()
+	// Find nearby hubs.
+findCandidates:
+	candidates, err := navigator.Main.FindNearestHubs(
+		locations.BestV4().LocationOrNil(),
+		locations.BestV6().LocationOrNil(),
+		nil, navigator.HomeHub, 10,
+	)
 	if err != nil {
-		log.Warningf("unable to get own location: %s", err)
-
-		// could not get location, use random port instead
-		primaryPortCandidate = navigator.GetRandomPort()
-
-	} else {
-		// find nearest ports to location
-		col, err := navigator.FindNearestPorts([]net.IP{ip})
-		if err != nil {
-			log.Warningf("spn/captain: unable to find nearest port for primary port: %s", err)
-			col = nil
-		} else if col.Len() == 0 {
-			log.Warning("spn/captain: no near ports could be found: will bootstrap.")
-			col = nil
-		}
-
-		// set candidate if there is a result
-		if col != nil {
-			primaryPortCandidate = col.All[0].Port
-		}
-	}
-
-	// bootstrap if no Port could be found
-	if primaryPortCandidate == nil {
-		if bootstrapped {
-			return nil, fmt.Errorf("unable to find a primary hub")
-		}
-
-		// bootstrap to the network!
-		err := bootstrapWithUpdates()
-		if err != nil {
-			return nil, fmt.Errorf("failed to bootstrap: %w", err)
-		}
-		log.Infof("spn/captain: bootstrap successful")
-
-		// try again
-		bootstrapped = true
-		goto findCandidate
-	}
-
-	// connect
-	ship, err := docks.LaunchShip(ctx, primaryPortCandidate.Hub, nil, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to connect to primary %s: %w", primaryPortCandidate.Hub, err)
-	}
-
-	// establish crane
-	crane, err := docks.NewCrane(ship, publicIdentity, primaryPortCandidate.Hub)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create crane for primary Hub: %w", err)
-	}
-	err = crane.Start()
-	if err != nil {
-		return nil, fmt.Errorf("failed to start crane for primary Hub: %w", err)
-	}
-	docks.AssignCrane(primaryPortCandidate.Hub.ID, crane)
-
-	// make client
-	client, err := docks.NewClient(conf.CurrentVersion, primaryPortCandidate.Hub)
-	if err != nil {
-		return nil, fmt.Errorf("unable to create client at primary %s: %w", primaryPortCandidate.Hub, err)
-	}
-
-	// get access code
-	accessCode, err := access.Get()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get access code: %w", err)
-	}
-
-	// authenticate
-	err = client.UserAuth(accessCode)
-	if err != nil {
-		return nil, fmt.Errorf("failed to authenticate to primary %s: %w", primaryPortCandidate.Hub, err)
-	}
-
-	primaryPortCandidate.ActiveAPI = client
-	// TODO: let API be managed
-
-	// set primary port in navigator
-	navigator.SetPrimaryPort(primaryPortCandidate)
-
-	// get bottles
-	feedHubs(client)
-
-	return primaryPortCandidate, nil
-}
-
-func feedHubs(client *docks.API) {
-	// feed
-	call := client.PublicHubFeed()
-	for {
-		select {
-		case <-time.After(5 * time.Second):
-			call.End()
-			log.Warning("spn/captain: feeding Hubs: timed out")
-			return
-		case msg := <-call.Msgs:
-			switch msg.MsgType {
-			case api.API_DATA:
-
-				msgType, err := msg.Container.GetNextN64()
-				if err != nil {
-					log.Warningf("spn/captain: feeding Hubs: failed to get message type: %s", err)
-					continue
-				}
-				msgData, err := msg.Container.GetNextBlock()
-				if err != nil {
-					log.Warningf("spn/captain: feeding Hubs: failed to get message data: %s", err)
-					continue
-				}
-
-				switch msgType {
-				case docks.HubFeedAnnouncement:
-					err = hub.ImportAnnouncement(msgData, hub.ScopePublic)
-					if err != nil {
-						log.Warningf("spn/captain: feeding Hubs: failed to import announcement: %s", err)
-					}
-				case docks.HubFeedStatus:
-					err = hub.ImportStatus(msgData, hub.ScopePublic)
-					if err != nil {
-						log.Warningf("spn/captain: feeding Hubs: failed to import status: %s", err)
-					}
-				default:
-					log.Warningf("spn/captain: feeding Hubs: unknown msg type: %d", msgType)
-				}
-
-			case api.API_END, api.API_ACK:
-				return
-			case api.API_ERR:
-				log.Errorf("spn/captain: feeding Hubs failed: %s", api.ParseError(msg.Container).Error())
-				return
+		if errors.Is(err, navigator.ErrEmptyMap) {
+			// bootstrap to the network!
+			err := bootstrapWithUpdates()
+			if err != nil {
+				return err
 			}
+			goto findCandidates
+		}
+
+		return fmt.Errorf("failed to find nearby hubs: %s", err)
+	}
+
+	// Try connecting to a hub.
+	var tries int
+	var candidate *hub.Hub
+	for tries, candidate = range candidates {
+		err = connectToHomeHub(ctx, candidate)
+		if err != nil {
+			if errors.Is(err, terminal.ErrStopping) {
+				return err
+			}
+			log.Debugf("spn/captain: failed to connect to %s as new home: %s", candidate, err)
+		} else {
+			log.Infof("spn/captain: established connection to %s as new home with %d failed tries", candidate, tries)
+			return nil
 		}
 	}
+	if err != nil {
+		return fmt.Errorf("failed to connect to a new home hub - tried %d hubs: %s", tries+1, err)
+	}
+	return fmt.Errorf("no home hub candidates available")
+}
+
+func connectToHomeHub(ctx context.Context, dst *hub.Hub) error {
+	// Set and clean up exceptions.
+	setExceptions(dst.Info.IPv4, dst.Info.IPv6)
+	defer setExceptions(nil, nil)
+
+	// Connect to hub.
+	crane, err := EstablishCrane(dst)
+	if err != nil {
+		return err
+	}
+
+	// Cleanup connection in case of failure.
+	var success bool
+	defer func() {
+		if !success {
+			crane.Stop(nil)
+		}
+	}()
+
+	// Query all gossip msgs on first connection.
+	if gossipQueryInitiated.SetToIf(false, true) {
+		gossipQuery, tErr := NewGossipQueryOp(crane.Controller)
+		if tErr != nil {
+			log.Warningf("spn/captain: failed to start initial gossip query: %s", tErr)
+			gossipQueryInitiated.UnSet()
+		}
+
+		// Wait for gossip query to complete.
+		select {
+		case <-gossipQuery.ctx.Done():
+		case <-ctx.Done():
+		}
+	}
+
+	// Create communication terminal.
+	homeTerminal, initData, tErr := docks.NewLocalCraneTerminal(crane, nil, &terminal.TerminalOpts{}, nil)
+	if tErr != nil {
+		return tErr.Wrap("failed to create home terminal")
+	}
+	tErr = crane.EstablishNewTerminal(homeTerminal, initData)
+	if tErr != nil {
+		return tErr.Wrap("failed to connect home terminal")
+	}
+
+	// Authenticate to home hub.
+	authOp, tErr := access.AuthorizeToTerminal(homeTerminal)
+	if tErr != nil {
+		return tErr.Wrap("failed to authorize")
+	}
+	select {
+	case tErr := <-authOp.Ended:
+		if !tErr.Is(terminal.ErrExplicitAck) {
+			return tErr.Wrap("failed to authenticate to")
+		}
+	case <-time.After(3 * time.Second):
+		return terminal.ErrTimeout.With("timed out waiting for auth to complete")
+	case <-ctx.Done():
+		return terminal.ErrStopping
+	}
+
+	// Set new home on map.
+	ok := navigator.Main.SetHome(dst.ID, homeTerminal)
+	if !ok {
+		return fmt.Errorf("failed to set home hub on map")
+	}
+
+	success = true
+	return nil
 }
 
 func optimizeNetwork(ctx context.Context, task *modules.Task) error {
@@ -217,28 +222,27 @@ func optimizeNetwork(ctx context.Context, task *modules.Task) error {
 		return nil
 	}
 
-	newDst, err := navigator.Optimize(publicIdentity.Hub())
-	switch err {
-	case nil:
-		// continue
-	case navigator.ErrIAmLonely:
-		// bootstrap to the network!
-		err := bootstrapWithUpdates()
-		if err != nil {
-			return err
+optimize:
+	newDst, err := navigator.Main.Optimize(nil)
+	if err != nil {
+		if errors.Is(err, navigator.ErrEmptyMap) {
+			// bootstrap to the network!
+			err := bootstrapWithUpdates()
+			if err != nil {
+				return err
+			}
+			goto optimize
 		}
-		// try again
-		newDst, err = navigator.Optimize(publicIdentity.Hub())
-		if err != nil {
-			return err
-		}
-	default:
+
 		return err
 	}
 
 	if newDst != nil {
 		log.Infof("spn/captain: network optimization suggests new connection to %s", newDst)
-		docks.EstablishRoute(publicIdentity, newDst)
+		_, err := EstablishPublicLane(newDst)
+		if err != nil {
+			log.Warningf("spn/captain: failed to establish public lane to %s: %s", newDst, err)
+		}
 	} else {
 		log.Info("spn/captain: network optimization suggests no further action")
 	}

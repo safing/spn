@@ -271,9 +271,9 @@ func prepPublicHubConfig() error {
 	return nil
 }
 
-func getPublicHubInfo() *hub.HubAnnouncement {
+func getPublicHubInfo() *hub.Announcement {
 	// get configuration
-	info := &hub.HubAnnouncement{
+	info := &hub.Announcement{
 		Name:           publicCfgOptionName(),
 		Group:          publicCfgOptionGroup(),
 		ContactAddress: publicCfgOptionContactAddress(),

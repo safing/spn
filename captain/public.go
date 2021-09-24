@@ -2,17 +2,17 @@ package captain
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
+	"github.com/safing/spn/conf"
 	"github.com/safing/spn/navigator"
 
 	"github.com/safing/portbase/database"
 	"github.com/safing/portbase/log"
 	"github.com/safing/portbase/modules"
 	"github.com/safing/spn/cabin"
-	"github.com/safing/spn/docks"
-	"github.com/safing/spn/hub"
 )
 
 var (
@@ -23,28 +23,21 @@ var (
 )
 
 func loadPublicIdentity() (err error) {
-	publicIdentity, err = cabin.LoadIdentity(publicIdentityKey)
+	var changed bool
+
+	publicIdentity, changed, err = cabin.LoadIdentity(publicIdentityKey)
 	switch err {
 	case nil:
 		// load was successful
-		log.Infof("spn/captain: loaded public hub identity %s", publicIdentity.Hub().ID)
+		log.Infof("spn/captain: loaded public hub identity %s", publicIdentity.Hub.ID)
 	case database.ErrNotFound:
 		// does not exist, create new
-		publicIdentity, err = cabin.CreateIdentity(module.Ctx, hub.ScopePublic)
+		publicIdentity, err = cabin.CreateIdentity(module.Ctx, conf.MainMapName)
 		if err != nil {
 			return fmt.Errorf("failed to create new identity: %w", err)
 		}
-
-		// save to database
 		publicIdentity.SetKey(publicIdentityKey)
-		err = publicIdentity.Save()
-		if err != nil {
-			return fmt.Errorf("failed to save new identity to database: %w", err)
-		}
-		err = publicIdentity.Hub().Save()
-		if err != nil {
-			return fmt.Errorf("failed to save identity hub to database: %w", err)
-		}
+		changed = true
 
 		log.Infof("spn/captain: created new public hub identity %s", publicIdentity.ID)
 	default:
@@ -52,18 +45,29 @@ func loadPublicIdentity() (err error) {
 		return fmt.Errorf("failed to load public identity: %w", err)
 	}
 
-	// export verification
-	_, err = publicIdentity.ExportAnnouncement()
-	if err != nil {
-		return fmt.Errorf("faile to create announcement export cache: %s", err)
-	}
-	_, err = publicIdentity.ExportStatus()
-	if err != nil {
-		return fmt.Errorf("faile to create status export cache: %s", err)
+	// Save to database if the identity changed.
+	if changed {
+		err = publicIdentity.Save()
+		if err != nil {
+			return fmt.Errorf("failed to save new/updated identity to database: %w", err)
+		}
 	}
 
-	// Always update the navigator in any case in order to sync the reference to the active struct of the identity.
-	navigator.UpdateHub(publicIdentity.Hub())
+	// Set Home Hub before updating the hub on the map, as this would trigger a
+	// recalculation without a Home Hub.
+	ok := navigator.Main.SetHome(publicIdentity.ID, nil)
+	// Always update the navigator in any case in order to sync the reference to
+	// the active struct of the identity.
+	navigator.Main.UpdateHub(publicIdentity.Hub)
+	// Setting the Home Hub will have failed if the identidy was only just
+	// created - try again if it failed.
+	if !ok {
+		ok = navigator.Main.SetHome(publicIdentity.ID, nil)
+		if !ok {
+			return errors.New("failed to set self as home hub")
+		}
+	}
+
 	return nil
 }
 
@@ -91,7 +95,7 @@ func prepPublicIdentityMgmt() error {
 }
 
 func maintainPublicIdentity(ctx context.Context, task *modules.Task) error {
-	changed, err := publicIdentity.MaintainAnnouncement()
+	changed, err := publicIdentity.MaintainAnnouncement(false)
 	if err != nil {
 		return fmt.Errorf("failed to maintain announcement: %w", err)
 	}
@@ -100,6 +104,10 @@ func maintainPublicIdentity(ctx context.Context, task *modules.Task) error {
 		return nil
 	}
 
+	// Update on map.
+	navigator.Main.UpdateHub(publicIdentity.Hub)
+	log.Debug("spn/captain: updated own hub on map after announcement change")
+
 	// export announcement
 	announcementData, err := publicIdentity.ExportAnnouncement()
 	if err != nil {
@@ -107,9 +115,7 @@ func maintainPublicIdentity(ctx context.Context, task *modules.Task) error {
 	}
 
 	// forward to other connected Hubs
-	for _, controller := range docks.GetAllControllers() {
-		controller.SendHubAnnouncement(announcementData)
-	}
+	gossipRelayMsg("", GossipHubAnnouncementMsg, announcementData)
 
 	// manage docks in order to react to possibly changed transports
 	if managePiersTask != nil {
@@ -120,7 +126,7 @@ func maintainPublicIdentity(ctx context.Context, task *modules.Task) error {
 }
 
 func maintainPublicStatus(ctx context.Context, task *modules.Task) error {
-	changed, err := publicIdentity.MaintainExchKeys(time.Now())
+	changed, err := publicIdentity.MaintainStatus(nil, false)
 	if err != nil {
 		return fmt.Errorf("failed to maintain status: %w", err)
 	}
@@ -129,16 +135,18 @@ func maintainPublicStatus(ctx context.Context, task *modules.Task) error {
 		return nil
 	}
 
-	// export announcement
+	// Update on map.
+	navigator.Main.UpdateHub(publicIdentity.Hub)
+	log.Debug("spn/captain: updated own hub on map after status change")
+
+	// export status
 	statusData, err := publicIdentity.ExportStatus()
 	if err != nil {
 		return fmt.Errorf("failed to export status: %w", err)
 	}
 
 	// forward to other connected Hubs
-	for _, controller := range docks.GetAllControllers() {
-		controller.SendHubStatus(statusData)
-	}
+	gossipRelayMsg("", GossipHubStatusMsg, statusData)
 
 	return nil
 }

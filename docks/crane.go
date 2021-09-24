@@ -5,6 +5,8 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
+	"net"
 	"sync"
 	"time"
 
@@ -18,697 +20,695 @@ import (
 	"github.com/safing/spn/cabin"
 	"github.com/safing/spn/hub"
 	"github.com/safing/spn/ships"
+	"github.com/safing/spn/terminal"
 )
 
 const (
 	QOTD = "Privacy is not an option, and it shouldn't be the price we accept for just getting on the Internet.\nGary Kovacs\n"
+
+	// maxUnloadSize defines the maximum size of a message to unload.
+	maxUnloadSize    = 16384
+	maxSegmentLength = 16384
 )
 
-// Crane Status Options
 var (
-	CraneStatusStopped          int8 = -1
-	CraneStatusPrivate          int8 = 0
-	CraneStatusPublishRequested int8 = 1
-	CraneStatusPublishVerifying int8 = 2
-	CraneStatusPublished        int8 = 3
+	// optimalMinLoadSize defines minimum for Crane.targetLoadSize.
+	optimalMinLoadSize = 3072 // Targeting around 4096.
+
+	// loadingMaxWaitDuration is the maximum time a crane will wait for
+	// additional data to send.
+	loadingMaxWaitDuration = 5 * time.Millisecond
+)
+
+// Errors.
+var (
+	ErrDone = errors.New("crane is done")
+)
+
+// Crane Status Options.
+var (
+	CraneStatusStopped int8 = -1
+	CraneStatusPrivate int8 = 0
+	CraneStatusPublic  int8 = 1
 )
 
 type Crane struct {
-	version uint8
-	ID      string
-	status  int8
+	// ID is the ID of the Crane.
+	ID string
+	// opts holds options.
+	opts terminal.TerminalOpts
 
-	// involved Hubs
-	identity     *cabin.Identity
-	ConnectedHub *hub.Hub
-
-	// link encryption
-	session     *jess.Session
-	sessionLock sync.Mutex
-
-	// controller
-	Controller     *CraneController
-	fromController chan *container.Container
-
-	// lifecycle management
+	// ctx is the context of the Terminal.
+	ctx context.Context
+	// cancelCtx cancels ctx.
+	cancelCtx context.CancelFunc
+	// stopped indicates if the Crane has been stopped. Whoever stopped the Crane
+	// already took care of notifying everyone, so a silent fail is normally the
+	// best response.
 	stopped *abool.AtomicBool
-	stop    chan struct{}
 
-	// data lanes
-	ship      ships.Ship
-	fromShip  chan *container.Container
-	toShip    chan *container.Container
-	fromShore chan *container.Container
-	toShore   chan *container.Container
+	// ConnectedHub is the identity of the remote Hub.
+	ConnectedHub *hub.Hub
+	// identity is identity of this instance and is usually only populated on a server.
+	identity *cabin.Identity
 
-	lines      map[uint32]*ConveyorLine
-	linesLock  sync.RWMutex
-	nextLineID uint32
+	// jession is the jess session used for encryption.
+	jession *jess.Session
+	// jessionLock locks jession.
+	jessionLock sync.Mutex
 
-	maxContainerSize int
+	// Controller is the Crane's Controller Terminal.
+	Controller *CraneControllerTerminal
+
+	// ship represents the underlying physical connection.
+	ship ships.Ship
+	// unloading moves containers from the ship to the crane.
+	unloading chan *container.Container
+	// loading moves containers from the crane to the ship.
+	loading chan *container.Container
+	// terminalMsgs holds containers from terminals waiting to be laoded.
+	terminalMsgs chan *container.Container
+	// importantMsgs holds important containers from terminals waiting to be laoded.
+	importantMsgs chan *container.Container
+
+	// terminals holds all the connected terminals.
+	terminals map[uint32]terminal.TerminalInterface
+	// terminalsLock locks terminals.
+	terminalsLock sync.Mutex
+	// nextTerminalID holds the next terminal ID.
+	nextTerminalID uint32
+
+	// targetLoadSize defines the optimal loading size.
+	targetLoadSize int
 }
 
-func NewCrane(ship ships.Ship, id *cabin.Identity, connectedHub *hub.Hub) (*Crane, error) {
+func NewCrane(ctx context.Context, ship ships.Ship, connectedHub *hub.Hub, id *cabin.Identity) (*Crane, error) {
+	ctx, cancelCtx := context.WithCancel(ctx)
 	randomID, err := rng.Bytes(3)
 	if err != nil {
 		return nil, err
 	}
 
 	new := &Crane{
-		version: 1,
-		ID:      hex.EncodeToString(randomID),
+		ID: hex.EncodeToString(randomID),
 
-		identity:     id,
+		ctx:       ctx,
+		cancelCtx: cancelCtx,
+		stopped:   abool.NewBool(false),
+
 		ConnectedHub: connectedHub,
+		identity:     id,
 
-		fromController: make(chan *container.Container),
-		stopped:        abool.NewBool(false),
-		stop:           make(chan struct{}),
+		ship:          ship,
+		unloading:     make(chan *container.Container, 0),
+		loading:       make(chan *container.Container, 100),
+		terminalMsgs:  make(chan *container.Container, 100),
+		importantMsgs: make(chan *container.Container, 100),
 
-		ship:      ship,
-		fromShip:  make(chan *container.Container, 100),
-		toShip:    make(chan *container.Container, 100),
-		fromShore: make(chan *container.Container, 100),
-		toShore:   make(chan *container.Container, 100),
-
-		lines: make(map[uint32]*ConveyorLine),
-
-		maxContainerSize: 5000,
+		terminals: make(map[uint32]terminal.TerminalInterface),
 	}
-	new.Controller = NewCraneController(new, new.fromController)
 
+	// Shift next terminal IDs on the server.
 	if !ship.IsMine() {
-		new.nextLineID = 1
+		new.nextTerminalID += 4
 	}
+
+	// Calculate target load size.
+	loadSize := ship.LoadSize()
+	if loadSize <= 0 {
+		loadSize = ships.BaseMTU
+	}
+	new.targetLoadSize = loadSize
+	for new.targetLoadSize < optimalMinLoadSize {
+		new.targetLoadSize += loadSize
+	}
+	// Subtract overhead needed for encryption.
+	new.targetLoadSize -= 25 // Manually tested for jess.SuiteWireV1
+	// Subtract space needed for length encoding the final chunk.
+	new.targetLoadSize -= varint.EncodedSize(uint64(new.targetLoadSize))
 
 	return new, nil
 }
 
-func (crane *Crane) Status() int8 {
-	return crane.status
+func (crane *Crane) Public() bool {
+	return crane.ship.Public()
 }
 
-func (crane *Crane) getNextLineID() uint32 {
-	for {
-		if crane.nextLineID > 2147483640 {
-			crane.nextLineID -= 2147483640
-		}
-		crane.nextLineID += 2
-		crane.linesLock.RLock()
-		_, ok := crane.lines[crane.nextLineID]
-		crane.linesLock.RUnlock()
-		if !ok {
-			return crane.nextLineID
-		}
-	}
-}
-
-func (crane *Crane) unloader(ctx context.Context) error {
-
-	lenBufLen := 5
-	buf := make([]byte, 0, 5)
-
-	maxMsgLen := 8192
-	var msgLen int
-
-	for {
-
-		// unload data into buf
-		n, ok, err := crane.ship.UnloadTo(buf[len(buf):cap(buf)])
-		if !ok {
-			if err != nil {
-				if !crane.stopped.IsSet() {
-					log.Warningf("crane %s: failed to unload ship: %s", crane.ID, err)
-					crane.Stop()
-				}
-			}
-			return nil
-		}
-		// set correct used buf length
-		buf = buf[:len(buf)+n]
-		// log.Debugf("crane %s: read %d bytes from ship, buf is now len=%d, cap=%d", crane.ID, n, len(buf), cap(buf))
-
-		// get message
-		if msgLen == 0 {
-			// get msgLen
-			if len(buf) < 2 {
-				continue
-			}
-
-			// unpack uvarint
-			uMsgLen, n, err := varint.Unpack32(buf)
-			if err != nil {
-				// Don't treat as error if there are less than 5 bytes available
-				if len(buf) < 5 {
-					continue
-				}
-				if !crane.stopped.IsSet() {
-					log.Warningf("crane %s: failed to read msg length: %s", crane.ID, err)
-					crane.Stop()
-				}
-				return nil
-			}
-			msgLen = int(uMsgLen)
-			// log.Debugf("crane %s: next msg length is %d", crane.ID, msgLen)
-
-			// check sanity
-			if msgLen > maxMsgLen {
-				if !crane.stopped.IsSet() {
-					log.Warningf("crane %s: invalid msg length greater than %d received: %d", crane.ID, maxMsgLen, msgLen)
-					crane.Stop()
-				}
-				return nil
-			}
-
-			// copy leftovers to new msg buf
-			msgBuf := make([]byte, 0, msgLen)
-			copy(msgBuf[:cap(msgBuf)], buf[n:])
-			msgBuf = msgBuf[:len(buf[n:])]
-			// log.Debugf("crane %s: copied remaining %d bytes to msg buf", crane.ID, len(msgBuf))
-			buf = msgBuf
-		}
-
-		// forward msg if complete
-		if len(buf) == cap(buf) {
-			crane.fromShip <- container.New(buf)
-			msgLen = 0
-			buf = make([]byte, 0, lenBufLen)
-		}
-
-	}
-}
-
-const (
-	// hubInfoRequest is a special code used to request the Hub Announcement and
-	// Status from the server. The value 0x7F is used at the place where the wire
-	// format version of the first transmitted jess.Letter would be. It is the
-	// highest single-byte varint.
-	hubInfoRequest = 0x7F
-)
-
-func (crane *Crane) Start() (err error) {
-	err = crane.start()
-	if err != nil {
-		crane.Stop()
-	}
-	return
-}
-
-func (crane *Crane) start() (err error) {
-	log.Infof("spn/docks: starting crane %s for %s", crane.ID, crane.ship)
-
-	module.StartWorker("crane unloader", crane.unloader)
-
-	if crane.ship.IsMine() {
-		if crane.ConnectedHub == nil {
-			return errors.New("cannot start outgoing crane without connected Hub")
-		}
-
-		// Workaround: always send hub info request, as keys are not saved to disk
-		// select a public key of connected hub
-		// s := crane.ConnectedHub.SelectSignet()
-		// if s == nil {
-		// send request
-		request := container.New([]byte{hubInfoRequest})
-		request.PrependLength()
-		ok, err := crane.ship.Load(request.CompileData())
-		if err != nil {
-			return fmt.Errorf("ship sank: %w", err)
-		}
-		if !ok {
-			return errors.New("ship sank")
-		}
-
-		// wait for reply
-		var reply *container.Container
-		select {
-		case reply = <-crane.fromShip:
-		case <-time.After(1 * time.Second):
-			return errors.New("timed out waiting for hub info")
-		}
-
-		// parse announcement
-		announcementData, err := reply.GetNextBlock()
-		if err != nil {
-			return fmt.Errorf("failed to get announcement: %w", err)
-		}
-		err = hub.ImportAnnouncement(announcementData, hub.ScopePublic)
-		if err != nil {
-			return fmt.Errorf("failed to import announcement: %w", err)
-		}
-		// parse status
-		statusData, err := reply.GetNextBlock()
-		if err != nil {
-			return fmt.Errorf("failed to get status: %w", err)
-		}
-		err = hub.ImportStatus(statusData, hub.ScopePublic)
-		if err != nil {
-			return fmt.Errorf("failed to import status: %w", err)
-		}
-
-		// refetch from DB to ensure we have the new version
-		dstHub, err := hub.GetHub(hub.ScopePublic, crane.ConnectedHub.ID)
-		if err != nil {
-			return fmt.Errorf("failed to refetch destination Hub: %w", err)
-		}
-		crane.ConnectedHub = dstHub
-
-		// try to select public key again
-		s := crane.ConnectedHub.SelectSignet()
-		if s == nil {
-			return errors.New("failed to select signet even after hub info request")
-		}
-		// }
-
-		// create envelope
-		env := jess.NewUnconfiguredEnvelope()
-		env.SuiteID = jess.SuiteWireV1
-		env.Recipients = []*jess.Signet{s}
-
-		// do not encrypt directly, rather get session for future use, then encrypt
-		crane.session, err = env.WireCorrespondence(nil)
-		if err != nil {
-			return fmt.Errorf("failed to create session: %w", err)
-		}
-
-		// get setup package from controller
-		data := crane.Controller.getDockingRequest()
-
-		// encrypt
-		letter, err := crane.session.Close(data)
-		if err != nil {
-			return fmt.Errorf("failed to encrypt initial packet: %w", err)
-		}
-
-		// serialize
-		c, err := letter.ToWire()
-		if err != nil {
-			return fmt.Errorf("failed to pack initial packet: %w", err)
-		}
-
-		// manually send docking request
-		c.PrependLength()
-		ok, err = crane.ship.Load(c.CompileData())
-		if err != nil {
-			return fmt.Errorf("ship sank: %w", err)
-		}
-		if !ok {
-			return errors.New("ship sank")
-		}
-
-	} else {
-		if crane.identity == nil {
-			return errors.New("cannot start incoming crane without designated identity")
-		}
-
-		// receive first packet
-		var c *container.Container
-		select {
-		case c = <-crane.fromShip:
-		case <-time.After(1 * time.Second):
-			// send QOTD
-			_, _ = crane.ship.Load([]byte(QOTD))
-			crane.Stop()
-			return errors.New("timed out while waiting for first packet, sent QotD")
-		}
-
-		// check for status request
-		// TODO: find a better way
-		data := c.CompileData()
-		if len(data) >= 1 && data[0] == 0x7F {
-			// 0x7F is the highest single-byte varint
-			// and is a request for the Hub Announcement and Status
-
-			msg := container.New()
-
-			// send announcement
-			announcementData, err := crane.identity.ExportAnnouncement()
-			if err != nil {
-				return err
-			}
-			msg.AppendAsBlock(announcementData)
-
-			// send status
-			statusData, err := crane.identity.ExportStatus()
-			if err != nil {
-				return err
-			}
-			msg.AppendAsBlock(statusData)
-
-			// manually send info reply
-			msg.PrependLength()
-			ok, err := crane.ship.Load(msg.CompileData())
-			if err != nil {
-				return fmt.Errorf("ship sank: %w", err)
-			}
-			if !ok {
-				return errors.New("ship sank")
-			}
-
-			// receive next message
-			select {
-			case c = <-crane.fromShip:
-				data = c.CompileData()
-			case <-time.After(1 * time.Second):
-				return errors.New("timed out waiting for docking request")
-			}
-		}
-
-		// parse packet
-		letter, err := jess.LetterFromWireData(data)
-		if err != nil {
-			return fmt.Errorf("failed to parse initial packet: %w", err)
-		}
-
-		// do not decrypt directly, rather get session for future use, then open
-		crane.session, err = letter.WireCorrespondence(crane.identity)
-		if err != nil {
-			return fmt.Errorf("failed to create session: %w", err)
-		}
-
-		// decrypt message
-		data, err = crane.session.Open(letter)
-		if err != nil {
-			return fmt.Errorf("failed to decrypt initial packet: %w", err)
-		}
-
-		// crane setup
-		err = crane.Controller.handleDockingRequest(container.New(data))
-		if err != nil {
-			return fmt.Errorf("failed to initialize crane controller: %w", err)
-		}
+func (crane *Crane) Publish() error {
+	// Check if crane is connected.
+	if crane.ConnectedHub == nil {
+		return fmt.Errorf("spn/docks: %s: cannot publish without defined connected hub", crane)
 	}
 
-	log.Infof("spn/docks: crane %s for %s operational", crane.ID, crane.ship)
+	// Mark crane as public.
+	maskedID := crane.ship.MaskAddress(crane.ship.RemoteAddr())
+	crane.ship.MarkPublic()
 
-	module.StartWorker("crane loader", crane.loader)
-	module.StartWorker("crane handler", crane.handler)
+	// Assign crane to make it available to others.
+	AssignCrane(crane.ConnectedHub.ID, crane)
+
+	log.Infof("spn/docks: %s (was %s) is now public", crane, maskedID)
 	return nil
 }
 
+func (crane *Crane) LocalAddr() net.Addr {
+	return crane.ship.LocalAddr()
+}
+
+func (crane *Crane) RemoteAddr() net.Addr {
+	return crane.ship.RemoteAddr()
+}
+
+func (crane *Crane) getNextTerminalID() uint32 {
+	crane.terminalsLock.Lock()
+	defer crane.terminalsLock.Unlock()
+
+	for {
+		// Bump to next ID.
+		crane.nextTerminalID += 8
+
+		// Check if it's free.
+		_, ok := crane.terminals[crane.nextTerminalID]
+		if !ok {
+			return crane.nextTerminalID
+		}
+	}
+}
+
+func (crane *Crane) getTerminal(id uint32) (t terminal.TerminalInterface, ok bool) {
+	crane.terminalsLock.Lock()
+	defer crane.terminalsLock.Unlock()
+
+	t, ok = crane.terminals[id]
+	return
+}
+
+func (crane *Crane) setTerminal(t terminal.TerminalInterface) {
+	crane.terminalsLock.Lock()
+	defer crane.terminalsLock.Unlock()
+
+	crane.terminals[t.ID()] = t
+}
+
+func (crane *Crane) deleteTerminal(id uint32) (t terminal.TerminalInterface, ok bool) {
+	crane.terminalsLock.Lock()
+	defer crane.terminalsLock.Unlock()
+
+	t, ok = crane.terminals[id]
+	if ok {
+		delete(crane.terminals, id)
+		return t, true
+	}
+	return nil, false
+}
+
+func (crane *Crane) AbandonTerminal(id uint32, err *terminal.Error) {
+	// Get active terminal.
+	t, ok := crane.deleteTerminal(id)
+	if !ok {
+		// Do nothing if terminal is not found.
+		return
+	}
+
+	// Log reason the terminal is ending. Override stopping error with nil.
+	switch {
+	case err == nil:
+		log.Debugf("spn/docks: %T %s is being abandoned", t, t.FmtID())
+	case errors.Is(err, terminal.ErrStopping):
+		err = nil
+		log.Debugf("spn/docks: %T %s is being abandoned by peer", t, t.FmtID())
+	default:
+		log.Warningf("spn/docks: %T %s: %s", t, t.FmtID(), err)
+	}
+
+	// Call the terminal's abandon function.
+	t.Abandon(err)
+}
+
+func (crane *Crane) submitImportantTerminalMsg(c *container.Container) {
+	crane.importantMsgs <- c
+}
+
+func (crane *Crane) submitTerminalMsg(c *container.Container) {
+	crane.terminalMsgs <- c
+}
+
+func (crane *Crane) encrypt(shipment *container.Container) (encrypted *container.Container, err error) {
+	// Skip if encryption is not enabled.
+	if crane.jession == nil {
+		return shipment, nil
+	}
+
+	crane.jessionLock.Lock()
+	defer crane.jessionLock.Unlock()
+
+	letter, err := crane.jession.Close(shipment.CompileData())
+	if err != nil {
+		return nil, err
+	}
+
+	encrypted, err = letter.ToWire()
+	if err != nil {
+		return nil, fmt.Errorf("failed to pack letter: %s", err)
+	}
+
+	return encrypted, nil
+}
+
+func (crane *Crane) decrypt(shipment *container.Container) (decrypted *container.Container, err error) {
+	// Skip if encryption is not enabled.
+	if crane.jession == nil {
+		return shipment, nil
+	}
+
+	crane.jessionLock.Lock()
+	defer crane.jessionLock.Unlock()
+
+	letter, err := jess.LetterFromWire(shipment)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse letter: %s", err)
+	}
+
+	decryptedData, err := crane.jession.Open(letter)
+	if err != nil {
+		return nil, err
+	}
+
+	return container.New(decryptedData), nil
+}
+
+func (crane *Crane) unloader(ctx context.Context) error {
+	for {
+		// Get first couple bytes to get the packet length.
+		// 2 bytes are enough to encode 65535.
+		// On the other hand, packets can be only 2 bytes small.
+		lenBuf := make([]byte, 2)
+		err := crane.unloadUntilFull(lenBuf)
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				crane.Stop(terminal.ErrStopping.With("connection closed"))
+			} else {
+				crane.Stop(terminal.ErrInternalError.With("failed to unload: %w", err))
+			}
+			return nil
+		}
+
+		// Unpack length.
+		containerLen, n, err := varint.Unpack64(lenBuf)
+		if err != nil {
+			crane.Stop(terminal.ErrMalformedData.With("failed to get container length: %w", err))
+			return nil
+		}
+		if containerLen > maxUnloadSize {
+			crane.Stop(terminal.ErrMalformedData.With("received oversized container with length %d", containerLen))
+			return nil
+		}
+
+		// Build shipment.
+		var shipmentBuf []byte
+		leftovers := len(lenBuf) - n
+
+		if leftovers == int(containerLen) {
+			// We already have all the shipment data.
+			shipmentBuf = lenBuf[n:]
+		} else {
+			// Create a shipment buffer, copy leftovers and read the rest from the connection.
+			shipmentBuf = make([]byte, containerLen)
+			if leftovers > 0 {
+				copy(shipmentBuf, lenBuf[n:])
+			}
+
+			// Read remaining shipment.
+			err = crane.unloadUntilFull(shipmentBuf[leftovers:])
+			if err != nil {
+				crane.Stop(terminal.ErrInternalError.With("failed to unload: %w", err))
+				return nil
+			}
+		}
+
+		// Submit to handler.
+		select {
+		case <-crane.ctx.Done():
+			crane.Stop(nil)
+			return nil
+		case crane.unloading <- container.New(shipmentBuf):
+		}
+	}
+}
+
+func (crane *Crane) unloadUntilFull(buf []byte) error {
+	var bytesRead int
+	for {
+		// Get shipment from ship.
+		n, err := crane.ship.UnloadTo(buf[bytesRead:])
+		if err != nil {
+			return err
+		}
+		if n == 0 {
+			log.Tracef("spn/docks: %s unloaded 0 bytes", crane)
+		}
+		bytesRead += n
+
+		// Return if buffer has been fully filled.
+		if bytesRead == len(buf) {
+			return nil
+		}
+	}
+}
+
 func (crane *Crane) handler(ctx context.Context) error {
+	var partialShipment *container.Container
+	var segmentLength uint32
 
-	var newShipmentData []byte
-	shipment := container.NewContainer()
-
-	nextContainer := container.NewContainer()
-	var nextContainerLen int
-	maxContainerLen := 8192
-
-	cnt := 1
-
-	// start handling
 handling:
 	for {
 		select {
 		case <-ctx.Done():
-			crane.Stop()
+			crane.Stop(nil)
 			return nil
-		case <-crane.stop:
-			return nil
-		case c := <-crane.fromShip:
+
+		case shipment := <-crane.unloading:
 
 			// log.Debugf("crane %s: before decrypt: %v ... %v", crane.ID, c.CompileData()[:10], c.CompileData()[c.Length()-10:])
 
-			crane.sessionLock.Lock()
-			if crane.session != nil {
-				// parse packet
-				letter, err := jess.LetterFromWireData(c.CompileData())
-				if err == nil {
-					newShipmentData, err = crane.session.Open(letter)
-				}
-				if err != nil {
-					log.Warningf("spn/docks: crane %s failed to decrypt shipment @ %d: %s", crane.ID, cnt, err)
-					crane.Stop()
-					return nil
-				}
-				cnt++
-			} else {
-				newShipmentData = c.CompileData()
-			}
-			crane.sessionLock.Unlock()
-
-			// get real data part
-			realDataLen, n, err := varint.Unpack32(newShipmentData)
+			// Decrypt shipment.
+			shipment, err := crane.decrypt(shipment)
 			if err != nil {
-				log.Warningf("crane %s: could not get length of real data: %s", crane.ID, err)
-				crane.Stop()
-				return nil
-			}
-			dataEnd := n + int(realDataLen)
-			if dataEnd > len(newShipmentData) {
-				log.Warningf("crane %s: length of real data is greater than available data: %d", crane.ID, realDataLen)
-				crane.Stop()
+				crane.Stop(terminal.ErrIntegrity.With("failed to decrypt: %w", err))
 				return nil
 			}
 
-			shipment.Append(newShipmentData[n:dataEnd])
+			// Process all segments/containers of the shipment.
+			for shipment.HoldsData() {
+				if partialShipment != nil {
+					// Continue processing partial segment.
+					// Append new shipment to previous partial segment.
+					partialShipment.AppendContainer(shipment)
+					shipment, partialShipment = partialShipment, nil
+				}
 
-			for shipment.Length() > 0 {
+				// Get next segment length.
+				if segmentLength == 0 {
+					segmentLength, err = shipment.GetNextN32()
+					if err != nil {
+						if errors.Is(err, varint.ErrBufTooSmall) {
+							// Continue handling when there is not yet enough data.
+							partialShipment = shipment
+							segmentLength = 0
+							continue handling
+						}
 
-				if nextContainerLen == 0 {
+						crane.Stop(terminal.ErrMalformedData.With("failed to get segment length: %w", err))
+						return nil
+					}
 
-					// get nextContainerLen
-					if shipment.Length() < 5 {
+					if segmentLength == 0 {
+						// Remainder is padding.
 						continue handling
 					}
 
-					// unpack uvarint
-					uContainerLen, err := shipment.GetNextN32()
-					if err != nil {
-						log.Warningf("crane %s: failed to read container length: %s", crane.ID, err)
-						crane.Stop()
+					// Check if the segment is within the boundary.
+					if segmentLength > maxSegmentLength {
+						crane.Stop(terminal.ErrMalformedData.With("received oversized segment with length %d", segmentLength))
 						return nil
 					}
-					nextContainerLen = int(uContainerLen)
-
-					// check sanity
-					if nextContainerLen > maxContainerLen {
-						log.Warningf("crane %s: invalid container length (greater than %d) received: %d", crane.ID, maxContainerLen, nextContainerLen)
-						crane.Stop()
-						return nil
-					}
-
 				}
 
-				nextContainer.Append(shipment.GetMax(nextContainerLen - nextContainer.Length()))
+				// Check if we have enough data for the segment.
+				if uint32(shipment.Length()) < segmentLength {
+					partialShipment = shipment
+					continue handling
+				}
 
-				// forward container if complete
-				if nextContainer.Length() == nextContainerLen {
+				// Get segment from shipment.
+				segment, err := shipment.GetAsContainer(int(segmentLength))
+				if err != nil {
+					crane.Stop(terminal.ErrMalformedData.With("failed to get segment: %w", err))
+					return nil
+				}
+				segmentLength = 0
 
-					// log.Infof("crane %s: handling container: %s", crane.ID, string(nextContainer.CompileData()))
+				// Get terminal ID and message type of segment.
+				terminalID, terminalMsgType, err := terminal.ParseIDType(segment)
+				if err != nil {
+					crane.Stop(terminal.ErrMalformedData.With("failed to get terminal ID and msg type: %s", err))
+					return nil
+				}
 
-					lineID, err := nextContainer.GetNextN32()
-					if err != nil {
-						log.Warningf("crane %s: could not get line ID from container: %s", crane.ID, err)
-						crane.Stop()
-						return nil
-					}
+				switch terminalMsgType {
+				case terminal.MsgTypeInit:
+					crane.establishTerminal(terminalID, segment)
 
-					if lineID == 0 {
-						err := crane.Controller.Handle(nextContainer)
-						if err != nil {
-							log.Warningf("crane %s: failed to handle controller msg: %s", crane.ID, err)
-							crane.Stop()
-							return nil
+				case terminal.MsgTypeData:
+					// Get terminal and let it further handle the message.
+					t, ok := crane.getTerminal(terminalID)
+					if ok {
+						deliveryErr := t.Deliver(segment)
+						if deliveryErr != nil {
+							// This is a hot path. Start a worker for abandoning the terminal.
+							module.StartWorker("end terminal", func(_ context.Context) error {
+								crane.AbandonTerminal(t.ID(), deliveryErr.Wrap("failed to deliver data"))
+								return nil
+							})
 						}
 					} else {
-						crane.linesLock.RLock()
-						line, ok := crane.lines[lineID]
-						crane.linesLock.RUnlock()
-						if ok {
-							if nextContainer.Length() == 0 {
-								nextContainer = nil
-							}
-							select {
-							case line.fromShip <- nextContainer:
-								report, space := line.notifyOfNewContainer()
-								if report {
-									crane.Controller.addLineSpace(lineID, space)
-								}
-							default:
-								log.Warningf("crane %s: discarding line %d, because it is full", crane.ID, lineID)
-								crane.dispatchContainer(lineID, container.New())
-								go func() {
-									line.fromShip <- nil
-								}()
-							}
-						}
+						log.Tracef("spn/docks: %s received msg for unknown terminal %d", crane, terminalID)
 					}
-					nextContainer = container.NewContainer()
-					nextContainerLen = 0
+
+				case terminal.MsgTypeStop:
+					// Parse error.
+					receivedErr, err := terminal.ParseExternalError(segment.CompileData())
+					if err != nil {
+						log.Warningf("spn/docks: %s failed to parse abandon error: %s", crane, err)
+						receivedErr = terminal.ErrUnknownError.AsExternal()
+					}
+					// This is a hot path. Start a worker for abandoning the terminal.
+					module.StartWorker("end terminal", func(_ context.Context) error {
+						crane.AbandonTerminal(terminalID, receivedErr)
+						return nil
+					})
 				}
-
 			}
-
 		}
 	}
-
 }
 
-func (crane *Crane) loader(ctx context.Context) error {
+func (crane *Crane) loader(ctx context.Context) (err error) {
+	shipment := container.New()
+	var newSegment, partialShipment *container.Container
+	var loadingTimer *time.Timer
 
-	shipmentBufSize := 4096
-	shipmentBufLengthSize := 2    // we need to bytes to encode 4094 with varint
-	shipmentBufAlignmentSize := 1 // varint also my also just use 1 byte instead two
-
-	shipmentBufDataSpace := shipmentBufSize - shipmentBufLengthSize
-
-	shipmentBuf := make([]byte, shipmentBufSize+shipmentBufAlignmentSize)
-	shipmentWorkingBuf := shipmentBuf[shipmentBufLengthSize:shipmentBufSize] // reserve bytes for length
-
-	var nextContainer *container.Container
-
-	waitDuration := 1 * time.Millisecond
-	send := false
-
-	timer := time.NewTimer(waitDuration)
-	timer.Stop()
+	// Return the loading wait channel if waiting.
+	loadNow := func() <-chan time.Time {
+		if loadingTimer != nil {
+			return loadingTimer.C
+		}
+		return nil
+	}
 
 	for {
 
-		if nextContainer == nil {
+	fillingShipment:
+		for shipment.Length() < crane.targetLoadSize {
+			newSegment = nil
+			// Gather segments until shipment is filled, or
+
+			// Prioritize messages from the controller.
 			select {
-			// prioritize messages from controller
+			case newSegment = <-crane.importantMsgs:
 			case <-ctx.Done():
+				crane.Stop(nil)
 				return nil
-			case <-crane.stop:
-				return nil
-			case nextContainer = <-crane.fromController:
-				nextContainer.Prepend(varint.Pack8(0))
-				nextContainer.PrependLength()
-				// set timer if first data of shipment
-				if len(shipmentWorkingBuf) == shipmentBufDataSpace {
-					timer.Reset(waitDuration)
-				}
+
 			default:
+				// Then listen for all.
 				select {
-				case <-crane.stop:
+				case newSegment = <-crane.importantMsgs:
+				case newSegment = <-crane.terminalMsgs:
+				case <-loadNow():
+					break fillingShipment
+				case <-ctx.Done():
+					crane.Stop(nil)
 					return nil
-				case nextContainer = <-crane.fromController:
-					nextContainer.Prepend(varint.Pack8(0))
-					nextContainer.PrependLength()
-					// set timer if first data of shipment
-					if len(shipmentWorkingBuf) == shipmentBufDataSpace {
-						timer.Reset(waitDuration)
-					}
-				case nextContainer = <-crane.toShip:
-					// set timer if first data of shipment
-					if len(shipmentWorkingBuf) == shipmentBufDataSpace {
-						timer.Reset(waitDuration)
-					}
-				case <-timer.C:
-					send = true
 				}
 			}
-		}
 
-		if nextContainer != nil {
-			n, containerEmptied := nextContainer.WriteToSlice(shipmentWorkingBuf)
-			shipmentWorkingBuf = shipmentWorkingBuf[n:]
-			if containerEmptied {
-				nextContainer = nil
-			}
-		}
+			// Handle new segment.
+			if newSegment != nil {
+				// Check length.
+				if newSegment.Length() > maxSegmentLength {
+					log.Warningf("spn/docks: %s ignored oversized segment with length %d", crane, newSegment.Length())
+					continue fillingShipment
+				}
 
-		if send || len(shipmentWorkingBuf) == 0 {
+				// Append to shipment.
+				shipment.AppendContainer(newSegment)
 
-			// encode length of real data without wasting space and always ending up with 4096 bytes
-			encodedShipmentLength := varint.Pack16(uint16(shipmentBufDataSpace - len(shipmentWorkingBuf)))
-			// log.Debugf("crane %s: loading %d bytes of real data", crane.ID, shipmentBufDataSpace-len(shipmentWorkingBuf))
-			switch len(encodedShipmentLength) {
-			case 1:
-				shipmentBuf[1] = encodedShipmentLength[0]
-				shipmentWorkingBuf = shipmentBuf[1:]
-			case 2:
-				shipmentBuf[0] = encodedShipmentLength[0]
-				shipmentBuf[1] = encodedShipmentLength[1]
-				shipmentWorkingBuf = shipmentBuf[:4096]
-			default:
-				log.Warningf("crane %s: invalid shipment length: %v", crane.ID, encodedShipmentLength)
-				crane.Stop()
+				// Set loading max wait timer on first segment.
+				if loadingTimer == nil {
+					loadingTimer = time.NewTimer(loadingMaxWaitDuration)
+				}
+
+			} else if crane.stopped.IsSet() {
+				// If there is no new segment, this might have been triggered by a
+				// closed channel. Check if the crane is still active.
 				return nil
 			}
+		}
 
-			ok, err := crane.load(shipmentWorkingBuf)
-			if !ok {
+	sendingShipment:
+		for {
+			// Check if we are over the target load size and split the shipment.
+			if shipment.Length() > crane.targetLoadSize {
+				partialShipment, err = shipment.GetAsContainer(crane.targetLoadSize)
 				if err != nil {
-					log.Warningf("crane %s: failed to load ship: %s", crane.ID, err)
-					crane.Stop()
+					crane.Stop(terminal.ErrInternalError.With("failed to split segment: %w", err))
+					return nil
 				}
+				shipment, partialShipment = partialShipment, shipment
+			}
+
+			// Load shipment.
+			err = crane.load(shipment)
+			if err != nil {
+				crane.Stop(terminal.ErrShipSunk.With("failed to load shipment: %w", err))
 				return nil
 			}
 
-			shipmentBuf = make([]byte, shipmentBufSize+shipmentBufAlignmentSize)
-			shipmentWorkingBuf = shipmentBuf[shipmentBufLengthSize:shipmentBufSize] // reserve bytes for length
-			send = false
+			// Reset loading timer.
+			loadingTimer = nil
 
-		}
+			// Continue loading with partial shipment, or a new one.
+			if partialShipment != nil {
+				// Continue loading with a partial previous shipment.
+				shipment, partialShipment = partialShipment, nil
 
-	}
+				// If shipment is not big enough to send immediately, wait for more data.
+				if shipment.Length() < crane.targetLoadSize {
+					loadingTimer = time.NewTimer(loadingMaxWaitDuration)
+					break sendingShipment
+				}
 
-}
-
-func (crane *Crane) load(shipment []byte) (ok bool, err error) {
-
-	var wireData []byte
-
-	if crane.session != nil {
-		// encrypt
-		crane.sessionLock.Lock()
-		var letter *jess.Letter
-		letter, err = crane.session.Close(shipment)
-		if err == nil {
-			c, jerr := letter.ToWire()
-			if jerr != nil {
-				err = jerr
 			} else {
-				wireData = c.CompileData()
+				// Continue loading with new shipment.
+				shipment = container.New()
+				break sendingShipment
 			}
 		}
-		crane.sessionLock.Unlock()
-		if err != nil {
-			return false, fmt.Errorf("failed to encrypt initial packet: %w", err)
-		}
-	} else {
-		wireData = shipment
 	}
-
-	// log.Debugf("crane %s: after encrypt: %v ... %v", crane.ID, wireData[:10], wireData[len(wireData)-10:])
-
-	ok, err = crane.ship.Load(varint.Pack64(uint64(len(wireData))))
-	if err != nil {
-		return
-	}
-
-	ok, err = crane.ship.Load(wireData)
-	if err != nil {
-		return
-	}
-
-	return true, nil
 }
 
-func (crane *Crane) dispatchContainer(lineID uint32, c *container.Container) {
-	c.Prepend(varint.Pack32(lineID))
+func (crane *Crane) load(c *container.Container) error {
+	if crane.opts.Padding > 0 {
+		// Add Padding if needed.
+		paddingNeeded := int(crane.opts.Padding) -
+			((c.Length() + varint.EncodedSize(uint64(c.Length()))) % int(crane.opts.Padding))
+		// As the length changes slightly with the padding, we should avoid loading
+		// lengths around the varint size hops:
+		// - 128
+		// - 16384
+		// - 2097152
+		// - 268435456
+
+		// Pad to target load size at maximum.
+		maxPadding := crane.targetLoadSize - c.Length()
+		if paddingNeeded > maxPadding {
+			paddingNeeded = maxPadding
+		}
+
+		if paddingNeeded > 0 {
+			// Add padding indicator.
+			c.Append([]byte{0})
+			paddingNeeded -= 1
+
+			// Add needed padding data.
+			if paddingNeeded > 0 {
+				padding, err := rng.Bytes(paddingNeeded)
+				if err != nil {
+					log.Debugf("spn/docks: %s failed to get random padding data, using zeros instead", crane)
+					padding = make([]byte, paddingNeeded)
+				}
+				c.Append(padding)
+			}
+		}
+	}
+
+	// Encrypt shipment.
+	c, err := crane.encrypt(c)
+	if err != nil {
+		return fmt.Errorf("failed to encrypt: %w", err)
+	}
+
+	// Load onto ship.
 	c.PrependLength()
-	crane.toShip <- c
+	err = crane.ship.Load(c.CompileData())
+	if err != nil {
+		return fmt.Errorf("failed to load ship: %w", err)
+	}
+
+	return nil
 }
 
-func (crane *Crane) Stop() {
-	if crane.stopped.SetToIf(false, true) {
-		crane.linesLock.Lock()
-		for _, line := range crane.lines {
-			line.fromShip <- nil
+func (crane *Crane) Stop(err *terminal.Error) {
+	if !crane.stopped.SetToIf(false, true) {
+		return
+	}
+
+	// Log error message.
+	if err != nil {
+		if err.IsSpecial() {
+			log.Infof("spn/docks: %s is done", crane)
+		} else {
+			log.Warningf("spn/docks: %s is stopping: %s", crane, err)
 		}
-		crane.linesLock.Unlock()
-		close(crane.stop)
-		crane.status = CraneStatusStopped
-		crane.ship.Sink()
-		RetractCraneByID(crane.ID)
-		if hooksActive.IsSet() {
-			_ = discontinueConnectionHook(crane.Controller, crane.ConnectedHub, nil)
-		}
-		log.Warningf("crane %s: stopped, %s sunk.", crane.ID, crane.ship)
+	}
+
+	// Unregister crane.
+	RetractCraneByID(crane.ID)
+
+	// Stop controller.
+	if crane.Controller != nil {
+		crane.Controller.Abandon(err)
+	}
+
+	// Wait shortly in order for the controller end message to be sent.
+	time.Sleep(loadingMaxWaitDuration * 10)
+
+	// Close connection.
+	crane.ship.Sink()
+
+	// Stop all terminals.
+	for _, t := range crane.allTerms() {
+		t.Abandon(err)
+	}
+
+	// Cancel crane context.
+	crane.cancelCtx()
+
+	// Notify about change.
+	crane.NotifyUpdate()
+}
+
+func (crane *Crane) allTerms() []terminal.TerminalInterface {
+	crane.terminalsLock.Lock()
+	defer crane.terminalsLock.Unlock()
+
+	terms := make([]terminal.TerminalInterface, 0, len(crane.terminals))
+	for _, term := range crane.terminals {
+		terms = append(terms, term)
+	}
+
+	return terms
+}
+
+func (crane *Crane) String() string {
+	remoteAddr := crane.ship.RemoteAddr()
+	switch {
+	case remoteAddr == nil:
+		return fmt.Sprintf("crane %s", crane.ID)
+	case crane.ship.IsMine():
+		return fmt.Sprintf("crane %s to %s", crane.ID, crane.ship.MaskAddress(crane.ship.RemoteAddr()))
+	default:
+		return fmt.Sprintf("crane %s from %s", crane.ID, crane.ship.MaskAddress(crane.ship.RemoteAddr()))
 	}
 }

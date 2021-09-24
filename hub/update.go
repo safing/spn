@@ -3,8 +3,6 @@ package hub
 import (
 	"errors"
 	"fmt"
-	"net"
-	"sync"
 	"time"
 
 	"github.com/safing/portbase/log"
@@ -15,12 +13,9 @@ import (
 	"github.com/safing/portbase/container"
 	"github.com/safing/portbase/database"
 	"github.com/safing/portbase/formats/dsd"
-	"github.com/safing/spn/conf"
 )
 
 var (
-	updateLock sync.Mutex
-
 	// hubMsgRequirements defines which security attributes message need to have.
 	hubMsgRequirements = jess.NewRequirements().
 				Remove(jess.RecipientAuthentication). // Recipient don't need a private key.
@@ -28,17 +23,8 @@ var (
 				Remove(jess.Integrity)                // Only applies to decryption.
 	// SenderAuthentication provides pre-decryption integrity. That is all we need.
 
-	validateHubIP func(hub *Hub, ip net.IP) error
-
 	clockSkewTolerance = 1 * time.Hour
 )
-
-// SetHubIPValidationFn sets the function that is used to validate the IP of a Hub.
-func SetHubIPValidationFn(fn func(hub *Hub, ip net.IP) error) {
-	if validateHubIP == nil {
-		validateHubIP = fn
-	}
-}
 
 // SignHubMsg signs the given serialized hub msg with the given configuration.
 func SignHubMsg(msg []byte, env *jess.Envelope, enableTofu bool) ([]byte, error) {
@@ -84,8 +70,10 @@ func SignHubMsg(msg []byte, env *jess.Envelope, enableTofu bool) ([]byte, error)
 	return data, nil
 }
 
-// OpenHubMsg opens a signed hub msg and verifies the signature using the local database. If TOFU is enabled, the signature is always accepted, if valid.
-func OpenHubMsg(data []byte, scope Scope, tofu bool) (msg []byte, sendingHub *Hub, err error) {
+// OpenHubMsg opens a signed hub msg and verifies the signature using the
+// provided hub or the local database. If TOFU is enabled, the signature is
+// always accepted, if valid.
+func OpenHubMsg(hub *Hub, data []byte, mapName string, tofu bool) (msg []byte, sendingHub *Hub, err error) {
 	letter, err := jess.LetterFromDSD(data)
 	if err != nil {
 		return nil, nil, fmt.Errorf("malformed letter: %s", err)
@@ -108,26 +96,28 @@ func OpenHubMsg(data []byte, scope Scope, tofu bool) (msg []byte, sendingHub *Hu
 	}
 
 	// get hub for public key
-	hub, err := GetHub(scope, seal.ID)
-	if err != nil {
-		if err != database.ErrNotFound {
-			return nil, nil, fmt.Errorf("failed to get existing hub: %s", err)
+	if hub == nil {
+		hub, err = GetHub(mapName, seal.ID)
+		if err != nil {
+			if err != database.ErrNotFound {
+				return nil, nil, fmt.Errorf("failed to get existing hub %s: %s", seal.ID, err)
+			}
+			hub = nil
 		}
-		hub = nil
 	}
 
 	var truststore jess.TrustStore
 	if hub != nil && hub.PublicKey != nil { // bootstrap entries will not have a public key
 		// check ID integrity
 		if hub.ID != seal.ID {
-			return nil, nil, errors.New("ID mismatch")
+			return nil, nil, fmt.Errorf("ID mismatch with hub msg ID %s and hub ID %s", seal.ID, hub.ID)
 		}
 		if !verifyHubID(seal.ID, hub.PublicKey.Scheme, hub.PublicKey.Key) {
-			return nil, nil, errors.New("ID integrity violated with existing key")
+			return nil, nil, fmt.Errorf("ID integrity of %s violated with existing key", seal.ID)
 		}
 	} else {
 		if !tofu {
-			return nil, nil, errors.New("hub msg sender unknown")
+			return nil, nil, fmt.Errorf("hub msg ID %s unknown (missing announcement)", seal.ID)
 		}
 
 		// trust on first use, extract key from keys
@@ -137,21 +127,21 @@ func OpenHubMsg(data []byte, scope Scope, tofu bool) (msg []byte, sendingHub *Hu
 		var pubkey *jess.Seal
 		switch len(letter.Keys) {
 		case 0:
-			return nil, nil, errors.New("missing key for TOFU")
+			return nil, nil, fmt.Errorf("missing key for TOFU of %s", seal.ID)
 		case 1:
 			pubkey = letter.Keys[0]
 		default:
-			return nil, nil, fmt.Errorf("too many keys for TOFU (%d)", len(letter.Keys))
+			return nil, nil, fmt.Errorf("too many keys (%d) for TOFU of %s", len(letter.Keys), seal.ID)
 		}
 
 		// check ID integrity
 		if !verifyHubID(seal.ID, seal.Scheme, pubkey.Value) {
-			return nil, nil, errors.New("ID integrity violated with new key")
+			return nil, nil, fmt.Errorf("ID integrity of %s violated with new key", seal.ID)
 		}
 
 		hub = &Hub{
-			ID:    seal.ID,
-			Scope: scope,
+			ID:  seal.ID,
+			Map: mapName,
 			PublicKey: &jess.Signet{
 				ID:     seal.ID,
 				Scheme: seal.Scheme,
@@ -181,7 +171,7 @@ func OpenHubMsg(data []byte, scope Scope, tofu bool) (msg []byte, sendingHub *Hu
 }
 
 // Export exports the announcement with the given signature configuration.
-func (ha *HubAnnouncement) Export(env *jess.Envelope) ([]byte, error) {
+func (ha *Announcement) Export(env *jess.Envelope) ([]byte, error) {
 	// pack
 	msg, err := dsd.Dump(ha, dsd.JSON)
 	if err != nil {
@@ -191,22 +181,20 @@ func (ha *HubAnnouncement) Export(env *jess.Envelope) ([]byte, error) {
 	return SignHubMsg(msg, env, true)
 }
 
-// ImportAnnouncement imports an announcement if it passes all the checks.
-func ImportAnnouncement(data []byte, scope Scope) error {
-	updateLock.Lock()
-	defer updateLock.Unlock()
-
+// ApplyAnnouncement applies the announcement to the Hub if it passes all the
+// checks. If no Hub is provided, it is loaded from the database or created.
+func ApplyAnnouncement(hub *Hub, data []byte, mapName string, scope Scope, selfcheck bool) (_ *Hub, forward bool, err error) {
 	// open and verify
-	msg, hub, err := OpenHubMsg(data, scope, true)
+	msg, hub, err := OpenHubMsg(hub, data, mapName, true)
 	if err != nil {
-		return err
+		return nil, false, err
 	}
 
 	// parse
-	announcement := &HubAnnouncement{}
+	announcement := &Announcement{}
 	_, err = dsd.Load(msg, announcement)
 	if err != nil {
-		return err
+		return nil, false, err
 	}
 
 	// integrity check
@@ -216,65 +204,120 @@ func ImportAnnouncement(data []byte, scope Scope) error {
 	// a signed version of the ID to mitigate fake IDs.
 	// Fake IDs are possible because the hash algorithm of the ID is dynamic.
 	if hub.ID != announcement.ID {
-		return fmt.Errorf("announcement ID %q mismatches hub ID %q", announcement.ID, hub.ID)
-	}
-
-	// check timestamp
-	if announcement.Timestamp > time.Now().Add(clockSkewTolerance).Unix() {
-		return fmt.Errorf(
-			"announcement from %s is from the future: %s",
-			announcement.ID,
-			time.Unix(announcement.Timestamp, 0),
-		)
+		return nil, false, fmt.Errorf("announcement ID %q mismatches hub ID %q", announcement.ID, hub.ID)
 	}
 
 	// version check
 	if hub.Info != nil {
 		// check if we already have this version
 		switch {
-		case announcement.Timestamp == hub.Info.Timestamp:
+		case announcement.Timestamp == hub.Info.Timestamp && !selfcheck:
 			// The new copy is not saved, as we expect the versions to be identical.
 			// Also, the new version has not been validated at this point.
-			return nil
+			return hub, false, nil
 		case announcement.Timestamp < hub.Info.Timestamp:
 			// Received an old version, do not update.
-			return errors.New("newer announcement version present")
+			return hub, false, fmt.Errorf(
+				"announcement from %s @ %s is older than current status @ %s",
+				hub, time.Unix(announcement.Timestamp, 0), time.Unix(hub.Info.Timestamp, 0),
+			)
 		}
 	}
 
-	// validation
+	// Validate the announcement.
+	err = hub.validateAnnouncement(announcement, scope)
+	if err != nil {
+		if selfcheck || hub.FirstSeen.IsZero() {
+			return nil, false, fmt.Errorf("failed to validate announcement of %s: %w", hub, err)
+		}
 
-	// validate IP changes
+		log.Warningf("received an invalid announcement of %s: %s", hub, err)
+		// If a previously fully validated Hub publishes an update that breaks it, a
+		// soft-fail will accept the faulty changes, but mark is as invalid and
+		// forward it to neighbors. This way the invalid update is propagated through
+		// the network and all nodes will mark it as invalid an thus ingore the Hub
+		// until the issue is fixed.
+	}
+
+	// Apply the result to the Hub.
+	if !selfcheck {
+		hub.Lock()
+		defer hub.Unlock()
+	}
+
+	// Only save announcement if it is valid, else mark it as invalid.
+	if err == nil {
+		hub.Info = announcement
+		hub.InvalidInfo = false
+	} else {
+		hub.InvalidInfo = true
+	}
+	// Set FirstSeen timestamp when we see this Hub for the first time.
+	if hub.FirstSeen.IsZero() {
+		hub.FirstSeen = time.Now().UTC()
+	}
+
+	return hub, true, nil
+}
+
+func (hub *Hub) validateAnnouncement(announcement *Announcement, scope Scope) error {
+	// check timestamp
+	if announcement.Timestamp > time.Now().Add(clockSkewTolerance).Unix() {
+		return fmt.Errorf(
+			"announcement from %s @ %s is from the future",
+			announcement.ID,
+			time.Unix(announcement.Timestamp, 0),
+		)
+	}
+
+	// value formatting
+	if err := announcement.validateFormatting(); err != nil {
+		return err
+	}
+
+	// check for illegal IP address changes
 	if hub.Info != nil {
 		switch {
 		case hub.Info.IPv4 != nil && announcement.IPv4 == nil:
+			hub.VerifiedIPs = false
 			return errors.New("previously announced IPv4 address missing")
 		case hub.Info.IPv4 != nil && !announcement.IPv4.Equal(hub.Info.IPv4):
+			hub.VerifiedIPs = false
 			return errors.New("IPv4 address changed")
 		case hub.Info.IPv6 != nil && announcement.IPv6 == nil:
+			hub.VerifiedIPs = false
 			return errors.New("previously announced IPv6 address missing")
 		case hub.Info.IPv6 != nil && !announcement.IPv6.Equal(hub.Info.IPv6):
+			hub.VerifiedIPs = false
 			return errors.New("IPv6 address changed")
 		}
 	}
 
 	// validate IP scopes
 	if announcement.IPv4 != nil {
-		classification := netutils.ClassifyIP(announcement.IPv4)
+		ipScope := netutils.GetIPScope(announcement.IPv4)
 		switch {
-		case scope == ScopeLocal && classification != netutils.LinkLocal && classification != netutils.SiteLocal:
+		case scope == ScopeLocal && !ipScope.IsLAN():
 			return errors.New("IPv4 scope violation: outside of local scope")
-		case scope == ScopePublic && classification != netutils.Global:
+		case scope == ScopePublic && !ipScope.IsGlobal():
 			return errors.New("IPv4 scope violation: outside of global scope")
+		}
+		// Reset IP verification flag if IPv4 was added.
+		if hub.Info == nil || hub.Info.IPv4 == nil {
+			hub.VerifiedIPs = false
 		}
 	}
 	if announcement.IPv6 != nil {
-		classification := netutils.ClassifyIP(announcement.IPv6)
+		ipScope := netutils.GetIPScope(announcement.IPv6)
 		switch {
-		case scope == ScopeLocal && classification != netutils.LinkLocal && classification != netutils.SiteLocal:
+		case scope == ScopeLocal && !ipScope.IsLAN():
 			return errors.New("IPv6 scope violation: outside of local scope")
-		case scope == ScopePublic && classification != netutils.Global:
+		case scope == ScopePublic && !ipScope.IsGlobal():
 			return errors.New("IPv6 scope violation: outside of global scope")
+		}
+		// Reset IP verification flag if IPv6 was added.
+		if hub.Info == nil || hub.Info.IPv6 == nil {
+			hub.VerifiedIPs = false
 		}
 	}
 
@@ -291,45 +334,11 @@ func ImportAnnouncement(data []byte, scope Scope) error {
 		return errors.New("no valid transports present")
 	}
 
-	// validate IP ownership if public hub
-	if conf.PublicHub() {
-		if validateHubIP == nil {
-			return errors.New("IP address validation not configured")
-		}
-		if announcement.IPv4 != nil {
-			err := validateHubIP(hub, announcement.IPv4)
-			if err != nil {
-				return fmt.Errorf("%w: failed to validate IPv4 of %s: %s", ErrTemporaryValidationError, hub, err)
-			}
-		}
-		if announcement.IPv6 != nil {
-			err := validateHubIP(hub, announcement.IPv6)
-			if err != nil {
-				return fmt.Errorf("%w: failed to validate IPv6 of %s: %s", ErrTemporaryValidationError, hub, err)
-			}
-		}
-	}
-
-	// save to database
-
-	hub.Lock()
-	hub.Info = announcement
-
-	if hub.FirstSeen.IsZero() {
-		hub.FirstSeen = time.Now().UTC()
-	}
-	hub.Unlock()
-
-	err = hub.Save()
-	if err != nil {
-		return err
-	}
-
-	return SaveRawHubMsg(hub.ID, hub.Scope, "announcement", data)
+	return nil
 }
 
 // Export exports the status with the given signature configuration.
-func (hs *HubStatus) Export(env *jess.Envelope) ([]byte, error) {
+func (hs *Status) Export(env *jess.Envelope) ([]byte, error) {
 	// pack
 	msg, err := dsd.Dump(hs, dsd.JSON)
 	if err != nil {
@@ -339,65 +348,88 @@ func (hs *HubStatus) Export(env *jess.Envelope) ([]byte, error) {
 	return SignHubMsg(msg, env, false)
 }
 
-// ImportStatus imports a status update if it passes all the checks.
-func ImportStatus(data []byte, scope Scope) error {
-	updateLock.Lock()
-	defer updateLock.Unlock()
-
+// ApplyStatus applies a status update if it passes all the checks.
+func ApplyStatus(hub *Hub, data []byte, mapName string, scope Scope, selfcheck bool) (_ *Hub, forward bool, err error) {
 	// open and verify
-	msg, hub, err := OpenHubMsg(data, scope, false)
+	msg, hub, err := OpenHubMsg(hub, data, mapName, false)
 	if err != nil {
-		return err
+		return nil, false, err
 	}
 
 	// parse
-	status := &HubStatus{}
+	status := &Status{}
 	_, err = dsd.Load(msg, status)
 	if err != nil {
-		return err
-	}
-
-	// integrity check
-
-	// check timestamp
-	if status.Timestamp > time.Now().Add(clockSkewTolerance).Unix() {
-		return fmt.Errorf(
-			"status from %s is from the future: %s",
-			hub.ID,
-			time.Unix(status.Timestamp, 0),
-		)
+		return nil, false, err
 	}
 
 	// version check
 	if hub.Status != nil {
 		// check if we already have this version
 		switch {
-		case status.Timestamp == hub.Status.Timestamp:
+		case status.Timestamp == hub.Status.Timestamp && !selfcheck:
 			// The new copy is not saved, as we expect the versions to be identical.
 			// Also, the new version has not been validated at this point.
-			return nil
+			return hub, false, nil
 		case status.Timestamp < hub.Status.Timestamp:
 			// Received an old version, do not update.
-			return errors.New("newer status version present")
+			return hub, false, fmt.Errorf(
+				"status from %s @ %s is older than current status @ %s",
+				hub, time.Unix(status.Timestamp, 0), time.Unix(hub.Status.Timestamp, 0),
+			)
 		}
 	}
 
-	// validation
-
-	// TODO: validate keys
-
-	// save to database
-
-	hub.Lock()
-	hub.Status = status
-	hub.Unlock()
-
-	err = hub.Save()
+	// Validate the status.
+	err = hub.validateStatus(status)
 	if err != nil {
+		if selfcheck {
+			return nil, false, fmt.Errorf("failed to validate status of %s: %w", hub, err)
+		}
+
+		log.Warningf("spn/hub: received an invalid status of %s: %s", hub, err)
+		// If a previously fully validated Hub publishes an update that breaks it, a
+		// soft-fail will accept the faulty changes, but mark is as invalid and
+		// forward it to neighbors. This way the invalid update is propagated through
+		// the network and all nodes will mark it as invalid an thus ingore the Hub
+		// until the issue is fixed.
+	}
+
+	// Apply the result to the Hub.
+	if !selfcheck {
+		hub.Lock()
+		defer hub.Unlock()
+	}
+
+	// Only save status if it is valid, else mark it as invalid.
+	if err == nil {
+		hub.Status = status
+		hub.InvalidStatus = false
+	} else {
+		hub.InvalidStatus = true
+	}
+
+	return hub, true, nil
+}
+
+func (hub *Hub) validateStatus(status *Status) error {
+	// check timestamp
+	if status.Timestamp > time.Now().Add(clockSkewTolerance).Unix() {
+		return fmt.Errorf(
+			"status from %s @ %s is from the future",
+			hub.ID,
+			time.Unix(status.Timestamp, 0),
+		)
+	}
+
+	// value formatting
+	if err := status.validateFormatting(); err != nil {
 		return err
 	}
 
-	return SaveRawHubMsg(hub.ID, hub.Scope, "status", data)
+	// TODO: validate status.Keys
+
+	return nil
 }
 
 // CreateHubSignet creates a signet with the correct ID for usage as a Hub Identity.
@@ -434,12 +466,12 @@ func createHubID(scheme string, pubkey []byte) string {
 	c.AppendAsBlock([]byte(scheme))
 	c.AppendAsBlock(pubkey)
 
-	return lhash.Digest(lhash.BLAKE2b_256, c.CompileData()).String()
+	return lhash.Digest(lhash.BLAKE2b_256, c.CompileData()).Base58()
 }
 
 func verifyHubID(id string, scheme string, pubkey []byte) (ok bool) {
 	// load labeled hash from ID
-	labeledHash, err := lhash.LoadFromString(id)
+	labeledHash, err := lhash.FromBase58(id)
 	if err != nil {
 		return false
 	}
@@ -450,5 +482,5 @@ func verifyHubID(id string, scheme string, pubkey []byte) (ok bool) {
 	c.AppendAsBlock(pubkey)
 
 	// check if it matches
-	return labeledHash.Matches(c.CompileData())
+	return labeledHash.MatchesData(c.CompileData())
 }

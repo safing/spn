@@ -5,10 +5,10 @@ import (
 	"strings"
 )
 
-func printPortPath(path []*Port) string {
+func printPortPath(path []*Pin) string {
 	s := ""
 	for _, entry := range path {
-		s += fmt.Sprintf("%s-", entry.Name())
+		s += fmt.Sprintf("%s-", entry.Hub.Name())
 	}
 	return strings.Trim(s, "-")
 }

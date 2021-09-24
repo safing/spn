@@ -2,6 +2,7 @@ package access
 
 import (
 	"errors"
+	"fmt"
 	"sync"
 
 	"github.com/safing/jess/lhash"
@@ -22,7 +23,7 @@ type SaticCodeHandler struct {
 }
 
 func NewSaticCodeHandler(verificationHash string, scrambleAlg lhash.Algorithm) (*SaticCodeHandler, error) {
-	verifier, err := lhash.LoadFromString(verificationHash)
+	verifier, err := lhash.FromBase58(verificationHash)
 	if err != nil {
 		return nil, err
 	}
@@ -31,6 +32,49 @@ func NewSaticCodeHandler(verificationHash string, scrambleAlg lhash.Algorithm) (
 		verifier:    verifier,
 		scrambleAlg: scrambleAlg,
 	}, nil
+}
+
+func BootstrapStaticCodeHandler(zone string, scrambleAlg lhash.Algorithm) (
+	h *SaticCodeHandler,
+	accessCode *Code,
+	scrambledCode *Code,
+	verificationHash *lhash.LabeledHash,
+	err error,
+) {
+	h = &SaticCodeHandler{
+		scrambleAlg: scrambleAlg,
+	}
+
+	// Generate access code.
+	accessCode, err = h.Generate()
+	if err != nil {
+		return nil, nil, nil, nil, fmt.Errorf("failed to generate access code: %w", err)
+	}
+	accessCode.Zone = zone
+
+	// Scramble the access code manually as importing it requires a check with
+	// the yet non-existent verifier.
+	scrambledCode = &Code{
+		Zone: zone,
+		Data: lhash.Digest(h.scrambleAlg, accessCode.Data).Bytes(),
+	}
+
+	// Create verification hash.
+	verificationHash = lhash.Digest(h.scrambleAlg, scrambledCode.Data)
+	h.verifier = verificationHash
+
+	// Sanity check the bootstrapped handler.
+	// check if scrambled code is valid
+	err = h.Import(accessCode)
+	if err != nil {
+		return nil, nil, nil, nil, fmt.Errorf("failed to check access code: %w", err)
+	}
+	err = h.Check(scrambledCode)
+	if err != nil {
+		return nil, nil, nil, nil, fmt.Errorf("failed to check scrambled code: %w", err)
+	}
+
+	return
 }
 
 func (h *SaticCodeHandler) Generate() (*Code, error) {
@@ -44,7 +88,7 @@ func (h *SaticCodeHandler) Generate() (*Code, error) {
 }
 
 func (h *SaticCodeHandler) Check(code *Code) error {
-	if !h.verifier.Matches(code.Data) {
+	if !h.verifier.MatchesData(code.Data) {
 		return errors.New("code is invalid")
 	}
 
@@ -59,7 +103,7 @@ func (h *SaticCodeHandler) Import(code *Code) error {
 	scrambled := lhash.Digest(h.scrambleAlg, code.Data)
 
 	// check
-	if !h.verifier.Matches(scrambled.Bytes()) {
+	if !h.verifier.MatchesData(scrambled.Bytes()) {
 		return errors.New("code is invalid")
 	}
 

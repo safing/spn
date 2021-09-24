@@ -5,11 +5,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/safing/spn/hub"
+	"github.com/safing/spn/conf"
 )
 
 func TestKeyMaintenance(t *testing.T) {
-	id, err := CreateIdentity(context.Background(), hub.ScopePublic)
+	id, err := CreateIdentity(context.Background(), conf.MainMapName)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -19,7 +19,7 @@ func TestKeyMaintenance(t *testing.T) {
 
 	now := time.Now()
 	for i := 0; i < iterations; i++ {
-		changed, err := id.MaintainExchKeys(now)
+		changed, err := id.MaintainExchKeys(id.Hub.Status, now)
 		if err != nil {
 			t.Fatal(err)
 		}

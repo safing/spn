@@ -8,6 +8,10 @@ type SingleTrustStore struct {
 }
 
 // GetSignet implements the truststore interface.
-func (ts *SingleTrustStore) GetSignet(_ string, _ bool) (*jess.Signet, error) {
+func (ts *SingleTrustStore) GetSignet(id string, recipient bool) (*jess.Signet, error) {
+	if ts.Signet.ID != id || recipient != ts.Signet.Public {
+		return nil, jess.ErrSignetNotFound
+	}
+
 	return ts.Signet, nil
 }

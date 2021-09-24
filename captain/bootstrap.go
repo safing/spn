@@ -5,26 +5,27 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
-	"net"
 	"os"
 
-	"github.com/safing/jess/lhash"
-	"github.com/safing/portbase/database"
 	"github.com/safing/portbase/formats/dsd"
 	"github.com/safing/portbase/log"
-	"github.com/safing/portmaster/updates"
 	"github.com/safing/spn/conf"
-
 	"github.com/safing/spn/hub"
+	"github.com/safing/spn/navigator"
 )
 
 type BootstrapFile struct {
-	PublicHubs []string
+	Main BootstrapFileEntry
+}
+
+type BootstrapFileEntry struct {
+	Hubs []string
 }
 
 var (
-	bootstrapHubFlag  string
-	bootstrapFileFlag string
+	bootstrapHubFlag      string
+	bootstrapFileFlag     string
+	bootstrapResourcePath = "intel/spn/bootstrap.dsd"
 )
 
 func init() {
@@ -32,10 +33,11 @@ func init() {
 	flag.StringVar(&bootstrapFileFlag, "bootstrap-file", "", "bootstrap file containing bootstrap hubs - will be initialized if running a public hub and it doesn't exist")
 }
 
-// prepBootstrapHubFlag cehcks the bootstrap-hub argument if it is valid.
+// prepBootstrapHubFlag checks the bootstrap-hub argument if it is valid.
 func prepBootstrapHubFlag() error {
 	if bootstrapHubFlag != "" {
-		return processBootstrapHub(bootstrapHubFlag, false)
+		_, err := hub.ParseBootstrapHub(bootstrapHubFlag, conf.MainMapName)
+		return err
 	}
 	return nil
 }
@@ -43,72 +45,8 @@ func prepBootstrapHubFlag() error {
 // processBootstrapHubFlag processes the bootstrap-hub argument.
 func processBootstrapHubFlag() error {
 	if bootstrapHubFlag != "" {
-		return processBootstrapHub(bootstrapHubFlag, true)
+		return navigator.Main.AddBootstrapHubs([]string{bootstrapHubFlag})
 	}
-	return nil
-}
-
-// processBootstrapHub processes the bootstrap-hub argument.
-func processBootstrapHub(bootstrapTransport string, save bool) error {
-	// parse argument
-	t, err := hub.ParseTransport(bootstrapTransport)
-	if err != nil {
-		return fmt.Errorf("invalid bootstrap hub: %s", err)
-	}
-	if t.Option == "" {
-		return errors.New("missing hub ID in URL fragment")
-	}
-	if _, err := lhash.LoadFromString(t.Option); err != nil {
-		return fmt.Errorf("hub ID is invalid: %w", err)
-	}
-	ip := net.ParseIP(t.Domain)
-	if ip == nil {
-		return errors.New("invalid IP address (domains are not supported)")
-	}
-
-	// abort if we are not saving to database
-	if !save {
-		return nil
-	}
-
-	// check if hub already exists
-	_, err = hub.GetHub(hub.ScopePublic, t.Option)
-	if err == nil {
-		return nil
-	}
-	if err != database.ErrNotFound {
-		return err
-	}
-
-	// prepare transport
-	id := t.Option
-	t.Domain = ""
-	t.Option = ""
-
-	// bootstrap Hub
-	bootstrapHub := &hub.Hub{
-		ID:    id,
-		Scope: hub.ScopePublic,
-		Info: &hub.HubAnnouncement{
-			ID:         id,
-			Transports: []string{t.String()},
-		},
-		Status: &hub.HubStatus{},
-	}
-
-	// set IP address
-	if ip4 := ip.To4(); ip4 != nil {
-		bootstrapHub.Info.IPv4 = ip4
-	} else {
-		bootstrapHub.Info.IPv6 = ip
-	}
-
-	err = bootstrapHub.Save()
-	if err != nil {
-		return fmt.Errorf("failed to save bootstrap hub to db: %w", err)
-	}
-
-	log.Infof("spn/captain: added bootstrap %s", bootstrapHub)
 	return nil
 }
 
@@ -136,42 +74,31 @@ func bootstrapWithUpdates() error {
 		return errors.New("using the bootstrap-file argument disables bootstrapping via the update system")
 	}
 
-	file, err := updates.GetFile("spn/bootstrap.dsd")
-	if err != nil {
-		return fmt.Errorf("failed to get updates file: %w", err)
-	}
-
-	return loadBootstrapFile(file.Path())
+	return updateSPNIntel(module.Ctx, nil)
 }
 
 // loadBootstrapFile loads a file with bootstrap hub entries and imports them.
 func loadBootstrapFile(filename string) (err error) {
+	// Load bootstrap file from disk and parse it.
 	data, err := ioutil.ReadFile(filename)
 	if err != nil {
 		return fmt.Errorf("failed to load bootstrap file: %w", err)
 	}
-
-	bs := &BootstrapFile{}
-	_, err = dsd.Load(data, bs)
+	bootstrapFile := &BootstrapFile{}
+	_, err = dsd.Load(data, bootstrapFile)
 	if err != nil {
 		return fmt.Errorf("failed to parse bootstrap file: %w", err)
 	}
-
-	var firstErr error
-	for _, bsHub := range bs.PublicHubs {
-		err = processBootstrapHub(bsHub, true)
-		if err != nil {
-			if firstErr == nil {
-				firstErr = err
-			}
-			log.Warningf("spn/captain: failed to load bootstrap hub %q: %s", bsHub, err)
-		}
+	if len(bootstrapFile.Main.Hubs) == 0 {
+		return errors.New("bootstrap holds no hubs for main map")
 	}
 
-	if firstErr != nil {
+	// Add Hubs to map.
+	err = navigator.Main.AddBootstrapHubs(bootstrapFile.Main.Hubs)
+	if err == nil {
 		log.Infof("spn/captain: loaded bootstrap file %s", filename)
 	}
-	return firstErr
+	return err
 }
 
 // createBootstrapFile save a bootstrap hub file with an entry of the public identity.
@@ -182,27 +109,29 @@ func createBootstrapFile(filename string) error {
 	}
 
 	// create bootstrap hub
-	if len(publicIdentity.Hub().Info.Transports) == 0 {
+	if len(publicIdentity.Hub.Info.Transports) == 0 {
 		return errors.New("public identity has no transports available")
 	}
 	// parse first transport
-	t, err := hub.ParseTransport(publicIdentity.Hub().Info.Transports[0])
+	t, err := hub.ParseTransport(publicIdentity.Hub.Info.Transports[0])
 	if err != nil {
 		return fmt.Errorf("failed to parse transport of public identity: %w", err)
 	}
 	// add IP address
-	if publicIdentity.Hub().Info.IPv4 != nil {
-		t.Domain = publicIdentity.Hub().Info.IPv4.String()
-	} else if publicIdentity.Hub().Info.IPv6 != nil {
-		t.Domain = "[" + publicIdentity.Hub().Info.IPv6.String() + "]"
+	if publicIdentity.Hub.Info.IPv4 != nil {
+		t.Domain = publicIdentity.Hub.Info.IPv4.String()
+	} else if publicIdentity.Hub.Info.IPv6 != nil {
+		t.Domain = "[" + publicIdentity.Hub.Info.IPv6.String() + "]"
 	} else {
 		return errors.New("public identity has no IP address available")
 	}
 	// add Hub ID
-	t.Option = publicIdentity.Hub().ID
+	t.Option = publicIdentity.Hub.ID
 	// put together
 	bs := &BootstrapFile{
-		PublicHubs: []string{t.String()},
+		Main: BootstrapFileEntry{
+			Hubs: []string{t.String()},
+		},
 	}
 
 	// serialize

@@ -46,7 +46,7 @@ func managePiers(ctx context.Context, task *modules.Task) error {
 	}
 	pierMgmtCycleID = 1
 
-	for _, t := range publicIdentity.Hub().Info.Transports {
+	for _, t := range publicIdentity.Hub.Info.Transports {
 		transport, err := hub.ParseTransport(t)
 		if err != nil {
 			log.Warningf("spn/captain: cannot build pier for invalid transport %q: %s", t, err)
@@ -54,7 +54,7 @@ func managePiers(ctx context.Context, task *modules.Task) error {
 		}
 
 		// create listener
-		pier, err := ships.EstablishPier(module.Ctx, transport, dockingRequests)
+		pier, err := ships.EstablishPier(transport, dockingRequests)
 		if err != nil {
 			log.Warningf("spn/captin: failed to establish pier for transport %q: %s", t, err)
 			continue
@@ -92,14 +92,15 @@ func checkDockingPermission(ship ships.Ship) (ok bool) {
 func handleDockingRequest(ship ships.Ship) {
 	log.Infof("spn/captain: pemitting %s to dock", ship)
 
-	crane, err := docks.NewCrane(ship, publicIdentity, nil)
+	crane, err := docks.NewCrane(module.Ctx, ship, nil, publicIdentity)
 	if err != nil {
 		log.Warningf("spn/captain: failed to comission crane for %s: %s", ship, err)
 		return
 	}
 
-	err = crane.Start()
-	if err != nil {
-		log.Warningf("spn/captain: failed to start crane for %s: %s", ship, err)
-	}
+	module.StartWorker("start crane", func(_ context.Context) error {
+		_ = crane.Start()
+		// Crane handles errors internally.
+		return nil
+	})
 }

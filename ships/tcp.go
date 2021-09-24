@@ -34,12 +34,21 @@ func launchTCPShip(ctx context.Context, transport *hub.Transport, ip net.IP) (Sh
 		return nil, err
 	}
 
-	ship := &TCPShip{}
-	ship.initBase(ctx, transport, true, conn)
+	ship := &TCPShip{
+		ShipBase: ShipBase{
+			conn:      conn,
+			transport: transport,
+			mine:      true,
+			secure:    false,
+		},
+	}
+
+	ship.calculateLoadSize(ip, nil, TCPHeaderMTUSize)
+	ship.initBase()
 	return ship, nil
 }
 
-func establishTCPPier(ctx context.Context, transport *hub.Transport, dockingRequests chan *DockingRequest) (Pier, error) {
+func establishTCPPier(transport *hub.Transport, dockingRequests chan *DockingRequest) (Pier, error) {
 	listener, err := net.ListenTCP("tcp", &net.TCPAddr{
 		Port: int(transport.Port),
 	})
@@ -47,14 +56,15 @@ func establishTCPPier(ctx context.Context, transport *hub.Transport, dockingRequ
 		return nil, err
 	}
 
-	pier := &TCPPier{}
-	pier.initBase(
-		ctx,
-		transport,
-		listener,
-		pier.dockShip,
-		dockingRequests,
-	)
+	pier := &TCPPier{
+		PierBase: PierBase{
+			transport:       transport,
+			listener:        listener,
+			dockingRequests: dockingRequests,
+		},
+	}
+	pier.PierBase.dockShip = pier.dockShip
+	pier.initBase()
 	return pier, nil
 }
 
@@ -64,7 +74,16 @@ func (pier *TCPPier) dockShip() (Ship, error) {
 		return nil, err
 	}
 
-	ship := &TCPShip{}
-	ship.initBase(pier.ctx, pier.transport, false, conn)
+	ship := &TCPShip{
+		ShipBase: ShipBase{
+			transport: pier.transport,
+			conn:      conn,
+			mine:      false,
+			secure:    false,
+		},
+	}
+
+	ship.calculateLoadSize(nil, conn.RemoteAddr(), TCPHeaderMTUSize)
+	ship.initBase()
 	return ship, nil
 }
