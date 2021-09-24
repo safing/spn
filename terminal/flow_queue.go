@@ -12,7 +12,8 @@ import (
 )
 
 const (
-	DefaultQueueSize    = 100
+	DefaultQueueSize    = 1000
+	MaxQueueSize        = 1000
 	forceReportFraction = 4
 )
 
@@ -42,6 +43,10 @@ type DuplexFlowQueue struct {
 	spaceReportLock sync.Mutex
 	// forceSpaceReport forces the sender to send a space report.
 	forceSpaceReport chan struct{}
+
+	// flush is used to send a finish function to the handler, which will write
+	// all pending messages and then call the received function.
+	flush chan func()
 }
 
 func NewDuplexFlowQueue(
@@ -58,7 +63,7 @@ func NewDuplexFlowQueue(
 		wakeSender:       make(chan struct{}, 1),
 		recvQueue:        make(chan *container.Container, queueSize),
 		reportedSpace:    new(int32),
-		forceSpaceReport: make(chan struct{}),
+		forceSpaceReport: make(chan struct{}, 1),
 	}
 	atomic.StoreInt32(dfq.sendSpace, int32(queueSize))
 	atomic.StoreInt32(dfq.reportedSpace, int32(queueSize))
@@ -66,10 +71,20 @@ func NewDuplexFlowQueue(
 	return dfq
 }
 
+// shouldReportRecvSpace returns whether the receive space should be reported.
+func (dfq *DuplexFlowQueue) shouldReportRecvSpace() bool {
+	return atomic.LoadInt32(dfq.reportedSpace) < int32(cap(dfq.recvQueue)/forceReportFraction)
+}
+
 // decrementReportedRecvSpace decreases the reported recv space by 1 and
 // returns if the receive space should be reported.
 func (dfq *DuplexFlowQueue) decrementReportedRecvSpace() (shouldReportRecvSpace bool) {
 	return atomic.AddInt32(dfq.reportedSpace, -1) < int32(cap(dfq.recvQueue)/forceReportFraction)
+}
+
+// getSendSpace returns the current send space.
+func (dfq *DuplexFlowQueue) getSendSpace() int32 {
+	return atomic.LoadInt32(dfq.sendSpace)
 }
 
 // decrementSendSpace decreases the send space by 1 and returns it.
@@ -79,12 +94,11 @@ func (dfq *DuplexFlowQueue) decrementSendSpace() int32 {
 
 func (dfq *DuplexFlowQueue) addToSendSpace(n int32) {
 	// Add new space to send space and check if it was zero.
-	if atomic.AddInt32(dfq.sendSpace, n) == n {
-		// Wake the sender if the send space was zero.
-		select {
-		case dfq.wakeSender <- struct{}{}:
-		default:
-		}
+	atomic.AddInt32(dfq.sendSpace, n)
+	// Wake the sender in case it is waiting.
+	select {
+	case dfq.wakeSender <- struct{}{}:
+	default:
 	}
 }
 
@@ -106,7 +120,9 @@ func (dfq *DuplexFlowQueue) reportableRecvSpace() int32 {
 	// submitted to dfq.recvQueue by dfq.Deliver(). This race condition can only
 	// lower the space to report, not increase it. A simple check here solved
 	// this problem and keeps performance high.
-	if toReport <= 0 {
+	// Also, don't report values of 1, as the benefit is minimal and this might
+	// be commonly triggered due to the buffer of the force report channel.
+	if toReport <= 1 {
 		return 0
 	}
 
@@ -123,6 +139,7 @@ func (dfq *DuplexFlowQueue) FlowHandler(_ context.Context) error {
 	// terminal module so that it is shut down earlier.
 
 	var sendSpaceDepleted bool
+	var flushFinished func()
 
 sending:
 	for {
@@ -130,21 +147,22 @@ sending:
 		if sendSpaceDepleted {
 			select {
 			case <-dfq.wakeSender:
-				sendSpaceDepleted = false
+				if dfq.getSendSpace() > 0 {
+					sendSpaceDepleted = false
+				} else {
+					continue sending
+				}
 
 			case <-dfq.forceSpaceReport:
 				// Forced reporting of space.
 				// We do not need to check if there is enough sending space, as there is
 				// no data included.
-				dfq.submitUpstream(container.New(
-					varint.Pack64(uint64(dfq.reportableRecvSpace())),
-				))
-
-				// Decrease the send space and set flag if depleted.
-				if dfq.decrementSendSpace() <= 0 {
-					sendSpaceDepleted = true
+				spaceToReport := dfq.reportableRecvSpace()
+				if spaceToReport > 0 {
+					dfq.submitUpstream(container.New(
+						varint.Pack64(uint64(spaceToReport)),
+					))
 				}
-
 				continue sending
 
 			case <-dfq.ti.Ctx().Done():
@@ -177,23 +195,56 @@ sending:
 				sendSpaceDepleted = true
 			}
 
+			// Check if the send queue is empty now and signal flushers.
+			if flushFinished != nil && len(dfq.sendQueue) == 0 {
+				flushFinished()
+				flushFinished = nil
+			}
+
 		case <-dfq.forceSpaceReport:
 			// Forced reporting of space.
 			// We do not need to check if there is enough sending space, as there is
 			// no data included.
-			dfq.submitUpstream(container.New(
-				varint.Pack64(uint64(dfq.reportableRecvSpace())),
-			))
+			spaceToReport := dfq.reportableRecvSpace()
+			if spaceToReport > 0 {
+				dfq.submitUpstream(container.New(
+					varint.Pack64(uint64(spaceToReport)),
+				))
+			}
 
-			// Decrease the send space and set flag if depleted.
-			if dfq.decrementSendSpace() <= 0 {
-				sendSpaceDepleted = true
+		case newFlushFinishedFn := <-dfq.flush:
+			// Signal immediately if send queue is empty.
+			if len(dfq.sendQueue) == 0 {
+				newFlushFinishedFn()
+			} else {
+				// If there already is a flush finished function, stack them.
+				if flushFinished != nil {
+					stackedFlushFinishFn := flushFinished
+					flushFinished = func() {
+						stackedFlushFinishFn()
+						newFlushFinishedFn()
+					}
+				} else {
+					flushFinished = newFlushFinishedFn
+				}
 			}
 
 		case <-dfq.ti.Ctx().Done():
 			return nil
 		}
 	}
+}
+
+// Flush waits for all waiting data to be sent.
+func (dfq *DuplexFlowQueue) Flush() <-chan struct{} {
+	// Create channel for notifying.
+	wait := make(chan struct{})
+	// Request flush and send close function.
+	dfq.flush <- func() {
+		close(wait)
+	}
+	// Wait for handler to finish flushing.
+	return wait
 }
 
 var ready = make(chan struct{})
@@ -228,6 +279,14 @@ func (dfq *DuplexFlowQueue) SendRaw(c *container.Container) *Error {
 
 // Receive receives a container from the recv queue.
 func (dfq *DuplexFlowQueue) Receive() <-chan *container.Container {
+	// If the reported recv space is nearing its end, force a report.
+	if dfq.shouldReportRecvSpace() {
+		select {
+		case dfq.forceSpaceReport <- struct{}{}:
+		default:
+		}
+	}
+
 	return dfq.recvQueue
 }
 
@@ -245,6 +304,10 @@ func (dfq *DuplexFlowQueue) Deliver(c *container.Container) *Error {
 	}
 	if addSpace > 0 {
 		dfq.addToSendSpace(int32(addSpace))
+	}
+	// Abort processing if the container only contained a space update.
+	if !c.HoldsData() {
+		return nil
 	}
 
 	select {
