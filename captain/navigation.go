@@ -71,8 +71,8 @@ managing:
 			home, homeTerminal := navigator.Main.GetHome()
 			notifications.NotifyInfo(
 				"spn:connected-to-home-hub",
-				"Connected to SPN Alpha Two",
-				fmt.Sprintf("You are connected to the SPN network with the Hub at %s. This notification is for awareness that you are connected to the SPN test network.", homeTerminal.RemoteAddr()),
+				"Connected to SPN Test Network",
+				fmt.Sprintf("You are connected to the SPN test network at %s. This notification is persistent for awareness.", homeTerminal.RemoteAddr()),
 				notifications.Action{
 					Text:    "Test Phase Info",
 					Type:    notifications.ActionTypeOpenURL,
@@ -202,7 +202,7 @@ func connectToHomeHub(ctx context.Context, dst *hub.Hub) error {
 			return tErr.Wrap("failed to authenticate to")
 		}
 	case <-time.After(3 * time.Second):
-		return terminal.ErrTimeout.With("timed out waiting for auth to")
+		return terminal.ErrTimeout.With("timed out waiting for auth to complete")
 	case <-ctx.Done():
 		return terminal.ErrStopping
 	}
