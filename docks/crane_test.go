@@ -46,7 +46,7 @@ func testCraneWithCounter(t *testing.T, testID string, encrypting bool, loadSize
 
 	go func() {
 		var err error
-		crane1, err = NewCrane(ship, connectedHub, nil)
+		crane1, err = NewCrane(context.TODO(), ship, connectedHub, nil)
 		if err != nil {
 			panic(fmt.Sprintf("crane test %s could not create crane1: %s", testID, err))
 			return
@@ -60,7 +60,7 @@ func testCraneWithCounter(t *testing.T, testID string, encrypting bool, loadSize
 	}()
 	go func() {
 		var err error
-		crane2, err = NewCrane(ship.Reverse(), nil, identity)
+		crane2, err = NewCrane(context.TODO(), ship.Reverse(), nil, identity)
 		if err != nil {
 			panic(fmt.Sprintf("crane test %s could not create crane2: %s", testID, err))
 			return
@@ -166,7 +166,7 @@ func testCraneWithStreaming(t *testing.T, testID string, encrypting bool, loadSi
 
 	go func() {
 		var err error
-		crane1, err = NewCrane(ship, connectedHub, nil)
+		crane1, err = NewCrane(context.TODO(), ship, connectedHub, nil)
 		if err != nil {
 			panic(fmt.Sprintf("crane test %s could not create crane1: %s", testID, err))
 			return
@@ -180,7 +180,7 @@ func testCraneWithStreaming(t *testing.T, testID string, encrypting bool, loadSi
 	}()
 	go func() {
 		var err error
-		crane2, err = NewCrane(ship.Reverse(), nil, identity)
+		crane2, err = NewCrane(context.TODO(), ship.Reverse(), nil, identity)
 		if err != nil {
 			panic(fmt.Sprintf("crane test %s could not create crane2: %s", testID, err))
 			return
@@ -257,15 +257,11 @@ var (
 func getTestIdentity(t *testing.T) (*cabin.Identity, *hub.Hub) {
 	if testIdentity == nil {
 		var err error
-		testIdentity, err = cabin.CreateIdentity(module.Ctx, hub.ScopeTest)
+		testIdentity, err = cabin.CreateIdentity(module.Ctx, "test")
 		if err != nil {
 			t.Fatalf("failed to create identity: %s", err)
 		}
-		_, err = testIdentity.MaintainExchKeys(time.Now())
-		if err != nil {
-			t.Fatalf("failed to maintain exchange keys: %s", err)
-		}
 	}
 
-	return testIdentity, testIdentity.Hub()
+	return testIdentity, testIdentity.Hub
 }

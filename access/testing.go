@@ -14,6 +14,7 @@ var (
 
 func EnableTestMode() {
 	initTestCode.Do(registerTestCode)
+	MainZone = "test"
 }
 
 func registerTestCode() {

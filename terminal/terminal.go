@@ -352,7 +352,7 @@ func (t *TerminalBase) WaitForFlush() {
 }
 
 // Flush sends all data waiting to be sent.
-func (t *TerminalBase) Flush() {
+func (t *TerminalBase) Flush() <-chan struct{} {
 	// Create channel for notifying.
 	wait := make(chan struct{})
 	// Request flush and send close function.
@@ -360,7 +360,7 @@ func (t *TerminalBase) Flush() {
 		close(wait)
 	}
 	// Wait for handler to finish flushing.
-	<-wait
+	return wait
 }
 
 func (t *TerminalBase) encrypt(c *container.Container) (*container.Container, *Error) {

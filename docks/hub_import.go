@@ -85,13 +85,13 @@ func ImportAndVerifyHubInfo(ctx context.Context, hubID string, announcementData,
 	if announcementData != nil {
 		err = hub.SaveHubMsg(h.ID, h.Map, hub.MsgTypeAnnouncement, announcementData)
 		if err != nil {
-			log.Warningf("spn/docks: failed to save raw announcement msg of %s: %w", h, err)
+			log.Warningf("spn/docks: failed to save raw announcement msg of %s: %s", h, err)
 		}
 	}
 	if statusData != nil {
 		err = hub.SaveHubMsg(h.ID, h.Map, hub.MsgTypeStatus, statusData)
 		if err != nil {
-			log.Warningf("spn/docks: failed to save raw status msg of %s: %w", h, err)
+			log.Warningf("spn/docks: failed to save raw status msg of %s: %s", h, err)
 		}
 	}
 

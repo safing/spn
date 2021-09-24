@@ -1,6 +1,7 @@
 package docks
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"runtime/pprof"
@@ -19,13 +20,17 @@ import (
 func TestExpansion(t *testing.T) {
 	access.EnableTestMode()
 
-	testExpansion(t, "plain-expansion", false, 200, false)
-	testExpansion(t, "encrypted-expansion", true, 200, false)
-	testExpansion(t, "parallel-plain-expansion", false, 200, true)
-	testExpansion(t, "parallel-encrypted-expansion", true, 200, true)
+	testExpansion(t, "plain-expansion", false, 200, 200, false)
+	testExpansion(t, "encrypted-expansion", true, 200, 200, false)
+	testExpansion(t, "parallel-plain-expansion", false, 200, 200, true)
+	testExpansion(t, "parallel-encrypted-expansion", true, 200, 200, true)
+
+	testExpansion(t, "expansion-stress-test-down", true, terminal.DefaultQueueSize*100, 0, false)
+	testExpansion(t, "expansion-stress-test-up", true, 0, terminal.DefaultQueueSize*100, false)
+	testExpansion(t, "expansion-stress-test-duplex", true, terminal.DefaultQueueSize*100, terminal.DefaultQueueSize*100, false)
 }
 
-func testExpansion(t *testing.T, testID string, encrypting bool, countTo uint64, inParallel bool) {
+func testExpansion(t *testing.T, testID string, encrypting bool, clientCountTo, serverCountTo uint64, inParallel bool) {
 	var identity2, identity3, identity4 *cabin.Identity
 	var connectedHub2, connectedHub3, connectedHub4 *hub.Hub
 	if encrypting {
@@ -46,7 +51,7 @@ func testExpansion(t *testing.T, testID string, encrypting bool, countTo uint64,
 
 	go func() {
 		var err error
-		crane1, err = NewCrane(ship1to2, connectedHub2, nil)
+		crane1, err = NewCrane(context.TODO(), ship1to2, connectedHub2, nil)
 		if err != nil {
 			panic(fmt.Sprintf("expansion test %s could not create crane1: %s", testID, err))
 			return
@@ -57,11 +62,12 @@ func testExpansion(t *testing.T, testID string, encrypting bool, countTo uint64,
 			panic(fmt.Sprintf("expansion test %s could not start crane1: %s", testID, err))
 			return
 		}
+		crane1.ship.MarkPublic()
 		craneWg.Done()
 	}()
 	go func() {
 		var err error
-		crane2to1, err = NewCrane(ship1to2.Reverse(), nil, identity2)
+		crane2to1, err = NewCrane(context.TODO(), ship1to2.Reverse(), nil, identity2)
 		if err != nil {
 			panic(fmt.Sprintf("expansion test %s could not create crane2to1: %s", testID, err))
 			return
@@ -72,11 +78,12 @@ func testExpansion(t *testing.T, testID string, encrypting bool, countTo uint64,
 			panic(fmt.Sprintf("expansion test %s could not start crane2to1: %s", testID, err))
 			return
 		}
+		crane2to1.ship.MarkPublic()
 		craneWg.Done()
 	}()
 	go func() {
 		var err error
-		crane2to3, err = NewCrane(ship2to3, connectedHub3, nil)
+		crane2to3, err = NewCrane(context.TODO(), ship2to3, connectedHub3, nil)
 		if err != nil {
 			panic(fmt.Sprintf("expansion test %s could not create crane2to3: %s", testID, err))
 			return
@@ -87,11 +94,12 @@ func testExpansion(t *testing.T, testID string, encrypting bool, countTo uint64,
 			panic(fmt.Sprintf("expansion test %s could not start crane2to3: %s", testID, err))
 			return
 		}
+		crane2to3.ship.MarkPublic()
 		craneWg.Done()
 	}()
 	go func() {
 		var err error
-		crane3to2, err = NewCrane(ship2to3.Reverse(), nil, identity3)
+		crane3to2, err = NewCrane(context.TODO(), ship2to3.Reverse(), nil, identity3)
 		if err != nil {
 			panic(fmt.Sprintf("expansion test %s could not create crane3to2: %s", testID, err))
 			return
@@ -102,11 +110,12 @@ func testExpansion(t *testing.T, testID string, encrypting bool, countTo uint64,
 			panic(fmt.Sprintf("expansion test %s could not start crane3to2: %s", testID, err))
 			return
 		}
+		crane3to2.ship.MarkPublic()
 		craneWg.Done()
 	}()
 	go func() {
 		var err error
-		crane3to4, err = NewCrane(ship3to4, connectedHub4, nil)
+		crane3to4, err = NewCrane(context.TODO(), ship3to4, connectedHub4, nil)
 		if err != nil {
 			panic(fmt.Sprintf("expansion test %s could not create crane3to4: %s", testID, err))
 			return
@@ -117,11 +126,12 @@ func testExpansion(t *testing.T, testID string, encrypting bool, countTo uint64,
 			panic(fmt.Sprintf("expansion test %s could not start crane3to4: %s", testID, err))
 			return
 		}
+		crane3to4.ship.MarkPublic()
 		craneWg.Done()
 	}()
 	go func() {
 		var err error
-		crane4, err = NewCrane(ship3to4.Reverse(), nil, identity4)
+		crane4, err = NewCrane(context.TODO(), ship3to4.Reverse(), nil, identity4)
 		if err != nil {
 			panic(fmt.Sprintf("expansion test %s could not create crane4: %s", testID, err))
 			return
@@ -132,6 +142,7 @@ func testExpansion(t *testing.T, testID string, encrypting bool, countTo uint64,
 			panic(fmt.Sprintf("expansion test %s could not start crane4: %s", testID, err))
 			return
 		}
+		crane4.ship.MarkPublic()
 		craneWg.Done()
 	}()
 	craneWg.Wait()
@@ -169,6 +180,19 @@ func testExpansion(t *testing.T, testID string, encrypting bool, countTo uint64,
 	t.Logf("expansion test %s: home terminal setup complete", testID)
 	time.Sleep(1 * time.Second)
 
+	// Start counters for testing.
+	op0, tErr := terminal.NewCounterOp(homeTerminal, terminal.CounterOpts{
+		ClientCountTo: clientCountTo,
+		ServerCountTo: serverCountTo,
+	})
+	if tErr != nil {
+		t.Fatalf("expansion test %s failed to run counter op: %s", testID, tErr)
+	}
+	t.Logf("expansion test %s: home terminal counter setup complete", testID)
+	if !inParallel {
+		op0.Wait()
+	}
+
 	// Start expansion to crane 3.
 	opAuthTo2, tErr := access.AuthorizeToTerminal(homeTerminal)
 	if tErr != nil {
@@ -185,8 +209,8 @@ func testExpansion(t *testing.T, testID string, encrypting bool, countTo uint64,
 
 	// Start counters for testing.
 	op1, tErr := terminal.NewCounterOp(expansionTerminalTo3, terminal.CounterOpts{
-		ClientCountTo: countTo,
-		ServerCountTo: countTo,
+		ClientCountTo: clientCountTo,
+		ServerCountTo: serverCountTo,
 	})
 	if tErr != nil {
 		t.Fatalf("expansion test %s failed to run counter op: %s", testID, tErr)
@@ -214,8 +238,8 @@ func testExpansion(t *testing.T, testID string, encrypting bool, countTo uint64,
 
 	// Start counters for testing.
 	op2, tErr := terminal.NewCounterOp(expansionTerminalTo4, terminal.CounterOpts{
-		ClientCountTo: countTo,
-		ServerCountTo: countTo,
+		ClientCountTo: clientCountTo,
+		ServerCountTo: serverCountTo,
 	})
 	if tErr != nil {
 		t.Fatalf("expansion test %s failed to run counter op: %s", testID, tErr)
@@ -226,6 +250,7 @@ func testExpansion(t *testing.T, testID string, encrypting bool, countTo uint64,
 
 	// Wait for op1 if not already.
 	if inParallel {
+		op0.Wait()
 		op1.Wait()
 	}
 

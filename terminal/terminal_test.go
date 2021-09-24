@@ -84,6 +84,10 @@ func initTestTerminal(
 	return ct
 }
 
+func (t *TestTerminal) Flush() <-chan struct{} {
+	return t.TerminalBase.Flush()
+}
+
 func (t *TestTerminal) Abandon(err *Error) {
 	if t.Abandoned.SetToIf(false, true) {
 		switch err {
@@ -96,12 +100,12 @@ func (t *TestTerminal) Abandon(err *Error) {
 		}
 
 		// End all operations and stop all connected workers.
-		t.StopAll(nil)
+		t.Shutdown(nil, true)
 	}
 }
 
 func TestTerminals(t *testing.T) {
-	var testQueueSize uint16 = DefaultQueueSize
+	var testQueueSize uint16 = 10
 	countToQueueSize := uint64(testQueueSize)
 
 	initMsg := &TerminalOpts{
@@ -220,10 +224,19 @@ func TestTerminals(t *testing.T) {
 	})
 
 	testTerminalWithCounters(t, term1, term2, &testWithCounterOpts{
-		testName:        "stresstest",
-		clientCountTo:   1000000,
-		serverCountTo:   1000000,
-		waitBetweenMsgs: time.Microsecond,
+		testName:      "stresstest-down",
+		clientCountTo: countToQueueSize * 1000,
+	})
+
+	testTerminalWithCounters(t, term1, term2, &testWithCounterOpts{
+		testName:      "stresstest-up",
+		serverCountTo: countToQueueSize * 1000,
+	})
+
+	testTerminalWithCounters(t, term1, term2, &testWithCounterOpts{
+		testName:      "stresstest-duplex",
+		clientCountTo: countToQueueSize * 1000,
+		serverCountTo: countToQueueSize * 1000,
 	})
 }
 
@@ -236,13 +249,9 @@ func TestTerminalsWithEncryption(t *testing.T) {
 		Padding:   8,
 	}
 
-	identity, erro := cabin.CreateIdentity(module.Ctx, hub.ScopeTest)
+	identity, erro := cabin.CreateIdentity(module.Ctx, "test")
 	if erro != nil {
 		t.Fatalf("failed to create identity: %s", erro)
-	}
-	_, erro = identity.MaintainExchKeys(time.Now())
-	if erro != nil {
-		t.Fatalf("failed to maintain exchange keys: %s", erro)
 	}
 
 	var term1 *TestTerminal
@@ -250,7 +259,7 @@ func TestTerminalsWithEncryption(t *testing.T) {
 	var initData *container.Container
 	var err *Error
 	term1, initData, err = NewLocalTestTerminal(
-		module.Ctx, 127, "c1", identity.Hub(), initMsg, createTestForwardingFunc(
+		module.Ctx, 127, "c1", identity.Hub, initMsg, createTestForwardingFunc(
 			t, "c1", "c2", func(c *container.Container) *Error {
 				return term2.DuplexFlowQueue.Deliver(c)
 			},
@@ -349,6 +358,12 @@ func testTerminalWithCounters(t *testing.T, term1, term2 *TestTerminal, opts *te
 	// Log stats.
 	printCTStats(t, opts.testName, "term1", term1)
 	printCTStats(t, opts.testName, "term2", term2)
+
+	// Check if stats match.
+	if atomic.LoadInt32(term1.DuplexFlowQueue.sendSpace) != atomic.LoadInt32(term2.DuplexFlowQueue.reportedSpace) ||
+		atomic.LoadInt32(term2.DuplexFlowQueue.sendSpace) != atomic.LoadInt32(term1.DuplexFlowQueue.reportedSpace) {
+		t.Fatalf("terminal test %s has non-matching space counters", opts.testName)
+	}
 }
 
 func printCTStats(t *testing.T, testName, name string, term *TestTerminal) {

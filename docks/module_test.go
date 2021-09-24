@@ -8,6 +8,6 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	conf.EnablePublicHub(false)
+	conf.EnablePublicHub(true)
 	pmtesting.TestMain(m, module)
 }

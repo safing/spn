@@ -9,9 +9,9 @@ import (
 	"github.com/safing/spn/terminal"
 )
 
-const MainZone = "alpha2"
-
 var (
+	MainZone = "alpha2"
+
 	module         *modules.Module
 	accessCodeFlag string
 )
