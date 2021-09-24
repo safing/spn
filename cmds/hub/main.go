@@ -13,6 +13,7 @@ import (
 	// include packages here
 	_ "github.com/safing/portmaster/core/base"
 	"github.com/safing/portmaster/updates"
+	"github.com/safing/portmaster/updates/helper"
 )
 
 func main() {
@@ -28,6 +29,7 @@ func main() {
 
 	// adapt portmaster updates module
 	updates.UserAgent = "Hub"
+	helper.IntelOnly()
 
 	// start
 	os.Exit(run.Run())
