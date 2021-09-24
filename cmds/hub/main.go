@@ -17,7 +17,7 @@ import (
 )
 
 func main() {
-	info.Set("SPN Hub", "0.2.5", "AGPLv3", true)
+	info.Set("SPN Hub", "0.3.0", "AGPLv3", true)
 
 	// Configure metrics.
 	metrics.SetNamespace("hub")
