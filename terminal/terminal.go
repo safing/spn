@@ -597,7 +597,7 @@ func (t *TerminalBase) addToOpMsgSendBuffer(
 func (t *TerminalBase) Shutdown(err *Error, sendError bool) {
 	// End all operations.
 	for _, op := range t.allOps() {
-		op.End(nil)
+		t.OpEnd(op, nil)
 	}
 
 	if sendError {
