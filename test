@@ -158,7 +158,7 @@ fi
 # target selection
 if [[ "$1" == "" ]]; then
   # get all packages
-  packages=$(go list ./...)
+  packages=$(go list -e ./...)
 else
   # single package testing
   packages=$(go list -e)/$1
