@@ -365,7 +365,7 @@ func (crane *Crane) unloadUntilFull(buf []byte) error {
 			return err
 		}
 		if n == 0 {
-			log.Tracef("spn/docks: %s unloaded 0 bytes")
+			log.Tracef("spn/docks: %s unloaded 0 bytes", crane)
 		}
 		bytesRead += n
 
@@ -702,8 +702,13 @@ func (crane *Crane) allTerms() []terminal.TerminalInterface {
 }
 
 func (crane *Crane) String() string {
-	if crane.ship.IsMine() {
+	remoteAddr := crane.ship.RemoteAddr()
+	switch {
+	case remoteAddr == nil:
+		return fmt.Sprintf("crane %s", crane.ID)
+	case crane.ship.IsMine():
 		return fmt.Sprintf("crane %s to %s", crane.ID, crane.ship.MaskAddress(crane.ship.RemoteAddr()))
+	default:
+		return fmt.Sprintf("crane %s from %s", crane.ID, crane.ship.MaskAddress(crane.ship.RemoteAddr()))
 	}
-	return fmt.Sprintf("crane %s from %s", crane.ID, crane.ship.MaskAddress(crane.ship.RemoteAddr()))
 }
