@@ -23,9 +23,11 @@ var connectLock sync.Mutex
 
 func HandleSluiceRequest(connInfo *network.Connection, conn net.Conn) {
 	if conn == nil {
-		log.Warningf("spn/crew: tunnel for %s closed before starting", connInfo)
+		log.Debugf("spn/crew: closing tunnel for %s before starting because of shutdown", connInfo)
+
+		// This is called within the connInfo lock.
 		connInfo.Failed("tunnel entry closed", "")
-		// FIXME: save connInfo!
+		connInfo.SaveWhenFinished()
 		return
 	}
 
@@ -46,8 +48,13 @@ func (t *Tunnel) handle(ctx context.Context) (err error) {
 	routes, err := navigator.Main.FindRoutes(t.connInfo.Entity.IP, nil, 10)
 	if err != nil {
 		log.Warningf("spn/crew: failed to find route for %s: %s", t.connInfo, err)
+
+		// TODO: Clean this up.
+		t.connInfo.Lock()
+		defer t.connInfo.Unlock()
 		t.connInfo.Failed(fmt.Sprintf("failed to find route: %s", err), "")
-		// FIXME: save connInfo!
+		t.connInfo.Save()
+
 		return nil
 	}
 
@@ -62,9 +69,14 @@ func (t *Tunnel) handle(ctx context.Context) (err error) {
 		}
 	}
 	if err != nil {
-		t.connInfo.Failed(fmt.Sprintf("failed to establish route - tried %d routes: %s", tries+1, err), "")
 		log.Warningf("spn/crew: failed to establish route for %s - tried %d routes: %s", t.connInfo, tries+1, err)
-		// FIXME: save connInfo!
+
+		// TODO: Clean this up.
+		t.connInfo.Lock()
+		defer t.connInfo.Unlock()
+		t.connInfo.Failed(fmt.Sprintf("failed to establish route - tried %d routes: %s", tries+1, err), "")
+		t.connInfo.Save()
+
 		return nil
 	}
 	log.Infof("spn/crew: established route to %s with %d failed tries", dstPin.Hub, tries)
@@ -78,8 +90,16 @@ func (t *Tunnel) handle(ctx context.Context) (err error) {
 	}
 	_, tErr := NewConnectOp(dstPin.Connection.Terminal, request, t.conn)
 	if tErr != nil {
+		tErr = tErr.Wrap("failed to initialize tunnel")
+
+		// TODO: Clean this up.
+		t.connInfo.Lock()
+		defer t.connInfo.Unlock()
+		t.connInfo.Failed(tErr.Error(), "")
+		t.connInfo.Save()
+
 		// FIXME: try with another route?
-		return tErr.Wrap("failed to connect to destination")
+		return tErr
 	}
 
 	log.Infof("spn/crew: connected to %s via %s", request, dstPin.Hub)
