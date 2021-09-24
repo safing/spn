@@ -181,20 +181,18 @@ func (op *CounterOp) Deliver(data *container.Container) *Error {
 }
 
 func (op *CounterOp) End(err *Error) {
-	if op.Ended.SetToIf(false, true) {
-		// Check if counting finished.
-		if !op.isDone() {
-			err := fmt.Errorf(
-				"counter op %d: did not finish counting (%d<-%d %d->%d)",
-				op.id,
-				op.opts.ClientCountTo, op.ClientCounter,
-				op.ServerCounter, op.opts.ServerCountTo,
-			)
-			op.Error = err
-		}
-
-		op.wg.Done()
+	// Check if counting finished.
+	if !op.isDone() {
+		err := fmt.Errorf(
+			"counter op %d: did not finish counting (%d<-%d %d->%d)",
+			op.id,
+			op.opts.ClientCountTo, op.ClientCounter,
+			op.ServerCounter, op.opts.ServerCountTo,
+		)
+		op.Error = err
 	}
+
+	op.wg.Done()
 }
 
 func (op *CounterOp) SendCounter() *Error {

@@ -595,6 +595,11 @@ func (t *TerminalBase) addToOpMsgSendBuffer(
 // context. This function is usually not called directly, but at the end of an
 // Abandon() implementation.
 func (t *TerminalBase) Shutdown(err *Error, sendError bool) {
+	// End all operations.
+	for _, op := range t.allOps() {
+		op.End(nil)
+	}
+
 	if sendError {
 		stopMsg := container.New(err.Pack())
 		MakeMsg(stopMsg, t.id, MsgTypeStop)
@@ -603,11 +608,6 @@ func (t *TerminalBase) Shutdown(err *Error, sendError bool) {
 		if tErr != nil {
 			log.Warningf("spn/terminal: terminal %s failed to send stop msg: %s", t.ext.FmtID(), tErr)
 		}
-	}
-
-	// End all operations.
-	for _, op := range t.allOps() {
-		op.End(nil)
 	}
 
 	// Stop all other connected workers.

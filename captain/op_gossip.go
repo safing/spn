@@ -54,6 +54,7 @@ func NewGossipOp(controller *docks.CraneControllerTerminal) (*GossipOp, *termina
 	op := &GossipOp{
 		controller: controller,
 	}
+	op.OpBase.Init()
 	err := controller.OpInit(op, nil)
 	if err != nil {
 		return nil, err
@@ -75,7 +76,8 @@ func runGossipOp(t terminal.OpTerminal, opID uint32, data *container.Container) 
 	op := &GossipOp{
 		controller: controller,
 	}
-	op.SetID(opID)
+	op.OpBase.Init()
+	op.OpBase.SetID(opID)
 	registerGossipOp(controller.Crane.ID, op)
 	return op, nil
 }

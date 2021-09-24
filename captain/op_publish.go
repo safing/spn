@@ -40,6 +40,7 @@ func NewPublishOp(controller *docks.CraneControllerTerminal, identity *cabin.Ide
 		identity:   identity,
 		result:     make(chan *terminal.Error),
 	}
+	op.OpBase.Init()
 	msg := container.New()
 
 	// Add Hub Announcement.
@@ -105,7 +106,8 @@ func runPublishOp(t terminal.OpTerminal, opID uint32, data *container.Container)
 		verification:  v,
 		result:        make(chan *terminal.Error),
 	}
-	op.SetID(opID)
+	op.OpBase.Init()
+	op.OpBase.SetID(opID)
 
 	// Reply with verification request.
 	tErr = controller.OpSend(op, container.New(request))

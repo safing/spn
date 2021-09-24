@@ -8,14 +8,16 @@ import (
 	"github.com/safing/portbase/log"
 	"github.com/safing/spn/hub"
 	"github.com/safing/spn/terminal"
+	"github.com/tevino/abool"
 )
 
 type ExpansionTerminal struct {
 	*terminal.TerminalBase
 	*terminal.DuplexFlowQueue
 
-	opID    uint32
-	relayOp terminal.OpTerminal
+	opID         uint32
+	relayOp      terminal.OpTerminal
+	relayOpEnded *abool.AtomicBool
 }
 
 func ExpandTo(t terminal.OpTerminal, routeTo string, encryptFor *hub.Hub) (*ExpansionTerminal, *terminal.Error) {
@@ -31,6 +33,7 @@ func ExpandTo(t terminal.OpTerminal, routeTo string, encryptFor *hub.Hub) (*Expa
 	expansion := &ExpansionTerminal{
 		TerminalBase: tBase,
 		relayOp:      t,
+		relayOpEnded: abool.New(),
 	}
 	expansion.TerminalBase.SetTerminalExtension(expansion)
 	expansion.TerminalBase.SetTimeout(expansionClientTimeout)
@@ -77,6 +80,14 @@ func (t *ExpansionTerminal) Type() string {
 	return ExpandOpType
 }
 
+func (t *ExpansionTerminal) HasEnded(end bool) bool {
+	if end {
+		// Return false if we just only it to ended.
+		return !t.relayOpEnded.SetToIf(false, true)
+	}
+	return t.relayOpEnded.IsSet()
+}
+
 func (t *ExpansionTerminal) End(err *terminal.Error) {
 	t.stop(err)
 }
@@ -96,11 +107,11 @@ func (t *ExpansionTerminal) stop(err *terminal.Error) {
 			log.Warningf("spn/docks: expansion terminal %s: %s", t.FmtID(), err)
 		}
 
-		// Send stop message.
-		t.relayOp.OpEnd(t, nil)
-
 		// End all operations.
 		t.Shutdown(nil, false)
+
+		// Send stop message.
+		t.relayOp.OpEnd(t, nil)
 	}
 }
 

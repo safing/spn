@@ -1,9 +1,13 @@
 package terminal
 
-import "github.com/safing/portbase/container"
+import (
+	"github.com/safing/portbase/container"
+	"github.com/tevino/abool"
+)
 
 type OpBase struct {
-	id uint32
+	id    uint32
+	ended *abool.AtomicBool
 }
 
 func (op *OpBase) ID() uint32 {
@@ -14,6 +18,18 @@ func (op *OpBase) SetID(id uint32) {
 	op.id = id
 }
 
+func (op *OpBase) HasEnded(end bool) bool {
+	if end {
+		// Return false if we just only it to ended.
+		return !op.ended.SetToIf(false, true)
+	}
+	return op.ended.IsSet()
+}
+
+func (op *OpBase) Init() {
+	op.ended = abool.New()
+}
+
 type OpBaseRequest struct {
 	OpBase
 
@@ -22,6 +38,7 @@ type OpBaseRequest struct {
 }
 
 func (op *OpBaseRequest) Init(deliverQueueSize int) {
+	op.OpBase.Init()
 	op.Delivered = make(chan *container.Container, deliverQueueSize)
 	op.Ended = make(chan *Error, 1)
 }

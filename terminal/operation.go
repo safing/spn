@@ -23,6 +23,7 @@ type Operation interface {
 	SetID(id uint32)
 	Type() string
 	Deliver(data *container.Container) *Error
+	HasEnded(end bool) bool
 	End(err *Error)
 }
 
@@ -73,23 +74,20 @@ func (t *TerminalBase) runOperation(ctx context.Context, opTerminal OpTerminal, 
 	// Extract the requested operation name.
 	opType, err := initData.GetNextBlock()
 	if err != nil {
-		t.OpEnd(&unknownOp{id: opID}, ErrMalformedData.With("failed to get init data: %w", err))
+		t.OpEnd(newUnknownOp(opID, ""), ErrMalformedData.With("failed to get init data: %w", err))
 		return
 	}
 
 	// Get the operation parameters from the registry.
 	params, ok := opRegistry[string(opType)]
 	if !ok {
-		t.OpEnd(&unknownOp{id: opID}, ErrUnknownOperationType.With(utils.SafeFirst16Bytes(opType)))
+		t.OpEnd(newUnknownOp(opID, ""), ErrUnknownOperationType.With(utils.SafeFirst16Bytes(opType)))
 		return
 	}
 
 	// Check if the Terminal has the required permission to run the operation.
 	if !t.HasPermission(params.Requires) {
-		t.OpEnd(&unknownOp{
-			id:     opID,
-			opType: params.Type,
-		}, ErrPermissinDenied)
+		t.OpEnd(newUnknownOp(opID, params.Type), ErrPermissinDenied)
 		return
 	}
 
@@ -98,17 +96,11 @@ func (t *TerminalBase) runOperation(ctx context.Context, opTerminal OpTerminal, 
 	switch {
 	case opErr != nil:
 		// Something went wrong.
-		t.OpEnd(&unknownOp{
-			id:     opID,
-			opType: params.Type,
-		}, opErr)
+		t.OpEnd(newUnknownOp(opID, params.Type), opErr)
 	case op == nil:
 		// The Operation was successful and is done already.
 		log.Debugf("spn/terminal: operation %s %s executed", params.Type, fmtOperationID(t.parentID, t.id, opID))
-		t.OpEnd(&unknownOp{
-			id:     opID,
-			opType: params.Type,
-		}, nil)
+		t.OpEnd(newUnknownOp(opID, params.Type), nil)
 	default:
 		// The operation started successfully and requires persistence.
 		t.SetActiveOp(opID, op)
@@ -173,9 +165,9 @@ func (t *TerminalBase) OpSendWithTimeout(op Operation, data *container.Container
 // The Operation should cease operation after calling this function.
 // Should only be called by an operation.
 func (t *TerminalBase) OpEnd(op Operation, err *Error) {
-	// Send error to the connected Operation, if the error is internal.
-	if !err.IsExternal() {
-		t.addToOpMsgSendBuffer(op.ID(), MsgTypeStop, container.New(err.Pack()), 0)
+	// Check if the operation has already ended.
+	if op.HasEnded(true) {
+		return
 	}
 
 	// Log reason the Operation is ending. Override stopping error with nil.
@@ -188,8 +180,13 @@ func (t *TerminalBase) OpEnd(op Operation, err *Error) {
 		log.Warningf("spn/terminal: operation %s %s failed: %s", op.Type(), fmtOperationID(t.parentID, t.id, op.ID()), err)
 	}
 
-	// Call operation end function.
+	// Call operation end function for proper shutdown cleaning up.
 	op.End(err)
+
+	// Send error to the connected Operation, if the error is internal.
+	if !err.IsExternal() {
+		t.addToOpMsgSendBuffer(op.ID(), MsgTypeStop, container.New(err.Pack()), 0)
+	}
 
 	// Remove operation from terminal.
 	t.DeleteActiveOp(op.ID())
@@ -224,28 +221,45 @@ func (t *TerminalBase) DeleteActiveOp(opID uint32) {
 	delete(t.operations, opID)
 }
 
+func newUnknownOp(id uint32, opType string) *unknownOp {
+	return &unknownOp{
+		id:     id,
+		opType: opType,
+		ended:  abool.New(),
+	}
+}
+
 type unknownOp struct {
 	id     uint32
 	opType string
+	ended  *abool.AtomicBool
 }
 
-func (op unknownOp) ID() uint32 {
+func (op *unknownOp) ID() uint32 {
 	return op.id
 }
 
-func (op unknownOp) SetID(id uint32) {
+func (op *unknownOp) SetID(id uint32) {
 	op.id = id
 }
 
-func (op unknownOp) Type() string {
+func (op *unknownOp) Type() string {
 	if op.opType != "" {
 		return op.opType
 	}
 	return "unknown"
 }
 
-func (op unknownOp) Deliver(data *container.Container) *Error {
+func (op *unknownOp) Deliver(data *container.Container) *Error {
 	return ErrIncorrectUsage.With("unknown op shim cannot receive")
 }
 
-func (op unknownOp) End(err *Error) {}
+func (op *unknownOp) End(err *Error) {}
+
+func (op *unknownOp) HasEnded(end bool) bool {
+	if end {
+		// Return false if we just only it to ended.
+		return !op.ended.SetToIf(false, true)
+	}
+	return op.ended.IsSet()
+}

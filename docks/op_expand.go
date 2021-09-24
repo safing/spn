@@ -98,7 +98,8 @@ func expand(t terminal.OpTerminal, opID uint32, data *container.Container) (term
 			abandoned: abool.New(),
 		},
 	}
-	op.SetID(opID)
+	op.OpBase.Init()
+	op.OpBase.SetID(opID)
 	op.ctx, op.cancelCtx = context.WithCancel(module.Ctx)
 	op.relayTerminal.op = op
 	// Create flow queues.
