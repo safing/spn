@@ -180,7 +180,7 @@ func establishRoute(route *navigator.Route) (dstPin *navigator.Pin, err error) {
 			Terminal: check.expansion,
 			Route:    check.route,
 		}
-		log.Errorf("spn/crew: added conn to %s: %s", check.pin, check.route)
+		log.Infof("spn/crew: added conn to %s: %s", check.pin, check.route)
 	}
 
 	// Return last hop.
