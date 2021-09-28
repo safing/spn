@@ -57,13 +57,16 @@ func ImportAndVerifyHubInfo(ctx context.Context, hubID string, announcementData,
 
 	// Verify hub if not yet verified.
 	if !h.Verified() && conf.PublicHub() {
-		if h.Info.IPv4 != nil {
+		if !conf.HubHasIPv4() && !conf.HubHasIPv6() {
+			return nil, false, terminal.ErrInternalError.With("no hub networks set")
+		}
+		if h.Info.IPv4 != nil && conf.HubHasIPv4() {
 			err = verifyHubIP(ctx, h, h.Info.IPv4)
 			if err != nil {
 				return nil, forward, terminal.ErrIntegrity.With("failed to verify IPv4 address %s of %s: %w", h.Info.IPv4, h, err)
 			}
 		}
-		if h.Info.IPv6 != nil {
+		if h.Info.IPv6 != nil && conf.HubHasIPv6() {
 			err = verifyHubIP(ctx, h, h.Info.IPv6)
 			if err != nil {
 				return nil, forward, terminal.ErrIntegrity.With("failed to verify IPv6 address %s of %s: %w", h.Info.IPv6, h, err)

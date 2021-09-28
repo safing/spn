@@ -57,14 +57,10 @@ func (s *Sluice) AwaitRequest(r *Request) {
 	// TODO: Make requests expire eventually.
 
 	key := net.JoinHostPort(r.ConnInfo.LocalIP.String(), strconv.Itoa(int(r.ConnInfo.LocalPort)))
-	log.Errorf("spn/sluice: adding request for %s", key)
-
 	s.pendingRequests[key] = r
 }
 
 func (s *Sluice) getRequest(address string) (r *Request, ok bool) {
-	log.Errorf("spn/sluice: getting request for %s", address)
-
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
@@ -138,11 +134,11 @@ func (s *Sluice) handleConnection(conn net.Conn) {
 	// Check if the request is local.
 	local, err := netenv.IsMyIP(remoteIP)
 	if err != nil {
-		log.Errorf("spn/sluice: failed to check if request from %s is local: %s", remoteIP, err)
+		log.Warningf("spn/sluice: failed to check if request from %s is local: %s", remoteIP, err)
 		return
 	}
 	if !local {
-		log.Errorf("spn/sluice: received external request from %s, ignoring", remoteIP)
+		log.Warningf("spn/sluice: received external request from %s, ignoring", remoteIP)
 		return
 	}
 

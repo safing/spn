@@ -62,6 +62,17 @@ func start() error {
 	}
 	ships.EnableMasking(maskingBytes)
 
+	// Initialize intel and other required resources.
+	if err := loadRequiredResources(); err != nil {
+		return err
+	}
+	if err := registerIntelUpdateHook(); err != nil {
+		return err
+	}
+	if err := updateSPNIntel(module.Ctx, nil); err != nil {
+		return err
+	}
+
 	// identity and piers
 	if conf.PublicHub() {
 		// load identity
@@ -84,14 +95,6 @@ func start() error {
 		return err
 	}
 	if err := processBootstrapFileFlag(); err != nil {
-		return err
-	}
-
-	// Initialize intel updates.
-	if err := registerIntelUpdateHook(); err != nil {
-		return err
-	}
-	if err := updateSPNIntel(module.Ctx, nil); err != nil {
 		return err
 	}
 
