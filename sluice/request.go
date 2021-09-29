@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"time"
 
 	"github.com/safing/portmaster/network"
 	"github.com/safing/portmaster/network/packet"
@@ -20,6 +21,7 @@ var (
 type Request struct {
 	ConnInfo   *network.Connection
 	CallbackFn RequestCallbackFunc
+	Expires    time.Time
 }
 
 type RequestCallbackFunc func(connInfo *network.Connection, conn net.Conn)

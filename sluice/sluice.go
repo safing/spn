@@ -51,10 +51,13 @@ func StartSluice(network, address string) {
 }
 
 func (s *Sluice) AwaitRequest(r *Request) {
+	// Set default expiry.
+	if r.Expires.IsZero() {
+		r.Expires = time.Now().Add(time.Minute)
+	}
+
 	s.lock.Lock()
 	defer s.lock.Unlock()
-
-	// TODO: Make requests expire eventually.
 
 	key := net.JoinHostPort(r.ConnInfo.LocalIP.String(), strconv.Itoa(int(r.ConnInfo.LocalPort)))
 	s.pendingRequests[key] = r
@@ -65,6 +68,9 @@ func (s *Sluice) getRequest(address string) (r *Request, ok bool) {
 	defer s.lock.Unlock()
 
 	r, ok = s.pendingRequests[address]
+	if ok {
+		delete(s.pendingRequests, address)
+	}
 	return
 }
 
@@ -182,6 +188,23 @@ func (s *Sluice) listenHandler(_ context.Context) error {
 			return fmt.Errorf("failed to accept connection: %s", err)
 		}
 
+		// Handle accepted connection.
 		s.handleConnection(conn)
+
+		// Clean up old leftovers.
+		s.cleanConnections()
+	}
+}
+
+func (s *Sluice) cleanConnections() {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
+	now := time.Now()
+	for address, request := range s.pendingRequests {
+		if now.After(request.Expires) {
+			delete(s.pendingRequests, address)
+			log.Debugf("spn/sluice: removed expired pending %s connection %s", s.network, request.ConnInfo)
+		}
 	}
 }
