@@ -47,18 +47,8 @@ managing:
 					"spn:home-hub-failure",
 					"SPN Failed to Connect",
 					fmt.Sprintf("Failed to connect to a home hub: %s. The Portmaster will retry to connect automatically.", err),
-					notifications.Action{
-						Text:    "Test Phase Info",
-						Type:    notifications.ActionTypeOpenURL,
-						Payload: "https://github.com/safing/spn/wiki/SPN-Testing-Goals-and-Status",
-					},
-					notifications.Action{
-						Text: "Configure",
-						Type: notifications.ActionTypeOpenSetting,
-						Payload: &notifications.ActionTypeOpenSettingPayload{
-							Key: CfgOptionEnableSPNKey,
-						},
-					},
+					spnTestPhaseStatusLinkButton,
+					spnTestPhaseSettingsButton,
 				).AttachToModule(module)
 				select {
 				case <-ctx.Done():
@@ -73,24 +63,15 @@ managing:
 				"spn:connected-to-home-hub",
 				"Connected to SPN Test Network",
 				fmt.Sprintf("You are connected to the SPN test network at %s. This notification is persistent for awareness.", homeTerminal.RemoteAddr()),
-				notifications.Action{
-					Text:    "Test Phase Info",
-					Type:    notifications.ActionTypeOpenURL,
-					Payload: "https://github.com/safing/spn/wiki/SPN-Testing-Goals-and-Status",
-				},
-				notifications.Action{
-					Text: "Configure",
-					Type: notifications.ActionTypeOpenSetting,
-					Payload: &notifications.ActionTypeOpenSettingPayload{
-						Key: CfgOptionEnableSPNKey,
-					},
-				},
+				spnTestPhaseStatusLinkButton,
+				spnTestPhaseSettingsButton,
 			).AttachToModule(module)
 			ready.Set()
 			log.Infof("spn/captain: established new home %s", home.Hub)
 			log.Infof("spn/captain: client is ready")
 		}
 	}
+
 	return nil
 }
 
