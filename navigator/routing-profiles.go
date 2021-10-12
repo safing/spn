@@ -31,6 +31,7 @@ type RoutingProfile struct {
 const (
 	RoutingProfileDefaultName  = "default"
 	RoutingProfileShortestName = "shortest"
+	RoutingProfileHomeName     = "home"
 )
 
 var (
@@ -57,6 +58,9 @@ func getRoutingProfile(name string) *RoutingProfile {
 		return RoutingProfileDefault
 	case RoutingProfileShortestName:
 		return RoutingProfileShortest
+	case RoutingProfileHomeName:
+		log.Warningf("spn/navigator: routing profile %q is special and cannot be used for calculation, falling back to default", name)
+		return RoutingProfileDefault
 	default:
 		log.Warningf("spn/navigator: routing profile %q does not exist, falling back to default", name)
 		return RoutingProfileDefault
