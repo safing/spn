@@ -45,7 +45,11 @@ type Tunnel struct {
 
 func (t *Tunnel) handle(ctx context.Context) (err error) {
 	// Find possible routes.
-	routes, err := navigator.Main.FindRoutes(t.connInfo.Entity.IP, nil, 10)
+	routes, err := navigator.Main.FindRoutes(
+		t.connInfo.Entity.IP,
+		t.connInfo.TunnelOpts,
+		10,
+	)
 	if err != nil {
 		log.Warningf("spn/crew: failed to find route for %s: %s", t.connInfo, err)
 
@@ -62,8 +66,9 @@ func (t *Tunnel) handle(ctx context.Context) (err error) {
 	var tries int
 	var route *navigator.Route
 	var dstPin *navigator.Pin
+	var dstTerminal terminal.OpTerminal
 	for tries, route = range routes.All {
-		dstPin, err = establishRoute(route)
+		dstPin, dstTerminal, err = establishRoute(route)
 		if err == nil {
 			break
 		}
@@ -88,7 +93,7 @@ func (t *Tunnel) handle(ctx context.Context) (err error) {
 		Protocol: packet.IPProtocol(t.connInfo.Entity.Protocol),
 		Port:     t.connInfo.Entity.Port,
 	}
-	_, tErr := NewConnectOp(dstPin.Connection.Terminal, request, t.conn)
+	_, tErr := NewConnectOp(dstTerminal, request, t.conn)
 	if tErr != nil {
 		tErr = tErr.Wrap("failed to initialize tunnel")
 
@@ -113,23 +118,31 @@ type hopCheck struct {
 	authOp    *access.AuthorizeOp
 }
 
-func establishRoute(route *navigator.Route) (dstPin *navigator.Pin, err error) {
+func establishRoute(route *navigator.Route) (dstPin *navigator.Pin, dstTerminal terminal.OpTerminal, err error) {
 	connectLock.Lock()
 	defer connectLock.Unlock()
 
 	// Check for path length.
-	if len(route.Path) <= 1 {
-		return nil, errors.New("path too short")
+	if len(route.Path) < 1 {
+		return nil, nil, errors.New("path too short")
 	}
 
 	// Get home hub.
 	var previousHop *navigator.Pin
 	var previousTerminal terminal.OpTerminal
 	previousHop, previousTerminal = navigator.Main.GetHome()
+	if previousHop == nil || previousTerminal == nil {
+		return nil, nil, navigator.ErrHomeHubUnset
+	}
 
 	// Check if first hub in path is the home hub.
 	if route.Path[0].HubID != previousHop.Hub.ID {
-		return nil, errors.New("path start does not match home hub")
+		return nil, nil, errors.New("path start does not match home hub")
+	}
+
+	// Check if path only exists of home hub.
+	if len(route.Path) == 1 {
+		return previousHop, previousTerminal, nil
 	}
 
 	// FIXME: Check what needs locking.
@@ -147,7 +160,7 @@ func establishRoute(route *navigator.Route) (dstPin *navigator.Pin, err error) {
 		// Expand to next Hub.
 		expansion, authOp, tErr := expand(previousTerminal, previousHop, hop.Pin())
 		if tErr != nil {
-			return nil, tErr.Wrap("failed to expand to %s", hop.Pin())
+			return nil, nil, tErr.Wrap("failed to expand to %s", hop.Pin())
 		}
 
 		// Add for checking results later.
@@ -169,10 +182,10 @@ func establishRoute(route *navigator.Route) (dstPin *navigator.Pin, err error) {
 		select {
 		case tErr := <-check.authOp.Ended:
 			if !tErr.Is(terminal.ErrExplicitAck) {
-				return nil, tErr.Wrap("failed to authenticate to %s", check.pin.Hub)
+				return nil, nil, tErr.Wrap("failed to authenticate to %s", check.pin.Hub)
 			}
 		case <-time.After(3 * time.Second):
-			return nil, terminal.ErrTimeout.With("timed out waiting for auth to %s", check.pin.Hub)
+			return nil, nil, terminal.ErrTimeout.With("timed out waiting for auth to %s", check.pin.Hub)
 		}
 
 		// Add terminal extension to the map.
@@ -184,7 +197,7 @@ func establishRoute(route *navigator.Route) (dstPin *navigator.Pin, err error) {
 	}
 
 	// Return last hop.
-	return previousHop, nil
+	return previousHop, previousTerminal, nil
 }
 
 func expand(fromTerminal terminal.OpTerminal, from, to *navigator.Pin) (expansion *docks.ExpansionTerminal, authOp *access.AuthorizeOp, tErr *terminal.Error) {

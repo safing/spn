@@ -77,8 +77,19 @@ func dockingRequestHandler(ctx context.Context) error {
 		case <-ctx.Done():
 			return nil
 		case r := <-dockingRequests:
-			if checkDockingPermission(r.Ship) {
-				handleDockingRequest(r.Ship)
+			switch {
+			case r.Err != nil:
+				// TODO: Restart pier?
+				// TODO: Do actual pier management.
+				log.Errorf("spn/captain: pier %s failed: %s", r.Pier.Transport(), r.Err)
+			case r.Ship != nil:
+				if checkDockingPermission(r.Ship) {
+					handleDockingRequest(r.Ship)
+				} else {
+					log.Warningf("spn/captain: denied ship from %s to dock at pier %s", r.Ship.RemoteAddr(), r.Pier.Transport())
+				}
+			default:
+				log.Warningf("spn/captain: received invalid docking request without ship for pier %s", r.Pier.Transport())
 			}
 		}
 	}
@@ -94,7 +105,7 @@ func handleDockingRequest(ship ships.Ship) {
 
 	crane, err := docks.NewCrane(module.Ctx, ship, nil, publicIdentity)
 	if err != nil {
-		log.Warningf("spn/captain: failed to comission crane for %s: %s", ship, err)
+		log.Warningf("spn/captain: failed to commission crane for %s: %s", ship, err)
 		return
 	}
 

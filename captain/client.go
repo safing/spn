@@ -17,7 +17,7 @@ var (
 	ready = abool.New()
 
 	spnTestPhaseStatusLinkButton = notifications.Action{
-		Text:    "Test Phase Info",
+		Text:    "Test Phase Status",
 		Type:    notifications.ActionTypeOpenURL,
 		Payload: "https://docs.safing.io/spn/broader-testing/status",
 	}
@@ -77,7 +77,7 @@ func preFlightCheck(ctx context.Context) error {
 		notifications.NotifyWarn(
 			"spn:no-access-code",
 			"SPN Requires Access Code",
-			"Please enter your special access code for the testing phase in the settings.",
+			`Please enter your special access code for the "Broader Testing" phase in the settings.`,
 			spnTestPhaseStatusLinkButton,
 			spnTestPhaseEnterCodeButton,
 		).AttachToModule(module)

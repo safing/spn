@@ -61,8 +61,8 @@ managing:
 			home, homeTerminal := navigator.Main.GetHome()
 			notifications.NotifyInfo(
 				"spn:connected-to-home-hub",
-				"Connected to SPN Test Network",
-				fmt.Sprintf("You are connected to the SPN test network at %s. This notification is persistent for awareness.", homeTerminal.RemoteAddr()),
+				"Connected to SPN",
+				fmt.Sprintf("You are connected to the SPN at %s. This notification is persistent for awareness.", homeTerminal.RemoteAddr()),
 				spnTestPhaseStatusLinkButton,
 				spnTestPhaseSettingsButton,
 			).AttachToModule(module)

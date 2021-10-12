@@ -17,9 +17,27 @@ func (m *Map) FindRoutes(ip net.IP, opts *Options, maxRoutes int) (*Routes, erro
 		return nil, ErrEmptyMap
 	}
 
+	// Check if home hub is set.
+	if m.home == nil {
+		return nil, ErrHomeHubUnset
+	}
+
 	// Set default options if unset.
 	if opts == nil {
 		opts = m.defaultOptions()
+	}
+
+	// Handle special home routing profile.
+	if opts.RoutingProfile == RoutingProfileHomeName {
+		return &Routes{
+			All: []*Route{&Route{
+				Path: []*Hop{&Hop{
+					pin:   m.home,
+					HubID: m.home.Hub.ID,
+				}},
+				Algorithm: RoutingProfileHomeName,
+			}},
+		}, nil
 	}
 
 	// Get the location of the given IP address.

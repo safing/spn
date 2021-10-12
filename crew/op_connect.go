@@ -21,8 +21,6 @@ import (
 const ConnectOpType string = "connect"
 
 type ConnectOp struct {
-	// FIXME: add flow queue
-
 	terminal.OpBase
 	*terminal.DuplexFlowQueue
 
@@ -268,7 +266,7 @@ func (op *ConnectOp) End(err *terminal.Error) {
 
 func (op *ConnectOp) Abandon(err *terminal.Error) {
 	// Proxy for DuplexFlowQueue
-	op.End(err)
+	op.t.OpEnd(op, err)
 }
 
 func (op *ConnectOp) FmtID() string {

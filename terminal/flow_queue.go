@@ -237,14 +237,22 @@ sending:
 
 // Flush waits for all waiting data to be sent.
 func (dfq *DuplexFlowQueue) Flush() <-chan struct{} {
-	// Create channel for notifying.
+	// Check if queue is already empty.
+	if len(dfq.sendQueue) == 0 {
+		return ready
+	}
+	// Create channel and function for notifying.
 	wait := make(chan struct{})
-	// Request flush and send close function.
-	dfq.flush <- func() {
+	finished := func() {
 		close(wait)
 	}
-	// Wait for handler to finish flushing.
-	return wait
+	// Request flush and return when stopping.
+	select {
+	case dfq.flush <- finished:
+		return wait
+	case <-dfq.ti.Ctx().Done():
+		return ready
+	}
 }
 
 var ready = make(chan struct{})
@@ -294,7 +302,7 @@ func (dfq *DuplexFlowQueue) Receive() <-chan *container.Container {
 func (dfq *DuplexFlowQueue) Deliver(c *container.Container) *Error {
 	// Ignore nil containers.
 	if c == nil {
-		return ErrStopping
+		return ErrMalformedData.With("no data")
 	}
 
 	// Get and add new reported space.
