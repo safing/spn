@@ -136,6 +136,7 @@ Before=shutdown.target
 Type=simple
 Restart=on-failure
 RestartSec=5
+LimitNOFILE=infinity
 Environment=LOGLEVEL=info
 Environment=SPN_ARGS=
 EnvironmentFile=-/etc/default/spn
