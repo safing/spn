@@ -107,6 +107,7 @@ func (t *Tunnel) handle(ctx context.Context) (err error) {
 		return tErr
 	}
 
+	addTunnelContextToConnection(t.connInfo, route)
 	log.Infof("spn/crew: connected to %s via %s", request, dstPin.Hub)
 	return nil
 }
@@ -214,4 +215,68 @@ func expand(fromTerminal terminal.OpTerminal, from, to *navigator.Pin) (expansio
 
 	log.Infof("spn/crew: expanded to %s (from %s)", to.Hub, from.Hub)
 	return expansion, authOp, nil
+}
+
+// TunnelContext holds additional information about the tunnel to be added to a
+// connection.
+type TunnelContext struct {
+	Path       []*TunnelContextHop
+	PathCost   int
+	RoutingAlg string
+}
+
+type TunnelContextHop struct {
+	ID   string
+	Name string
+	IPv4 *TunnelContextHopIPInfo `json:",omitempty"`
+	IPv6 *TunnelContextHopIPInfo `json:",omitempty"`
+}
+
+type TunnelContextHopIPInfo struct {
+	IP      net.IP
+	Country string
+	ASN     uint
+	ASOwner string
+}
+
+func addTunnelContextToConnection(connInfo *network.Connection, route *navigator.Route) {
+	// Create and add basic info.
+	tunnelCtx := &TunnelContext{
+		Path:       make([]*TunnelContextHop, len(route.Path)),
+		PathCost:   route.TotalCost,
+		RoutingAlg: route.Algorithm,
+	}
+	connInfo.TunnelContext = tunnelCtx
+
+	// Add path info.
+	for i, hop := range route.Path {
+		// Add hub info.
+		hopCtx := &TunnelContextHop{
+			ID:   hop.HubID,
+			Name: hop.Pin().Hub.Info.Name,
+		}
+		tunnelCtx.Path[i] = hopCtx
+		// Add hub IPv4 info.
+		if hop.Pin().Hub.Info.IPv4 != nil {
+			hopCtx.IPv4 = &TunnelContextHopIPInfo{
+				IP: hop.Pin().Hub.Info.IPv4,
+			}
+			if hop.Pin().LocationV4 != nil {
+				hopCtx.IPv4.Country = hop.Pin().LocationV4.Country.ISOCode
+				hopCtx.IPv4.ASN = hop.Pin().LocationV4.AutonomousSystemNumber
+				hopCtx.IPv4.ASOwner = hop.Pin().LocationV4.AutonomousSystemOrganization
+			}
+		}
+		// Add hub IPv6 info.
+		if hop.Pin().Hub.Info.IPv6 != nil {
+			hopCtx.IPv6 = &TunnelContextHopIPInfo{
+				IP: hop.Pin().Hub.Info.IPv6,
+			}
+			if hop.Pin().LocationV6 != nil {
+				hopCtx.IPv6.Country = hop.Pin().LocationV6.Country.ISOCode
+				hopCtx.IPv6.ASN = hop.Pin().LocationV6.AutonomousSystemNumber
+				hopCtx.IPv6.ASOwner = hop.Pin().LocationV6.AutonomousSystemOrganization
+			}
+		}
+	}
 }
