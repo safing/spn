@@ -21,6 +21,12 @@ import (
 func homeHubManager(ctx context.Context) (err error) {
 	defer ready.UnSet()
 
+	module.Hint(
+		"spn:establishing-home-hub",
+		"Connecting to SPN...",
+		"Connecting to the SPN network is in progress.",
+	)
+
 managing:
 	for {
 		select {
@@ -35,11 +41,6 @@ managing:
 				log.Infof("spn/captain: client not ready")
 			}
 
-			module.Hint(
-				"spn:establishing-home-hub",
-				"Connecting to SPN...",
-				"Connecting to the SPN network is in progress.",
-			)
 			err = establishHomeHub(ctx)
 			if err != nil {
 				log.Warningf("failed to establish connection to home hub: %s", err)
