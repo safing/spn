@@ -83,7 +83,6 @@ func preFlightCheck(ctx context.Context) error {
 		).AttachToModule(module)
 		return errors.New("no access code configured")
 	}
-	module.Resolve("spn:no-access-code")
 
 	// 2) Parse and import access code
 	code, err := access.ParseCode(cfgOptionSpecialAccessCode())
@@ -100,7 +99,6 @@ func preFlightCheck(ctx context.Context) error {
 		).AttachToModule(module)
 		return errors.New("invalid access code")
 	}
-	module.Resolve("spn:invalid-access-code")
 
 	// 3) Get access code
 	_, err = access.GetCode(access.MainZone)
@@ -114,7 +112,6 @@ func preFlightCheck(ctx context.Context) error {
 		).AttachToModule(module)
 		return fmt.Errorf("failed to get access code: %s", err)
 	}
-	module.Resolve("spn:internal-access-code-error")
 
 	// looking good so far!
 	return nil
