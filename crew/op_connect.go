@@ -182,7 +182,7 @@ func (op *ConnectOp) connReader(_ context.Context) error {
 		n, err := op.conn.Read(buf)
 		if err != nil {
 			if errors.Is(err, io.EOF) {
-				op.t.OpEnd(op, nil)
+				op.t.OpEnd(op, terminal.ErrStopping.With("connection to %s was closed on read", op.connectedType()))
 			} else {
 				op.t.OpEnd(op, terminal.ErrConnectionError.With("failed to read from %s: %w", op.connectedType(), err))
 			}
@@ -206,40 +206,49 @@ func (op *ConnectOp) Deliver(c *container.Container) *terminal.Error {
 }
 
 func (op *ConnectOp) connWriter(_ context.Context) error {
+	defer op.conn.Close()
+
 writing:
 	for {
+		var c *container.Container
 		select {
-		case c := <-op.DuplexFlowQueue.Receive():
-			data := c.CompileData()
-			if len(data) == 0 {
+		case c = <-op.DuplexFlowQueue.Receive():
+		default:
+			// Handle all data before also listening for the context cancel.
+			// This ensures all data is written properly before stopping.
+			select {
+			case c = <-op.DuplexFlowQueue.Receive():
+			case <-op.ctx.Done():
+				return nil
+			}
+		}
+
+		data := c.CompileData()
+		if len(data) == 0 {
+			continue writing
+		}
+
+		// Send all given data.
+		for {
+			n, err := op.conn.Write(data)
+			switch {
+			case err != nil:
+				if errors.Is(err, io.EOF) {
+					op.t.OpEnd(op, terminal.ErrStopping.With("connection to %s was closed on write", op.connectedType()))
+				} else {
+					op.t.OpEnd(op, terminal.ErrConnectionError.With("failed to send to %s: %w", op.connectedType(), err))
+				}
+				return nil
+			case n == 0:
+				op.t.OpEnd(op, terminal.ErrConnectionError.With("sent 0 bytes to %s", op.connectedType()))
+				return nil
+			case n < len(data):
+				// If not all data was sent, try again.
+				log.Debugf("spn/crew: %s#%d only sent %d/%d bytes to %s", op.t.FmtID(), op.ID(), n, len(data), op.connectedType())
+				data = data[n:]
+			default:
 				continue writing
 			}
-
-			// Send all given data.
-			for {
-				n, err := op.conn.Write(data)
-				switch {
-				case err != nil:
-					if errors.Is(err, io.EOF) {
-						op.t.OpEnd(op, nil)
-					} else {
-						op.t.OpEnd(op, terminal.ErrConnectionError.With("failed to send to %s: %w", op.connectedType(), err))
-					}
-					return nil
-				case n == 0:
-					op.t.OpEnd(op, terminal.ErrConnectionError.With("sent 0 bytes to %s", op.connectedType()))
-					return nil
-				case n < len(data):
-					// If not all data was sent, try again.
-					log.Debugf("spn/crew: %s#%d only sent %d/%d bytes to %s", op.t.FmtID(), op.ID(), n, len(data), op.connectedType())
-					data = data[n:]
-				default:
-					continue writing
-				}
-			}
-
-		case <-op.ctx.Done():
-			return nil
 		}
 	}
 }
@@ -257,11 +266,6 @@ func (op *ConnectOp) End(err *terminal.Error) {
 
 	// Cancel workers.
 	op.cancelCtx()
-
-	// Close connection.
-	if op.conn != nil {
-		_ = op.conn.Close()
-	}
 }
 
 func (op *ConnectOp) Abandon(err *terminal.Error) {

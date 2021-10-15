@@ -237,10 +237,6 @@ sending:
 
 // Flush waits for all waiting data to be sent.
 func (dfq *DuplexFlowQueue) Flush() <-chan struct{} {
-	// Check if queue is already empty.
-	if len(dfq.sendQueue) == 0 {
-		return ready
-	}
 	// Create channel and function for notifying.
 	wait := make(chan struct{})
 	finished := func() {
