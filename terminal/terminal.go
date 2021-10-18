@@ -299,16 +299,23 @@ func (t *TerminalBase) Sender(_ context.Context) error {
 		case newFlushFinishedFn := <-t.flush:
 			// We are flushing - stop waiting.
 			t.waitForFlush.UnSet()
-			// If there already is a flush finished function, stack them.
-			if flushFinished != nil {
-				stackedFlushFinishFn := flushFinished
-				flushFinished = func() {
-					stackedFlushFinishFn()
-					newFlushFinishedFn()
-				}
+
+			// Signal immediately if msg buffer is empty.
+			if msgBufferLen == 0 {
+				newFlushFinishedFn()
 			} else {
-				flushFinished = newFlushFinishedFn
+				// If there already is a flush finished function, stack them.
+				if flushFinished != nil {
+					stackedFlushFinishFn := flushFinished
+					flushFinished = func() {
+						stackedFlushFinishFn()
+						newFlushFinishedFn()
+					}
+				} else {
+					flushFinished = newFlushFinishedFn
+				}
 			}
+
 			// Force sending data now.
 			sendMsgs = true
 
@@ -352,15 +359,23 @@ func (t *TerminalBase) WaitForFlush() {
 }
 
 // Flush sends all data waiting to be sent.
-func (t *TerminalBase) Flush() <-chan struct{} {
-	// Create channel for notifying.
+func (t *TerminalBase) Flush() {
+	// Create channel and function for notifying.
 	wait := make(chan struct{})
-	// Request flush and send close function.
-	t.flush <- func() {
+	finished := func() {
 		close(wait)
 	}
-	// Wait for handler to finish flushing.
-	return wait
+	// Request flush and return when stopping.
+	select {
+	case t.flush <- finished:
+	case <-t.Ctx().Done():
+		return
+	}
+	// Wait for flush to finish and return when stopping.
+	select {
+	case <-wait:
+	case <-t.Ctx().Done():
+	}
 }
 
 func (t *TerminalBase) encrypt(c *container.Container) (*container.Container, *Error) {
