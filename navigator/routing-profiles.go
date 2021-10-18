@@ -85,6 +85,16 @@ func (rp *RoutingProfile) checkRouteCompliance(route *Route, foundRoutes *Routes
 		return routeDisqualified
 	}
 
+	// Check for hub re-use.
+	if len(route.Path) >= 2 {
+		lastHop := route.Path[len(route.Path)-1]
+		for _, hop := range route.Path[:len(route.Path)-1] {
+			if lastHop.pin.Hub.ID == hop.pin.Hub.ID {
+				return routeDisqualified
+			}
+		}
+	}
+
 	// Abort route exploration when we are outside the optimization boundaries.
 	if len(foundRoutes.All) > 0 {
 		// Get the best found route.
