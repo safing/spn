@@ -149,18 +149,14 @@ func connectToHomeHub(ctx context.Context, dst *hub.Hub) error {
 	}()
 
 	// Query all gossip msgs on first connection.
-	if gossipQueryInitiated.SetToIf(false, true) {
-		gossipQuery, tErr := NewGossipQueryOp(crane.Controller)
-		if tErr != nil {
-			log.Warningf("spn/captain: failed to start initial gossip query: %s", tErr)
-			gossipQueryInitiated.UnSet()
-		}
-
-		// Wait for gossip query to complete.
-		select {
-		case <-gossipQuery.ctx.Done():
-		case <-ctx.Done():
-		}
+	gossipQuery, tErr := NewGossipQueryOp(crane.Controller)
+	if tErr != nil {
+		log.Warningf("spn/captain: failed to start initial gossip query: %s", tErr)
+	}
+	// Wait for gossip query to complete.
+	select {
+	case <-gossipQuery.ctx.Done():
+	case <-ctx.Done():
 	}
 
 	// Create communication terminal.

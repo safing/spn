@@ -71,13 +71,10 @@ func EstablishPublicLane(dst *hub.Hub) (*docks.Crane, error) {
 		return nil, terminal.ErrStopping
 	}
 
-	// Query all gossip msgs on first connection.
-	if gossipQueryInitiated.SetToIf(false, true) {
-		_, tErr = NewGossipQueryOp(crane.Controller)
-		if tErr != nil {
-			log.Warningf("spn/captain: failed to start initial gossip query: %s", tErr)
-			gossipQueryInitiated.UnSet()
-		}
+	// Query all gossip msgs.
+	_, tErr = NewGossipQueryOp(crane.Controller)
+	if tErr != nil {
+		log.Warningf("spn/captain: failed to start initial gossip query: %s", tErr)
 	}
 
 	return crane, nil
