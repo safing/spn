@@ -1,67 +1,106 @@
 package docks
 
 import (
+	"encoding/hex"
+	"errors"
+	"fmt"
 	"sync"
 
 	"github.com/safing/portbase/modules"
-	"github.com/safing/spn/hub"
+	"github.com/safing/portbase/rng"
 )
 
 var (
 	module *modules.Module
 
-	docks     = make(map[string]*Crane)
-	docksLock sync.RWMutex
+	allCranes      = make(map[string]*Crane) // ID = Crane ID
+	assignedCranes = make(map[string]*Crane) // ID = connected Hub ID
+	cranesLock     sync.RWMutex
 )
 
 func init() {
-	module = modules.Register("docks", nil, nil, nil, "base", "cabin", "access-codes")
+	module = modules.Register("docks", nil, nil, stopAllCranes, "base", "cabin", "access-codes")
+}
+
+func registerCrane(crane *Crane) error {
+	cranesLock.Lock()
+	defer cranesLock.Unlock()
+
+	// Generate new IDs until a unique one is found.
+	for i := 0; i < 100; i++ {
+		// Generate random ID.
+		randomID, err := rng.Bytes(3)
+		if err != nil {
+			return fmt.Errorf("failed to generate crane ID: %w", err)
+		}
+		newID := hex.EncodeToString(randomID)
+
+		// Check if ID already exists.
+		_, ok := allCranes[newID]
+		if !ok {
+			crane.ID = newID
+			allCranes[crane.ID] = crane
+			return nil
+		}
+	}
+
+	return errors.New("failed to find unique crane ID")
+}
+
+func unregisterCrane(crane *Crane) {
+	cranesLock.Lock()
+	defer cranesLock.Unlock()
+
+	delete(allCranes, crane.ID)
+	if crane.ConnectedHub != nil {
+		delete(assignedCranes, crane.ConnectedHub.ID)
+	}
+}
+
+func stopAllCranes() error {
+	for _, crane := range getAllCranes() {
+		crane.Stop(nil)
+	}
+	return nil
+}
+
+func AssignCrane(hubID string, crane *Crane) {
+	cranesLock.Lock()
+	defer cranesLock.Unlock()
+
+	assignedCranes[hubID] = crane
 }
 
 func GetAssignedCrane(hubID string) *Crane {
-	docksLock.RLock()
-	defer docksLock.RUnlock()
-	crane, ok := docks[hubID]
+	cranesLock.RLock()
+	defer cranesLock.RUnlock()
+
+	crane, ok := assignedCranes[hubID]
 	if ok {
 		return crane
 	}
 	return nil
 }
 
-func AssignCrane(hubID string, crane *Crane) {
-	docksLock.Lock()
-	defer docksLock.Unlock()
+func getAllCranes() map[string]*Crane {
+	new := make(map[string]*Crane, len(allCranes))
 
-	docks[hubID] = crane
-}
+	cranesLock.RLock()
+	defer cranesLock.RUnlock()
 
-func RetractCraneByDestination(hubID string) {
-	docksLock.Lock()
-	defer docksLock.Unlock()
-
-	delete(docks, hubID)
-}
-
-func RetractCraneByID(craneID string) (connectedHub *hub.Hub) {
-	docksLock.Lock()
-	defer docksLock.Unlock()
-
-	for hubID, crane := range docks {
-		if crane.ID == craneID {
-			delete(docks, hubID)
-			return crane.ConnectedHub
-		}
+	for id, crane := range allCranes {
+		new[id] = crane
 	}
-	return nil
+	return new
 }
 
-func GetAllCranes() map[string]*Crane {
-	new := make(map[string]*Crane, len(docks))
+func GetAllAssignedCranes() map[string]*Crane {
+	new := make(map[string]*Crane, len(assignedCranes))
 
-	docksLock.Lock()
-	defer docksLock.Unlock()
+	cranesLock.RLock()
+	defer cranesLock.RUnlock()
 
-	for destination, crane := range docks {
+	for destination, crane := range assignedCranes {
 		new[destination] = crane
 	}
 	return new

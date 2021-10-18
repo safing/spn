@@ -2,7 +2,6 @@ package docks
 
 import (
 	"context"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -104,14 +103,8 @@ type Crane struct {
 
 func NewCrane(ctx context.Context, ship ships.Ship, connectedHub *hub.Hub, id *cabin.Identity) (*Crane, error) {
 	ctx, cancelCtx := context.WithCancel(ctx)
-	randomID, err := rng.Bytes(3)
-	if err != nil {
-		return nil, err
-	}
 
 	new := &Crane{
-		ID: hex.EncodeToString(randomID),
-
 		ctx:       ctx,
 		cancelCtx: cancelCtx,
 		stopped:   abool.NewBool(false),
@@ -126,6 +119,10 @@ func NewCrane(ctx context.Context, ship ships.Ship, connectedHub *hub.Hub, id *c
 		importantMsgs: make(chan *container.Container, 100),
 
 		terminals: make(map[uint32]terminal.TerminalInterface),
+	}
+	err := registerCrane(new)
+	if err != nil {
+		return nil, fmt.Errorf("failed to register crane: %w", err)
 	}
 
 	// Shift next terminal IDs on the server.
@@ -664,7 +661,7 @@ func (crane *Crane) Stop(err *terminal.Error) {
 	}
 
 	// Unregister crane.
-	RetractCraneByID(crane.ID)
+	unregisterCrane(crane)
 
 	// Stop controller.
 	if crane.Controller != nil {
