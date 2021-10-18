@@ -1,6 +1,7 @@
 package docks
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
@@ -26,7 +27,7 @@ func ExpandTo(t terminal.OpTerminal, routeTo string, encryptFor *hub.Hub) (*Expa
 		Version:   1,
 		QueueSize: 100,
 	}
-	tBase, initData, tErr := terminal.NewLocalBaseTerminal(module.Ctx, 0, t.FmtID(), encryptFor, opts)
+	tBase, initData, tErr := terminal.NewLocalBaseTerminal(context.Background(), 0, t.FmtID(), encryptFor, opts)
 	if tErr != nil {
 		return nil, tErr.Wrap("failed to create expansion terminal base")
 	}

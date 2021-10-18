@@ -84,7 +84,7 @@ func NewConnectOp(t terminal.OpTerminal, request *ConnectRequest, conn net.Conn)
 		request: request,
 	}
 	op.OpBase.Init()
-	op.ctx, op.cancelCtx = context.WithCancel(module.Ctx)
+	op.ctx, op.cancelCtx = context.WithCancel(context.Background())
 	op.DuplexFlowQueue = terminal.NewDuplexFlowQueue(op, request.QueueSize, op.submitUpstream)
 
 	// Prepare init msg.
@@ -157,7 +157,7 @@ func runConnectOp(t terminal.OpTerminal, opID uint32, data *container.Container)
 	}
 	op.OpBase.Init()
 	op.OpBase.SetID(opID)
-	op.ctx, op.cancelCtx = context.WithCancel(module.Ctx)
+	op.ctx, op.cancelCtx = context.WithCancel(context.Background())
 	op.DuplexFlowQueue = terminal.NewDuplexFlowQueue(op, request.QueueSize, op.submitUpstream)
 
 	// Start worker.

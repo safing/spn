@@ -1,6 +1,7 @@
 package captain
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
@@ -20,12 +21,12 @@ func EstablishCrane(dst *hub.Hub) (*docks.Crane, error) {
 		return nil, fmt.Errorf("route to %s already exists", dst.ID)
 	}
 
-	ship, err := ships.Launch(module.Ctx, dst, nil, nil)
+	ship, err := ships.Launch(context.Background(), dst, nil, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to launch ship: %w", err)
 	}
 
-	crane, err := docks.NewCrane(module.Ctx, ship, dst, publicIdentity)
+	crane, err := docks.NewCrane(context.Background(), ship, dst, publicIdentity)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create crane: %w", err)
 	}
