@@ -21,11 +21,6 @@ func deleteGossipOp(craneID string) {
 	defer gossipOpsLock.Unlock()
 
 	delete(gossipOps, craneID)
-
-	// Reset gossip init if not gossipers are left.
-	if len(gossipOps) == 0 {
-		gossipQueryInitiated.UnSet()
-	}
 }
 
 func gossipRelayMsg(receivedFrom string, msgType GossipMsgType, data []byte) {

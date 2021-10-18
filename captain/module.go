@@ -11,15 +11,12 @@ import (
 	"github.com/safing/spn/conf"
 	"github.com/safing/spn/crew"
 	"github.com/safing/spn/ships"
-	"github.com/tevino/abool"
 
 	_ "github.com/safing/spn/sluice"
 )
 
 var (
 	module *modules.Module
-
-	gossipQueryInitiated = abool.New()
 )
 
 func init() {

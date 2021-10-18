@@ -100,7 +100,7 @@ func expand(t terminal.OpTerminal, opID uint32, data *container.Container) (term
 	}
 	op.OpBase.Init()
 	op.OpBase.SetID(opID)
-	op.ctx, op.cancelCtx = context.WithCancel(module.Ctx)
+	op.ctx, op.cancelCtx = context.WithCancel(context.Background())
 	op.relayTerminal.op = op
 	// Create flow queues.
 	op.DuplexFlowQueue = terminal.NewDuplexFlowQueue(op, opts.QueueSize, op.submitBackstream)

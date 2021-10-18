@@ -6,7 +6,10 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
+	"runtime/pprof"
 	"testing"
+	"time"
 
 	"github.com/safing/portbase/container"
 	"github.com/safing/portbase/log"
@@ -110,6 +113,8 @@ func TestConnectOp(t *testing.T) {
 
 		t.Log("received data:")
 		fmt.Println(string(data[:n]))
+
+		time.Sleep(500 * time.Millisecond)
 	}
 }
 
@@ -178,8 +183,8 @@ func initTestTerminal(
 	return ct
 }
 
-func (t *TestTerminal) Flush() <-chan struct{} {
-	return t.TerminalBase.Flush()
+func (t *TestTerminal) Flush() {
+	t.TerminalBase.Flush()
 }
 
 func (t *TestTerminal) Abandon(err *terminal.Error) {

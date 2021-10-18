@@ -29,7 +29,7 @@ func handleCraneUpdate(crane *docks.Crane) {
 
 func updateConnectionStatus() {
 	// export new connection status from controllers
-	cranes := docks.GetAllCranes()
+	cranes := docks.GetAllAssignedCranes()
 	lanes := make([]*hub.Lane, 0, len(cranes))
 	for _, crane := range cranes {
 		if crane.Public() {

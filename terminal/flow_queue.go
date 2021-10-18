@@ -64,6 +64,7 @@ func NewDuplexFlowQueue(
 		recvQueue:        make(chan *container.Container, queueSize),
 		reportedSpace:    new(int32),
 		forceSpaceReport: make(chan struct{}, 1),
+		flush:            make(chan func()),
 	}
 	atomic.StoreInt32(dfq.sendSpace, int32(queueSize))
 	atomic.StoreInt32(dfq.reportedSpace, int32(queueSize))
@@ -236,7 +237,7 @@ sending:
 }
 
 // Flush waits for all waiting data to be sent.
-func (dfq *DuplexFlowQueue) Flush() <-chan struct{} {
+func (dfq *DuplexFlowQueue) Flush() {
 	// Create channel and function for notifying.
 	wait := make(chan struct{})
 	finished := func() {
@@ -245,9 +246,13 @@ func (dfq *DuplexFlowQueue) Flush() <-chan struct{} {
 	// Request flush and return when stopping.
 	select {
 	case dfq.flush <- finished:
-		return wait
 	case <-dfq.ti.Ctx().Done():
-		return ready
+		return
+	}
+	// Wait for flush to finish and return when stopping.
+	select {
+	case <-wait:
+	case <-dfq.ti.Ctx().Done():
 	}
 }
 
