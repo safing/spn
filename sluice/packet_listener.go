@@ -133,6 +133,7 @@ func (ln *PacketListener) reader(_ context.Context) error {
 			ln:            ln,
 			addr:          addr,
 			closed:        abool.New(),
+			closing:       make(chan struct{}),
 			buf:           buf,
 			in:            make(chan []byte, 1),
 			inactivityCnt: new(uint32),
@@ -176,9 +177,10 @@ func (ln *PacketListener) cleanInactiveConns(overInactivityCnt uint32) {
 }
 
 type PacketConn struct {
-	ln     *PacketListener
-	addr   net.Addr
-	closed *abool.AtomicBool
+	ln      *PacketListener
+	addr    net.Addr
+	closed  *abool.AtomicBool
+	closing chan struct{}
 
 	buf []byte
 	in  chan []byte
@@ -200,8 +202,12 @@ func (conn *PacketConn) Read(b []byte) (n int, err error) {
 
 	// Get new buffer.
 	if conn.buf == nil {
-		conn.buf = <-conn.in
-		if conn.buf == nil {
+		select {
+		case conn.buf = <-conn.in:
+			if conn.buf == nil {
+				return 0, io.EOF
+			}
+		case <-conn.closing:
 			return 0, io.EOF
 		}
 	}
@@ -236,7 +242,9 @@ func (conn *PacketConn) Write(b []byte) (n int, err error) {
 // Close is a no-op as UDP connections share a single socket. Just stop sending
 // packets without closing.
 func (conn *PacketConn) Close() error {
-	conn.closed.Set()
+	if conn.closed.SetToIf(false, true) {
+		close(conn.closing)
+	}
 	return nil
 }
 

@@ -180,16 +180,20 @@ func (t *TerminalBase) OpEnd(op Operation, err *Error) {
 		log.Warningf("spn/terminal: operation %s %s failed: %s", op.Type(), fmtOperationID(t.parentID, t.id, op.ID()), err)
 	}
 
-	// Call operation end function for proper shutdown cleaning up.
-	op.End(err)
+	module.StartWorker("end operation", func(_ context.Context) error {
+		// Call operation end function for proper shutdown cleaning up.
+		op.End(err)
 
-	// Send error to the connected Operation, if the error is internal.
-	if !err.IsExternal() {
-		t.addToOpMsgSendBuffer(op.ID(), MsgTypeStop, container.New(err.Pack()), 0)
-	}
+		// Send error to the connected Operation, if the error is internal.
+		if !err.IsExternal() {
+			t.addToOpMsgSendBuffer(op.ID(), MsgTypeStop, container.New(err.Pack()), 0)
+		}
 
-	// Remove operation from terminal.
-	t.DeleteActiveOp(op.ID())
+		// Remove operation from terminal.
+		t.DeleteActiveOp(op.ID())
+
+		return nil
+	})
 
 	return
 }
@@ -212,13 +216,20 @@ func (t *TerminalBase) SetActiveOp(opID uint32, op Operation) {
 	t.operations[opID] = op
 }
 
-// DeleteActiveOp deletes an active operation from the Terminal state and
-// returns it.
+// DeleteActiveOp deletes an active operation from the Terminal state.
 func (t *TerminalBase) DeleteActiveOp(opID uint32) {
 	t.lock.Lock()
 	defer t.lock.Unlock()
 
 	delete(t.operations, opID)
+}
+
+// GetActiveOpCount returns the amount of active operations.
+func (t *TerminalBase) GetActiveOpCount() int {
+	t.lock.RLock()
+	defer t.lock.RUnlock()
+
+	return len(t.operations)
 }
 
 func newUnknownOp(id uint32, opType string) *unknownOp {
