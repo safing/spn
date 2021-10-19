@@ -11,7 +11,7 @@ require (
 	github.com/mr-tron/base58 v1.2.0
 	github.com/safing/jess v0.2.3
 	github.com/safing/portbase v0.12.3
-	github.com/safing/portmaster v0.7.3
+	github.com/safing/portmaster v0.7.4
 	github.com/stretchr/testify v1.7.0
 	github.com/tevino/abool v1.2.0
 	github.com/xtaci/kcp-go/v5 v5.6.1
