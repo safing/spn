@@ -615,6 +615,19 @@ func (t *TerminalBase) Shutdown(err *Error, sendError bool) {
 		t.OpEnd(op, nil)
 	}
 
+	// Wait 20s for all operations to end.
+	// TODO: Use a signal for this instead of polling.
+	for i := 1; i <= 1000 && t.GetActiveOpCount() > 0; i++ {
+		time.Sleep(20 * time.Millisecond)
+		if i == 1000 {
+			log.Warningf(
+				"spn/terminal: terminal %s is continuing shutdown with %d active operations",
+				t.ext.FmtID(),
+				t.GetActiveOpCount(),
+			)
+		}
+	}
+
 	if sendError {
 		stopMsg := container.New(err.Pack())
 		MakeMsg(stopMsg, t.id, MsgTypeStop)
