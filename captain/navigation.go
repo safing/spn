@@ -20,6 +20,7 @@ import (
 
 func homeHubManager(ctx context.Context) (err error) {
 	defer ready.UnSet()
+	defer netenv.ConnectedToSPN.UnSet()
 
 	module.Hint(
 		"spn:establishing-home-hub",
@@ -38,6 +39,7 @@ managing:
 		home, homeTerminal := navigator.Main.GetHome()
 		if home == nil || homeTerminal == nil || homeTerminal.IsAbandoned() {
 			if ready.SetToIf(true, false) {
+				netenv.ConnectedToSPN.UnSet()
 				log.Infof("spn/captain: client not ready")
 			}
 
@@ -68,6 +70,7 @@ managing:
 				spnTestPhaseSettingsButton,
 			).AttachToModule(module)
 			ready.Set()
+			netenv.ConnectedToSPN.Set()
 			log.Infof("spn/captain: established new home %s", home.Hub)
 			log.Infof("spn/captain: client is ready")
 		}
