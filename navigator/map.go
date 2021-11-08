@@ -39,6 +39,15 @@ func (m *Map) Close() {
 	removeMapFromAPI(m.Name)
 }
 
+// GetPin returns the Pin of the Hub with the given ID.
+func (m *Map) GetPin(hubID string) (pin *Pin, ok bool) {
+	m.RLock()
+	defer m.RUnlock()
+
+	pin, ok = m.all[hubID]
+	return
+}
+
 // GetHome returns the current home and it's accompanying terminal.
 // Both may be nil.
 func (m *Map) GetHome() (*Pin, *docks.CraneTerminal) {
@@ -76,6 +85,7 @@ func (m *Map) SetHome(id string, t *docks.CraneTerminal) (ok bool) {
 		log.Warningf("spn/navigator: failed to recalculate reachable hubs: %s", err)
 	}
 
+	m.PushPinChanges()
 	return true
 }
 
@@ -91,7 +101,12 @@ func (m *Map) isEmpty() bool {
 	return len(m.all) == 0
 }
 
-func (m *Map) sortedPins() []*Pin {
+func (m *Map) sortedPins(lockMap bool) []*Pin {
+	if lockMap {
+		m.RLock()
+		defer m.RUnlock()
+	}
+
 	// Copy into slice.
 	sorted := make([]*Pin, 0, len(m.all))
 	for _, pin := range m.all {

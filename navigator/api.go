@@ -1,6 +1,7 @@
 package navigator
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -41,10 +42,21 @@ func removeMapFromAPI(name string) {
 
 func registerAPIEndpoints() error {
 	if err := api.RegisterEndpoint(api.Endpoint{
+		Path:        `spn/map/{map:[A-Za-z0-9]{1,255}}/pins`,
+		Read:        api.PermitUser,
+		BelongsTo:   module,
+		StructFunc:  handleMapPinsRequest,
+		Name:        "Get SPN map pins",
+		Description: "Returns a list of pins on the given SPN map.",
+	}); err != nil {
+		return err
+	}
+
+	if err := api.RegisterEndpoint(api.Endpoint{
 		Path:        `spn/map/{map:[A-Za-z0-9]{1,255}}/graph{format:\.[a-z]{2,4}}`,
 		Read:        api.PermitUser,
 		BelongsTo:   module,
-		HandlerFunc: handleMapRequest,
+		HandlerFunc: handleMapGraphRequest,
 		Name:        "Get SPN map graph",
 		Description: "Returns a graph of the given SPN map.",
 		Parameters: []api.Parameter{
@@ -68,7 +80,24 @@ func registerAPIEndpoints() error {
 	return nil
 }
 
-func handleMapRequest(w http.ResponseWriter, hr *http.Request) {
+func handleMapPinsRequest(ar *api.Request) (i interface{}, err error) {
+	// Get map.
+	m, ok := getMapForAPI(ar.URLVars["map"])
+	if !ok {
+		return nil, errors.New("map not found")
+	}
+
+	// Export all pins.
+	sortedPins := m.sortedPins(true)
+	exportedPins := make([]*PinExport, len(sortedPins))
+	for key, pin := range sortedPins {
+		exportedPins[key] = pin.Export()
+	}
+
+	return exportedPins, nil
+}
+
+func handleMapGraphRequest(w http.ResponseWriter, hr *http.Request) {
 	r := api.GetAPIRequest(hr)
 	if r == nil {
 		http.Error(w, "API request invalid.", http.StatusInternalServerError)
@@ -100,10 +129,6 @@ func handleMapRequest(w http.ResponseWriter, hr *http.Request) {
 		return
 	}
 
-	// Lock map.
-	m.Lock()
-	defer m.Unlock()
-
 	// Build graph.
 	graph := gographviz.NewGraph()
 	graph.AddAttr("", "ranksep", "0.2")
@@ -111,7 +136,7 @@ func handleMapRequest(w http.ResponseWriter, hr *http.Request) {
 	graph.AddAttr("", "center", "true")
 	graph.AddAttr("", "rankdir", "LR")
 	graph.AddAttr("", "ratio", "fill")
-	for _, pin := range m.sortedPins() {
+	for _, pin := range m.sortedPins(true) {
 		graph.AddNode("", pin.Hub.ID, map[string]string{
 			"label":     graphNodeLabel(pin),
 			"tooltip":   graphTooltip(pin),

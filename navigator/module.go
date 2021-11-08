@@ -33,8 +33,13 @@ func prep() error {
 func start() error {
 	devMode = config.Concurrent.GetAsBool(config.CfgDevModeKey, false)
 
+	err := registerMapDatabase()
+	if err != nil {
+		return err
+	}
+
 	Main.InitializeFromDatabase()
-	err := Main.RegisterHubUpdateHook()
+	err = Main.RegisterHubUpdateHook()
 	if err != nil {
 		return err
 	}

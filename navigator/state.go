@@ -175,6 +175,7 @@ func (m *Map) updateStateSuperseded(pin *Pin) {
 				// If there is a match assign the older Hub the Superseded status.
 				if pin.Hub.FirstSeen.After(mapPin.Hub.FirstSeen) {
 					mapPin.addStates(StateSuperseded)
+					mapPin.pushChanges.Set()
 					// This Pin is newer and superseeds another, keep looking for more.
 				} else {
 					pin.addStates(StateSuperseded)
@@ -199,6 +200,7 @@ func (m *Map) updateStateSuperseded(pin *Pin) {
 				// If there is a match assign the older Hub the Superseded status.
 				if pin.Hub.FirstSeen.After(mapPin.Hub.FirstSeen) {
 					mapPin.addStates(StateSuperseded)
+					mapPin.pushChanges.Set()
 					// This Pin is newer and superseeds another, keep looking for more.
 				} else {
 					pin.addStates(StateSuperseded)
@@ -256,6 +258,7 @@ func (m *Map) recalculateReachableHubs() error {
 	for _, pin := range m.all {
 		pin.removeStates(StateReachable)
 		pin.HopDistance = 0
+		pin.pushChanges.Set()
 	}
 
 	// find all connected Hubs
@@ -280,6 +283,7 @@ func (pin *Pin) markReachable(hopDistance int) {
 	// Update reachability.
 	pin.addStates(StateReachable)
 	pin.HopDistance = hopDistance
+	pin.pushChanges.Set()
 
 	// Propagate to connected Pins.
 	hopDistance += 1
@@ -288,12 +292,14 @@ func (pin *Pin) markReachable(hopDistance int) {
 	}
 }
 
-func (pinState PinState) String() string {
+// Export returns a list of all state names.
+func (pinState PinState) Export() []string {
 	// Check if there are no states.
 	if pinState == StateNone {
-		return "None"
+		return nil
 	}
 
+	// Collect state names.
 	var stateNames []string
 	for _, state := range allStates {
 		if pinState.has(state) {
@@ -301,9 +307,20 @@ func (pinState PinState) String() string {
 		}
 	}
 
+	return stateNames
+}
+
+// String returns the states as a human readable string.
+func (pinState PinState) String() string {
+	stateNames := pinState.Export()
+	if len(stateNames) == 0 {
+		return "None"
+	}
+
 	return strings.Join(stateNames, ", ")
 }
 
+// Name returns the name of a single state flag.
 func (pinState PinState) Name() string {
 	switch pinState {
 	case StateNone:

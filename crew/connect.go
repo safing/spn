@@ -73,6 +73,8 @@ func (t *Tunnel) handle(ctx context.Context) (err error) {
 			break
 		}
 	}
+	navigator.Main.PushPinChanges()
+
 	if err != nil {
 		log.Warningf("spn/crew: failed to establish route for %s - tried %d routes: %s", t.connInfo, tries+1, err)
 
@@ -152,9 +154,10 @@ func establishRoute(route *navigator.Route) (dstPin *navigator.Pin, dstTerminal 
 	hopChecks := make([]*hopCheck, 0, len(route.Path)-1)
 	for i, hop := range route.Path[1:] {
 		// Check if we already have a connection to the Hub.
-		if hop.Pin().Connection != nil && !hop.Pin().Connection.Terminal.IsAbandoned() {
+		activeTerminal := hop.Pin().GetActiveTerminal()
+		if activeTerminal != nil {
 			previousHop = hop.Pin()
-			previousTerminal = hop.Pin().Connection.Terminal
+			previousTerminal = activeTerminal
 			continue
 		}
 
@@ -190,10 +193,10 @@ func establishRoute(route *navigator.Route) (dstPin *navigator.Pin, dstTerminal 
 		}
 
 		// Add terminal extension to the map.
-		check.pin.Connection = &navigator.PinConnection{
+		check.pin.SetActiveTerminal(&navigator.PinConnection{
 			Terminal: check.expansion,
 			Route:    check.route,
-		}
+		})
 		log.Infof("spn/crew: added conn to %s: %s", check.pin, check.route)
 	}
 

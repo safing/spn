@@ -4,12 +4,12 @@ import (
 	"context"
 	"time"
 
-	"github.com/safing/portmaster/intel"
-
 	"github.com/safing/portbase/log"
+	"github.com/safing/portmaster/intel"
 	"github.com/safing/portmaster/intel/geoip"
 	"github.com/safing/spn/docks"
 	"github.com/safing/spn/hub"
+	"github.com/tevino/abool"
 )
 
 // Pin represents a Hub on a Map.
@@ -24,8 +24,8 @@ type Pin struct {
 	// Hub Status
 	State       PinState
 	HopDistance int
-	Load        int // estimated in microseconds this port adds to latency
-	ConnectedTo map[string]*Lane
+	Load        int              // estimated in microseconds this port adds to latency
+	ConnectedTo map[string]*Lane // Key is Hub ID.
 
 	// FailingUntil specifies until when this Hub should be regarded as failing.
 	// This is connected to StateFailing.
@@ -39,7 +39,7 @@ type Pin struct {
 	// pushChanges is set to true if something noteworthy on the Pin changed and
 	// an update needs to be pushed by the database storage interface to whoever
 	// is listening.
-	pushChanges bool
+	pushChanges *abool.AtomicBool
 }
 
 // Session represents a terminal
@@ -60,12 +60,12 @@ type Lane struct {
 	Pin *Pin
 
 	// Capacity designates the available bandwidth between these Hubs.
-	// It is specified in MBit/s.
+	// It is specified in bit/s.
 	Capacity int
 
 	// Lateny designates the latency between these Hubs.
-	// It is specified in Milliseconds.
-	Latency int
+	// It is specified in nanoseconds.
+	Latency time.Duration
 
 	// active is a helper flag in order help remove abandoned Lanes.
 	active bool
@@ -115,6 +115,24 @@ func (pin *Pin) updateLocationData() {
 		pin.EntityV6 = nil
 		pin.LocationV6 = nil
 	}
+}
+
+func (pin *Pin) SetActiveTerminal(pc *PinConnection) {
+	pin.Lock()
+	defer pin.Unlock()
+
+	pin.Connection = pc
+	pin.pushChanges.Set()
+}
+
+func (pin *Pin) GetActiveTerminal() *docks.ExpansionTerminal {
+	pin.Lock()
+	defer pin.Unlock()
+
+	if !pin.hasActiveTerminal() {
+		return nil
+	}
+	return pin.Connection.Terminal
 }
 
 func (pin *Pin) HasActiveTerminal() bool {

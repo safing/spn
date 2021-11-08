@@ -33,9 +33,16 @@ type Key struct {
 
 // Lane represents a connection to another Hub.
 type Lane struct {
-	ID       string // ID of peer
-	Capacity int    // max available bandwidth in Mbit/s (measure actively!)
-	Latency  int    // ping in msecs
+	// ID is the Hub ID of the peer.
+	ID string
+
+	// Capacity designates the available bandwidth between these Hubs.
+	// It is specified in bit/s.
+	Capacity int
+
+	// Lateny designates the latency between these Hubs.
+	// It is specified in nanoseconds.
+	Latency time.Duration
 }
 
 // Copy returns a deep copy of the Status.
