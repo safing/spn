@@ -43,6 +43,7 @@ managing:
 				log.Infof("spn/captain: client not ready")
 			}
 
+			resetSPNStatus(StatusConnecting)
 			err = establishHomeHub(ctx)
 			if err != nil {
 				log.Warningf("failed to establish connection to home hub: %s", err)
@@ -53,6 +54,7 @@ managing:
 					spnTestPhaseStatusLinkButton,
 					spnTestPhaseSettingsButton,
 				).AttachToModule(module)
+				resetSPNStatus(StatusFailed)
 				select {
 				case <-ctx.Done():
 				case <-time.After(4 * time.Second):
@@ -71,6 +73,25 @@ managing:
 			).AttachToModule(module)
 			ready.Set()
 			netenv.ConnectedToSPN.Set()
+
+			// Update SPN Status with connection information.
+			func() {
+				// Lock for updating values.
+				spnStatus.Lock()
+				defer spnStatus.Unlock()
+
+				// Fill connection status data.
+				spnStatus.Status = StatusConnected
+				spnStatus.HomeHubID = home.Hub.ID
+				spnStatus.ConnectedIP = homeTerminal.RemoteAddr().String()
+				spnStatus.ConnectedTransport = homeTerminal.Transport().String()
+				now := time.Now()
+				spnStatus.ConnectedSince = &now
+
+				// Push new status.
+				pushSPNStatusUpdate()
+			}()
+
 			log.Infof("spn/captain: established new home %s", home.Hub)
 			log.Infof("spn/captain: client is ready")
 		}

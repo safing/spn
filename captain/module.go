@@ -44,8 +44,13 @@ func init() {
 func prep() error {
 	initDockHooks()
 
-	err := prepBootstrapHubFlag()
-	if err != nil {
+	// Check if we can parse the bootstrap hub flag.
+	if err := prepBootstrapHubFlag(); err != nil {
+		return err
+	}
+
+	// Register SPN status provider.
+	if err := registerSPNStatusProvider(); err != nil {
 		return err
 	}
 

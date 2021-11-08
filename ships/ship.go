@@ -24,7 +24,7 @@ type Ship interface {
 	String() string
 
 	// Transport returns the transport used for this ship.
-	Transport() *hub.Transport
+	Transport() hub.Transport
 
 	// IsMine returns whether the ship was launched from here.
 	IsMine() bool
@@ -114,8 +114,8 @@ func (ship *ShipBase) String() string {
 }
 
 // Transport returns the transport used for this ship.
-func (ship *ShipBase) Transport() *hub.Transport {
-	return ship.transport
+func (ship *ShipBase) Transport() hub.Transport {
+	return *ship.transport
 }
 
 // IsMine returns whether the ship was launched from here.
