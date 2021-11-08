@@ -6,16 +6,16 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/safing/portbase/log"
+	"github.com/safing/portbase/modules"
+	"github.com/safing/portbase/notifications"
 	"github.com/safing/portmaster/netenv"
+	"github.com/safing/portmaster/network/netutils"
 	"github.com/safing/spn/access"
 	"github.com/safing/spn/docks"
 	"github.com/safing/spn/hub"
 	"github.com/safing/spn/navigator"
 	"github.com/safing/spn/terminal"
-
-	"github.com/safing/portbase/log"
-	"github.com/safing/portbase/modules"
-	"github.com/safing/portbase/notifications"
 )
 
 func homeHubManager(ctx context.Context) (err error) {
@@ -83,8 +83,15 @@ managing:
 				// Fill connection status data.
 				spnStatus.Status = StatusConnected
 				spnStatus.HomeHubID = home.Hub.ID
-				spnStatus.ConnectedIP = homeTerminal.RemoteAddr().String()
+
+				connectedIP, err := netutils.IPFromAddr(homeTerminal.RemoteAddr())
+				if err != nil {
+					spnStatus.ConnectedIP = homeTerminal.RemoteAddr().String()
+				} else {
+					spnStatus.ConnectedIP = connectedIP.String()
+				}
 				spnStatus.ConnectedTransport = homeTerminal.Transport().String()
+
 				now := time.Now()
 				spnStatus.ConnectedSince = &now
 
