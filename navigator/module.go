@@ -18,12 +18,13 @@ var (
 
 var (
 	module *modules.Module
+	Main   *Map
 
 	devMode config.BoolOption
 )
 
 func init() {
-	module = modules.Register("navigator", prep, start, nil, "base", "geoip", "netenv")
+	module = modules.Register("navigator", prep, start, stop, "base", "geoip", "netenv")
 }
 
 func prep() error {
@@ -31,6 +32,7 @@ func prep() error {
 }
 
 func start() error {
+	Main = NewMap("main")
 	devMode = config.Concurrent.GetAsBool(config.CfgDevModeKey, false)
 
 	err := registerMapDatabase()
@@ -49,6 +51,13 @@ func start() error {
 	module.NewTask("update states", Main.updateStates).
 		Repeat(1 * time.Hour).
 		Schedule(time.Now().Add(3 * time.Minute))
+
+	return nil
+}
+
+func stop() error {
+	withdrawMapDatabase()
+	Main.Close()
 
 	return nil
 }

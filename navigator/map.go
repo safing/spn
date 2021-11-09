@@ -9,10 +9,6 @@ import (
 	"github.com/safing/spn/hub"
 )
 
-var (
-	Main = NewMap("main")
-)
-
 // Map represent a collection of Pins and their relationship and status.
 type Map struct {
 	sync.RWMutex

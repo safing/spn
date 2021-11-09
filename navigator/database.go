@@ -108,7 +108,7 @@ func registerMapDatabase() error {
 	_, err := database.Register(&database.Database{
 		Name:        "map",
 		Description: "SPN Network Maps",
-		StorageType: "injected",
+		StorageType: database.StorageTypeInjected,
 	})
 	if err != nil {
 		return err
@@ -120,6 +120,12 @@ func registerMapDatabase() error {
 	}
 
 	mapDBController = controller
+	return nil
+}
+
+func withdrawMapDatabase() error {
+	mapDBController.Withdraw()
+
 	return nil
 }
 
