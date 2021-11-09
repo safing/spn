@@ -87,9 +87,9 @@ func (pin *Pin) String() string {
 // updateLocationData fetches the necessary location data in order to correctly map out the Pin.
 func (pin *Pin) updateLocationData() {
 	if pin.Hub.Info.IPv4 != nil {
-		pin.EntityV4 = &intel.Entity{
-			IP: pin.Hub.Info.IPv4,
-		}
+		pin.EntityV4 = &intel.Entity{}
+		pin.EntityV4.SetIP(pin.Hub.Info.IPv4)
+
 		var ok bool
 		pin.LocationV4, ok = pin.EntityV4.GetLocation(context.TODO())
 		if !ok {
@@ -102,9 +102,9 @@ func (pin *Pin) updateLocationData() {
 	}
 
 	if pin.Hub.Info.IPv6 != nil {
-		pin.EntityV6 = &intel.Entity{
-			IP: pin.Hub.Info.IPv6,
-		}
+		pin.EntityV6 = &intel.Entity{}
+		pin.EntityV6.SetIP(pin.Hub.Info.IPv6)
+
 		var ok bool
 		pin.LocationV6, ok = pin.EntityV6.GetLocation(context.TODO())
 		if !ok {
