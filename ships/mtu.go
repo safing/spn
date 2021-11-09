@@ -25,11 +25,13 @@ func (ship *ShipBase) calculateLoadSize(ip net.IP, addr net.Addr, subtract ...in
 		}
 	}
 
-	// Subtract IP Header.
-	if ip4 := ip.To4(); ip4 != nil {
-		ship.loadSize -= IPv4HeaderMTUSize
-	} else {
-		ship.loadSize -= IPv6HeaderMTUSize
+	// Subtract IP Header, if IP is available.
+	if ip != nil {
+		if ip4 := ip.To4(); ip4 != nil {
+			ship.loadSize -= IPv4HeaderMTUSize
+		} else {
+			ship.loadSize -= IPv6HeaderMTUSize
+		}
 	}
 
 	// Subtract others.
