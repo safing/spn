@@ -145,3 +145,19 @@ func (m *Map) pushPinChangesWorker(ctx context.Context) error {
 
 	return nil
 }
+
+// pushChange pushes changes of the pin, if the pushChanges flag is set.
+func (pin *Pin) pushChange() {
+	// Check before starting the worker.
+	if pin.pushChanges.IsNotSet() {
+		return
+	}
+
+	// Start worker to push changes.
+	module.StartWorker("push pin change", func(ctx context.Context) error {
+		if pin.pushChanges.SetToIf(true, false) {
+			mapDBController.PushUpdate(pin.Export())
+		}
+		return nil
+	})
+}

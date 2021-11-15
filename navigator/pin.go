@@ -42,7 +42,7 @@ type Pin struct {
 	pushChanges *abool.AtomicBool
 }
 
-// Session represents a terminal
+// PinConnection represents a connection to a terminal on the Hub.
 type PinConnection struct {
 	// Terminal holds the active terminal session.
 	Terminal *docks.ExpansionTerminal
@@ -122,6 +122,10 @@ func (pin *Pin) SetActiveTerminal(pc *PinConnection) {
 	defer pin.Unlock()
 
 	pin.Connection = pc
+	if pin.Connection.Terminal != nil {
+		pin.Connection.Terminal.SetChangeNotifyFunc(pin.NotifyTerminalChange)
+	}
+
 	pin.pushChanges.Set()
 }
 
@@ -145,4 +149,12 @@ func (pin *Pin) HasActiveTerminal() bool {
 func (pin *Pin) hasActiveTerminal() bool {
 	return pin.Connection != nil &&
 		!pin.Connection.Terminal.IsAbandoned()
+}
+
+func (pin *Pin) NotifyTerminalChange() {
+	if !pin.HasActiveTerminal() {
+		pin.pushChanges.Set()
+	}
+
+	pin.pushChange()
 }

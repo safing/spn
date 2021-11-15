@@ -25,8 +25,9 @@ type PinExport struct {
 	States      []string // From pin.State
 	HopDistance int
 
-	ConnectedTo map[string]*LaneExport // Key is Hub ID.
-	Route       []string               // Includes Home Hub and this Pin's ID
+	ConnectedTo   map[string]*LaneExport // Key is Hub ID.
+	Route         []string               // Includes Home Hub and this Pin's ID.
+	SessionActive bool
 }
 
 // LaneExport is the exportable version of a Lane.
@@ -48,14 +49,15 @@ func (pin *Pin) Export() *PinExport {
 
 	// Shallow copy static values.
 	export := &PinExport{
-		ID:          pin.Hub.ID,
-		Name:        pin.Hub.Info.Name,
-		Map:         pin.Hub.Map,
-		FirstSeen:   pin.Hub.FirstSeen,
-		EntityV4:    pin.EntityV4,
-		EntityV6:    pin.EntityV6,
-		States:      pin.State.Export(),
-		HopDistance: pin.HopDistance,
+		ID:            pin.Hub.ID,
+		Name:          pin.Hub.Info.Name,
+		Map:           pin.Hub.Map,
+		FirstSeen:     pin.Hub.FirstSeen,
+		EntityV4:      pin.EntityV4,
+		EntityV6:      pin.EntityV6,
+		States:        pin.State.Export(),
+		HopDistance:   pin.HopDistance,
+		SessionActive: pin.hasActiveTerminal(),
 	}
 
 	// Export lanes.

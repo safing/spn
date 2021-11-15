@@ -19,6 +19,9 @@ type ExpansionTerminal struct {
 	opID         uint32
 	relayOp      terminal.OpTerminal
 	relayOpEnded *abool.AtomicBool
+
+	changeNotifyFuncReady *abool.AtomicBool
+	changeNotifyFunc      func()
 }
 
 func ExpandTo(t terminal.OpTerminal, routeTo string, encryptFor *hub.Hub) (*ExpansionTerminal, *terminal.Error) {
@@ -32,9 +35,10 @@ func ExpandTo(t terminal.OpTerminal, routeTo string, encryptFor *hub.Hub) (*Expa
 		return nil, tErr.Wrap("failed to create expansion terminal base")
 	}
 	expansion := &ExpansionTerminal{
-		TerminalBase: tBase,
-		relayOp:      t,
-		relayOpEnded: abool.New(),
+		TerminalBase:          tBase,
+		relayOp:               t,
+		relayOpEnded:          abool.New(),
+		changeNotifyFuncReady: abool.New(),
 	}
 	expansion.TerminalBase.SetTerminalExtension(expansion)
 	expansion.TerminalBase.SetTimeout(expansionClientTimeout)
@@ -118,6 +122,14 @@ func (t *ExpansionTerminal) stop(err *terminal.Error) {
 
 func (t *ExpansionTerminal) IsAbandoned() bool {
 	return t.Abandoned.IsSet()
+}
+
+func (t *ExpansionTerminal) SetChangeNotifyFunc(f func()) {
+	if t.changeNotifyFuncReady.IsSet() {
+		return
+	}
+	t.changeNotifyFunc = f
+	t.changeNotifyFuncReady.Set()
 }
 
 func (t *ExpansionTerminal) FmtID() string {
