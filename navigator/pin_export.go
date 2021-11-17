@@ -57,7 +57,7 @@ func (pin *Pin) Export() *PinExport {
 		EntityV6:      pin.EntityV6,
 		States:        pin.State.Export(),
 		HopDistance:   pin.HopDistance,
-		SessionActive: pin.hasActiveTerminal(),
+		SessionActive: pin.hasActiveTerminal() || pin.State.has(StateIsHomeHub),
 	}
 
 	// Export lanes.

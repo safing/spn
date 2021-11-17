@@ -117,6 +117,11 @@ func (t *ExpansionTerminal) stop(err *terminal.Error) {
 
 		// Send stop message.
 		t.relayOp.OpEnd(t, nil)
+
+		// Trigger update of connected Pin.
+		if t.changeNotifyFuncReady.IsSet() {
+			t.changeNotifyFunc()
+		}
 	}
 }
 
