@@ -42,6 +42,8 @@ func ClientReady() bool {
 }
 
 func clientManager(ctx context.Context) error {
+	defer resetSPNStatus(StatusDisabled)
+
 	for {
 		// wait / try again
 		select {
@@ -81,6 +83,7 @@ func preFlightCheck(ctx context.Context) error {
 			spnTestPhaseStatusLinkButton,
 			spnTestPhaseEnterCodeButton,
 		).AttachToModule(module)
+		resetSPNStatus(StatusFailed)
 		return errors.New("no access code configured")
 	}
 
@@ -97,6 +100,7 @@ func preFlightCheck(ctx context.Context) error {
 			spnTestPhaseStatusLinkButton,
 			spnTestPhaseEnterCodeButton,
 		).AttachToModule(module)
+		resetSPNStatus(StatusFailed)
 		return errors.New("invalid access code")
 	}
 
@@ -110,6 +114,7 @@ func preFlightCheck(ctx context.Context) error {
 			spnTestPhaseStatusLinkButton,
 			spnTestPhaseEnterCodeButton,
 		).AttachToModule(module)
+		resetSPNStatus(StatusFailed)
 		return fmt.Errorf("failed to get access code: %s", err)
 	}
 

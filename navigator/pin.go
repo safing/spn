@@ -4,12 +4,12 @@ import (
 	"context"
 	"time"
 
-	"github.com/safing/portmaster/intel"
-
 	"github.com/safing/portbase/log"
+	"github.com/safing/portmaster/intel"
 	"github.com/safing/portmaster/intel/geoip"
 	"github.com/safing/spn/docks"
 	"github.com/safing/spn/hub"
+	"github.com/tevino/abool"
 )
 
 // Pin represents a Hub on a Map.
@@ -24,8 +24,8 @@ type Pin struct {
 	// Hub Status
 	State       PinState
 	HopDistance int
-	Load        int // estimated in microseconds this port adds to latency
-	ConnectedTo map[string]*Lane
+	Load        int              // estimated in microseconds this port adds to latency
+	ConnectedTo map[string]*Lane // Key is Hub ID.
 
 	// FailingUntil specifies until when this Hub should be regarded as failing.
 	// This is connected to StateFailing.
@@ -39,10 +39,10 @@ type Pin struct {
 	// pushChanges is set to true if something noteworthy on the Pin changed and
 	// an update needs to be pushed by the database storage interface to whoever
 	// is listening.
-	pushChanges bool
+	pushChanges *abool.AtomicBool
 }
 
-// Session represents a terminal
+// PinConnection represents a connection to a terminal on the Hub.
 type PinConnection struct {
 	// Terminal holds the active terminal session.
 	Terminal *docks.ExpansionTerminal
@@ -60,12 +60,12 @@ type Lane struct {
 	Pin *Pin
 
 	// Capacity designates the available bandwidth between these Hubs.
-	// It is specified in MBit/s.
+	// It is specified in bit/s.
 	Capacity int
 
 	// Lateny designates the latency between these Hubs.
-	// It is specified in Milliseconds.
-	Latency int
+	// It is specified in nanoseconds.
+	Latency time.Duration
 
 	// active is a helper flag in order help remove abandoned Lanes.
 	active bool
@@ -87,9 +87,9 @@ func (pin *Pin) String() string {
 // updateLocationData fetches the necessary location data in order to correctly map out the Pin.
 func (pin *Pin) updateLocationData() {
 	if pin.Hub.Info.IPv4 != nil {
-		pin.EntityV4 = &intel.Entity{
-			IP: pin.Hub.Info.IPv4,
-		}
+		pin.EntityV4 = &intel.Entity{}
+		pin.EntityV4.SetIP(pin.Hub.Info.IPv4)
+
 		var ok bool
 		pin.LocationV4, ok = pin.EntityV4.GetLocation(context.TODO())
 		if !ok {
@@ -102,9 +102,9 @@ func (pin *Pin) updateLocationData() {
 	}
 
 	if pin.Hub.Info.IPv6 != nil {
-		pin.EntityV6 = &intel.Entity{
-			IP: pin.Hub.Info.IPv6,
-		}
+		pin.EntityV6 = &intel.Entity{}
+		pin.EntityV6.SetIP(pin.Hub.Info.IPv6)
+
 		var ok bool
 		pin.LocationV6, ok = pin.EntityV6.GetLocation(context.TODO())
 		if !ok {
@@ -117,6 +117,28 @@ func (pin *Pin) updateLocationData() {
 	}
 }
 
+func (pin *Pin) SetActiveTerminal(pc *PinConnection) {
+	pin.Lock()
+	defer pin.Unlock()
+
+	pin.Connection = pc
+	if pin.Connection.Terminal != nil {
+		pin.Connection.Terminal.SetChangeNotifyFunc(pin.NotifyTerminalChange)
+	}
+
+	pin.pushChanges.Set()
+}
+
+func (pin *Pin) GetActiveTerminal() *docks.ExpansionTerminal {
+	pin.Lock()
+	defer pin.Unlock()
+
+	if !pin.hasActiveTerminal() {
+		return nil
+	}
+	return pin.Connection.Terminal
+}
+
 func (pin *Pin) HasActiveTerminal() bool {
 	pin.Lock()
 	defer pin.Unlock()
@@ -127,4 +149,12 @@ func (pin *Pin) HasActiveTerminal() bool {
 func (pin *Pin) hasActiveTerminal() bool {
 	return pin.Connection != nil &&
 		!pin.Connection.Terminal.IsAbandoned()
+}
+
+func (pin *Pin) NotifyTerminalChange() {
+	if !pin.HasActiveTerminal() {
+		pin.pushChanges.Set()
+	}
+
+	pin.pushChange()
 }

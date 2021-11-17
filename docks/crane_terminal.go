@@ -105,6 +105,10 @@ func (t *CraneTerminal) RemoteAddr() net.Addr {
 	return t.crane.RemoteAddr()
 }
 
+func (t *CraneTerminal) Transport() *hub.Transport {
+	return t.crane.Transport()
+}
+
 func (t *CraneTerminal) IsAbandoned() bool {
 	return t.Abandoned.IsSet()
 }

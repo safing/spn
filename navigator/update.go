@@ -13,6 +13,7 @@ import (
 	"github.com/safing/portbase/log"
 	"github.com/safing/portbase/modules"
 	"github.com/safing/spn/hub"
+	"github.com/tevino/abool"
 )
 
 var (
@@ -100,7 +101,17 @@ func (m *Map) RemoveHub(id string) {
 	m.Lock()
 	defer m.Unlock()
 
+	// Get pin and remove it from the map, if it exists.
+	pin, ok := m.all[id]
+	if !ok {
+		return
+	}
 	delete(m.all, id)
+
+	// Push update to subscriptions.
+	export := pin.Export()
+	export.Meta().Delete()
+	mapDBController.PushUpdate(export)
 }
 
 // UpdateHub updates a Hub on the Map.
@@ -131,9 +142,11 @@ func (m *Map) updateHub(h *hub.Hub, lockMap, lockHub bool) {
 		pin = &Pin{
 			Hub:         h,
 			ConnectedTo: make(map[string]*Lane),
+			pushChanges: abool.New(),
 		}
 		m.all[h.ID] = pin
 	}
+	pin.pushChanges.Set()
 
 	// Update the invalid status of the Pin.
 	if pin.Hub.InvalidInfo || pin.Hub.InvalidStatus {
@@ -184,11 +197,13 @@ func (m *Map) updateHub(h *hub.Hub, lockMap, lockHub bool) {
 		if !lane.active {
 			// Remove Lane from this Pin.
 			delete(pin.ConnectedTo, id)
+			pin.pushChanges.Set()
 			removedLanes = true
 			// Remove Lane from peer.
 			peer, ok := m.all[id]
 			if ok {
 				delete(peer.ConnectedTo, pin.Hub.ID)
+				peer.pushChanges.Set()
 			}
 		}
 	}
@@ -201,7 +216,8 @@ func (m *Map) updateHub(h *hub.Hub, lockMap, lockHub bool) {
 		}
 	}
 
-	// log.Debugf("navigator: updated %s on map %s", h.StringWithoutLocking(), m.Name)
+	// Push updates.
+	m.PushPinChanges()
 }
 
 // updateHubLane updates a lane between two Hubs on the Map.
@@ -255,6 +271,7 @@ func (m *Map) updateHubLane(pin *Pin, lane *hub.Lane, peer *Pin) {
 		Latency:  combinedLatency,
 		active:   true,
 	}
+	peer.pushChanges.Set()
 
 	// Check for reachability.
 

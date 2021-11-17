@@ -6,16 +6,16 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/safing/portbase/log"
+	"github.com/safing/portbase/modules"
+	"github.com/safing/portbase/notifications"
 	"github.com/safing/portmaster/netenv"
+	"github.com/safing/portmaster/network/netutils"
 	"github.com/safing/spn/access"
 	"github.com/safing/spn/docks"
 	"github.com/safing/spn/hub"
 	"github.com/safing/spn/navigator"
 	"github.com/safing/spn/terminal"
-
-	"github.com/safing/portbase/log"
-	"github.com/safing/portbase/modules"
-	"github.com/safing/portbase/notifications"
 )
 
 func homeHubManager(ctx context.Context) (err error) {
@@ -43,6 +43,7 @@ managing:
 				log.Infof("spn/captain: client not ready")
 			}
 
+			resetSPNStatus(StatusConnecting)
 			err = establishHomeHub(ctx)
 			if err != nil {
 				log.Warningf("failed to establish connection to home hub: %s", err)
@@ -53,6 +54,7 @@ managing:
 					spnTestPhaseStatusLinkButton,
 					spnTestPhaseSettingsButton,
 				).AttachToModule(module)
+				resetSPNStatus(StatusFailed)
 				select {
 				case <-ctx.Done():
 				case <-time.After(4 * time.Second):
@@ -71,6 +73,32 @@ managing:
 			).AttachToModule(module)
 			ready.Set()
 			netenv.ConnectedToSPN.Set()
+
+			// Update SPN Status with connection information.
+			func() {
+				// Lock for updating values.
+				spnStatus.Lock()
+				defer spnStatus.Unlock()
+
+				// Fill connection status data.
+				spnStatus.Status = StatusConnected
+				spnStatus.HomeHubID = home.Hub.ID
+
+				connectedIP, err := netutils.IPFromAddr(homeTerminal.RemoteAddr())
+				if err != nil {
+					spnStatus.ConnectedIP = homeTerminal.RemoteAddr().String()
+				} else {
+					spnStatus.ConnectedIP = connectedIP.String()
+				}
+				spnStatus.ConnectedTransport = homeTerminal.Transport().String()
+
+				now := time.Now()
+				spnStatus.ConnectedSince = &now
+
+				// Push new status.
+				pushSPNStatusUpdate()
+			}()
+
 			log.Infof("spn/captain: established new home %s", home.Hub)
 			log.Infof("spn/captain: client is ready")
 		}

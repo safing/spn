@@ -176,6 +176,11 @@ func (crane *Crane) RemoteAddr() net.Addr {
 	return crane.ship.RemoteAddr()
 }
 
+func (crane *Crane) Transport() *hub.Transport {
+	t := crane.ship.Transport()
+	return &t
+}
+
 func (crane *Crane) getNextTerminalID() uint32 {
 	crane.terminalsLock.Lock()
 	defer crane.terminalsLock.Unlock()
