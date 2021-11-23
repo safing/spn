@@ -19,7 +19,7 @@ var (
 )
 
 func init() {
-	module = modules.Register("docks", nil, nil, stopAllCranes, "base", "cabin", "access-codes")
+	module = modules.Register("docks", nil, nil, stopAllCranes, "base", "cabin", "access")
 }
 
 func registerCrane(crane *Crane) error {

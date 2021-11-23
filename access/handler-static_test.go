@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/safing/jess/lhash"
+	"github.com/safing/spn/terminal"
 )
 
 func TestGenerateAndCheck(t *testing.T) {
@@ -28,7 +29,10 @@ func TestGenerateAndCheck(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	RegisterZone(zone, handler)
+	RegisterZone(zone, handler, terminal.AddPermissions(
+		terminal.MayExpand,
+		terminal.MayConnect,
+	))
 
 	// Client only: Import access code.
 	accessCode.Zone = zone
@@ -44,7 +48,7 @@ func TestGenerateAndCheck(t *testing.T) {
 	}
 
 	// Server only: Check code provided by client.
-	err = Check(codeForServer)
+	_, err = Check(codeForServer)
 	if err != nil {
 		t.Fatal(err)
 	}

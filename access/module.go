@@ -1,11 +1,13 @@
 package access
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 
 	"github.com/safing/jess/lhash"
 	"github.com/safing/portbase/modules"
+	"github.com/safing/spn/conf"
 	"github.com/safing/spn/terminal"
 )
 
@@ -16,12 +18,27 @@ var (
 	accessCodeFlag string
 )
 
+var (
+	ErrNotLoggedIn        = errors.New("not logged in")
+	ErrDeviceLimitReached = errors.New("device limit reached")
+	ErrDeviceIsLocked = errors.New("device is locked")
+	ErrInvalidCredentials = errors.New("invalid credentials")
+)
+
 func init() {
-	module = modules.Register("access-codes", prep, nil, nil)
+	module = modules.Register("access", prep, nil, nil)
 	flag.StringVar(&accessCodeFlag, "access-code", "", "Supply an SPN Special Access Code")
 }
 
 func prep() error {
+	// Register API handlers.
+	if conf.Client() {
+		err := registerAPIEndpoints()
+		if err != nil {
+			return err
+		}
+	}
+
 	// alpha2 handler
 	alpha2Handler, err := NewSaticCodeHandler(
 		"ZwojEvXZmAv7SZdNe7m94Xzu7F9J8vULqKf7QYtoTpN2tH",
