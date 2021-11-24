@@ -12,6 +12,11 @@ const (
 	AuthHeaderNextTokenDeprecated = "Next_token_17"
 )
 
+var (
+	ErrMissingDeviceID = errors.New("missing device ID")
+	ErrMissingToken    = errors.New("missing token")
+)
+
 type AuthToken struct {
 	Device string
 	Token  string
@@ -20,11 +25,11 @@ type AuthToken struct {
 func GetAuthTokenFromRequest(request *http.Request) (*AuthToken, error) {
 	device := request.Header.Get(AuthHeaderDevice)
 	if device == "" {
-		return nil, errors.New("device ID is missing")
+		return nil, ErrMissingDeviceID
 	}
 	token := request.Header.Get(AuthHeaderToken)
 	if token == "" {
-		return nil, errors.New("token is missing")
+		return nil, ErrMissingToken
 	}
 
 	return &AuthToken{
@@ -36,4 +41,18 @@ func GetAuthTokenFromRequest(request *http.Request) (*AuthToken, error) {
 func (at *AuthToken) ApplyTo(request *http.Request) {
 	request.Header.Set(AuthHeaderDevice, at.Device)
 	request.Header.Set(AuthHeaderToken, at.Token)
+}
+
+func GetNextTokenFromResponse(resp *http.Response) (token string, ok bool) {
+	token = resp.Header.Get(AuthHeaderNextToken)
+	if token == "" {
+		// TODO: Remove when fixed on server.
+		token = resp.Header.Get(AuthHeaderNextTokenDeprecated)
+	}
+
+	return token, token != ""
+}
+
+func ApplyNextTokenToResponse(resp *http.Response, token string) {
+	resp.Header.Set(AuthHeaderNextToken, token)
 }

@@ -1,7 +1,6 @@
 package access
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
 	"sync"
@@ -46,15 +45,9 @@ func (authToken *AuthTokenRecord) GetToken() *account.AuthToken {
 }
 
 func SaveNewAuthToken(deviceID string, resp *http.Response) error {
-	token := resp.Header.Get(account.AuthHeaderNextToken)
-	if token == "" {
-		// TODO: Remove when fixed on server.
-		token = resp.Header.Get(account.AuthHeaderNextTokenDeprecated)
-	}
-	if token == "" {
-		fmt.Printf("%+v", resp)
-		fmt.Printf("%+v", resp.Header)
-		return errors.New("token is missing")
+	token, ok := account.GetNextTokenFromResponse(resp)
+	if !ok {
+		return account.ErrMissingToken
 	}
 
 	newAuthToken := &AuthTokenRecord{
@@ -67,13 +60,9 @@ func SaveNewAuthToken(deviceID string, resp *http.Response) error {
 }
 
 func (authToken *AuthTokenRecord) Update(resp *http.Response) error {
-	token := resp.Header.Get(account.AuthHeaderNextToken)
-	if token == "" {
-		// TODO: Remove when fixed on server.
-		token = resp.Header.Get(account.AuthHeaderNextTokenDeprecated)
-	}
-	if token == "" {
-		return errors.New("token is missing")
+	token, ok := account.GetNextTokenFromResponse(resp)
+	if !ok {
+		return account.ErrMissingToken
 	}
 
 	// Update token with new account.AuthToken.

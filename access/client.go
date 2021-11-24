@@ -26,6 +26,8 @@ const (
 var (
 	accountClient     = &http.Client{}
 	clientRequestLock sync.Mutex
+
+	requestTimeout = 10 * time.Second
 )
 
 func login(ctx context.Context, username, password string) (user *UserRecord, code int, err error) {
@@ -35,13 +37,20 @@ func login(ctx context.Context, username, password string) (user *UserRecord, co
 	// Get previous user.
 	previousUser, err := GetUser()
 	if err != nil {
+		if !errors.Is(err, database.ErrNotFound) {
+			log.Warningf("access: failed to get previous for re-login: %s", err)
+		}
 		previousUser = nil
 	}
 
 newRequest:
 
 	// Create new request.
+	ctx, _ = context.WithTimeout(ctx, requestTimeout)
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, AccountServer+LoginPath, nil)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to create request: %w", err)
+	}
 
 	// Add username and password.
 	request.SetBasicAuth(username, password)
@@ -62,6 +71,7 @@ newRequest:
 	if err != nil {
 		return nil, 0, fmt.Errorf("request failed: %w", err)
 	}
+	defer resp.Body.Close()
 	switch resp.StatusCode {
 	case http.StatusOK, http.StatusCreated:
 		// All good!
@@ -182,6 +192,7 @@ func getUserProfile(ctx context.Context) (user *UserRecord, statusCode int, err 
 	}
 
 	// Create new request.
+	ctx, _ = context.WithTimeout(ctx, requestTimeout)
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, AccountServer+UserProfilePath, nil)
 
 	// Set auth token.
@@ -198,6 +209,7 @@ func getUserProfile(ctx context.Context) (user *UserRecord, statusCode int, err 
 	if err != nil {
 		return nil, 0, fmt.Errorf("request failed: %w", err)
 	}
+	defer resp.Body.Close()
 	switch resp.StatusCode {
 	case http.StatusOK:
 	// All good!

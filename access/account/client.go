@@ -2,7 +2,7 @@ package account
 
 const (
 	CAAuthenticateURL = "/authenticate"
-	CAProfileURL      = "/profile"
+	CAProfileURL      = "/user/profile"
 	CAGetTokensURL    = "/tokens"
 )
 
