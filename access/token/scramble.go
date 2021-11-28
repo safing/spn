@@ -37,11 +37,11 @@ type ScrambleHandler struct {
 }
 
 type ScrambleOptions struct {
-	Zone string
-
+	Zone             string
 	Algorithm        lhash.Algorithm
 	InitialTokens    []string
 	InitialVerifiers []string
+	Fallback         bool
 }
 
 type ScrambleTokenRequest struct {
@@ -97,6 +97,19 @@ func (sh *ScrambleHandler) ShouldRequest() bool {
 	defer sh.storageLock.Unlock()
 
 	return len(sh.Storage) == 0
+}
+
+// Amount returns the current amount of tokens in this handler.
+func (sh *ScrambleHandler) Amount() int {
+	sh.storageLock.Lock()
+	defer sh.storageLock.Unlock()
+
+	return len(sh.Storage)
+}
+
+// IsFallback returns whether this handler should only be used as a fallback.
+func (sh *ScrambleHandler) IsFallback() bool {
+	return sh.opts.Fallback
 }
 
 // CreateTokenRequest creates a token request to be sent to the token server.

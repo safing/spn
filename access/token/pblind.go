@@ -58,6 +58,7 @@ type PBlindHandler struct {
 
 type PBlindOptions struct {
 	Zone                  string
+	CurveName             string
 	Curve                 elliptic.Curve
 	PublicKey             string
 	PrivateKey            string
@@ -66,6 +67,7 @@ type PBlindOptions struct {
 	RandomizeOrder        bool
 	SignalShouldRequest   func(Handler)
 	DoubleSpendProtection func([]byte) error
+	Fallback              bool
 }
 
 type PBlindSignerState struct {
@@ -94,10 +96,24 @@ func NewPBlindHandler(opts PBlindOptions) (*PBlindHandler, error) {
 		opts: &opts,
 	}
 
-	switch {
-	case pbh.opts.PrivateKey != "" && pbh.opts.PublicKey != "":
-		return nil, errors.New("both private and public key supplied")
+	// Check curve, get from name.
+	if opts.Curve == nil {
+		switch opts.CurveName {
+		case "P-256":
+			opts.Curve = elliptic.P256()
+		case "P-384":
+			opts.Curve = elliptic.P384()
+		case "P-521":
+			opts.Curve = elliptic.P521()
+		default:
+			return nil, errors.New("no curve supplied")
+		}
+	} else if opts.CurveName != "" {
+		return nil, errors.New("both curve and curve name supplied")
+	}
 
+	// Load keys.
+	switch {
 	case pbh.opts.PrivateKey != "":
 		keyData, err := base58.Decode(pbh.opts.PrivateKey)
 		if err != nil {
@@ -107,6 +123,13 @@ func NewPBlindHandler(opts PBlindOptions) (*PBlindHandler, error) {
 		pbh.privateKey = &pivateKey
 		publicKey := pbh.privateKey.GetPublicKey()
 		pbh.publicKey = &publicKey
+
+		// Check public key if also provided.
+		if pbh.opts.PublicKey != "" {
+			if pbh.opts.PublicKey != base58.Encode(pbh.publicKey.Bytes()) {
+				return nil, errors.New("private and public mismatch")
+			}
+		}
 
 	case pbh.opts.PublicKey != "":
 		keyData, err := base58.Decode(pbh.opts.PublicKey)
@@ -159,6 +182,19 @@ func (pbh *PBlindHandler) ShouldRequest() bool {
 func (pbh *PBlindHandler) shouldRequest() bool {
 	// Return true if storage is at or below 10%.
 	return len(pbh.Storage) == 0 || pbh.opts.BatchSize/len(pbh.Storage) > 10
+}
+
+// Amount returns the current amount of tokens in this handler.
+func (pbh *PBlindHandler) Amount() int {
+	pbh.storageLock.Lock()
+	defer pbh.storageLock.Unlock()
+
+	return len(pbh.Storage)
+}
+
+// IsFallback returns whether this handler should only be used as a fallback.
+func (pbh *PBlindHandler) IsFallback() bool {
+	return pbh.opts.Fallback
 }
 
 // CreateSetup sets up signers for a request.

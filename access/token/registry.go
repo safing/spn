@@ -10,6 +10,12 @@ type Handler interface {
 	// ShouldRequest returns whether the new tokens should be requested.
 	ShouldRequest() bool
 
+	// Amount returns the current amount of tokens in this handler.
+	Amount() int
+
+	// IsFallback returns whether this handler should only be used as a fallback.
+	IsFallback() bool
+
 	// GetToken returns a token.
 	GetToken() (token *Token, err error)
 
@@ -24,12 +30,22 @@ type Handler interface {
 }
 
 var (
-	registry         = make(map[string]Handler)
-	pblindRegistry   = make([]*PBlindHandler, 0, 1)
-	scrambleRegistry = make([]*ScrambleHandler, 0, 1)
+	registry         map[string]Handler
+	pblindRegistry   []*PBlindHandler
+	scrambleRegistry []*ScrambleHandler
 
 	registryLock sync.RWMutex
 )
+
+func init() {
+	initRegistry()
+}
+
+func initRegistry() {
+	registry = make(map[string]Handler)
+	pblindRegistry = make([]*PBlindHandler, 0, 1)
+	scrambleRegistry = make([]*ScrambleHandler, 0, 1)
+}
 
 func RegisterPBlindHandler(h *PBlindHandler) error {
 	registryLock.Lock()
@@ -75,4 +91,11 @@ func GetHandler(zone string) (handler Handler, ok bool) {
 
 	handler, ok = registry[zone]
 	return
+}
+
+func ResetRegistry() {
+	registryLock.Lock()
+	defer registryLock.Unlock()
+
+	initRegistry()
 }
