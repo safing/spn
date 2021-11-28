@@ -3,6 +3,7 @@ package access
 import (
 	"github.com/safing/portbase/container"
 	"github.com/safing/portbase/log"
+	"github.com/safing/spn/access/token"
 	"github.com/safing/spn/terminal"
 )
 
@@ -29,12 +30,12 @@ func AuthorizeToTerminal(t terminal.OpTerminal) (*AuthorizeOp, *terminal.Error) 
 	op := &AuthorizeOp{}
 	op.Init(0)
 
-	code, err := GetCode(MainZone)
+	newToken, err := GetToken(ExpandAndConnectZones)
 	if err != nil {
-		return nil, terminal.ErrInternalError.With("failed to get access code: %w", err)
+		return nil, terminal.ErrInternalError.With("failed to get access token: %w", err)
 	}
 
-	tErr := t.OpInit(op, container.New(code.Raw()))
+	tErr := t.OpInit(op, container.New(newToken.Raw()))
 	if tErr != nil {
 		return nil, terminal.ErrInternalError.With("failed to init auth op: %w", tErr)
 	}
@@ -43,16 +44,16 @@ func AuthorizeToTerminal(t terminal.OpTerminal) (*AuthorizeOp, *terminal.Error) 
 }
 
 func checkAccessCode(t terminal.OpTerminal, opID uint32, initData *container.Container) (terminal.Operation, *terminal.Error) {
-	// Parse provided access code.
-	code, err := ParseRawCode(initData.CompileData())
+	// Parse provided access token.
+	receivedToken, err := token.ParseRawToken(initData.CompileData())
 	if err != nil {
-		return nil, terminal.ErrMalformedData.With("failed to parse access code: %w", err)
+		return nil, terminal.ErrMalformedData.With("failed to parse access token: %w", err)
 	}
 
-	// Check if code is valid.
-	granted, err := Check(code)
+	// Check if token is valid.
+	granted, err := VerifyToken(receivedToken)
 	if err != nil {
-		return nil, terminal.ErrPermissinDenied.With("invalid access code: %w", err)
+		return nil, terminal.ErrPermissinDenied.With("invalid access token: %w", err)
 	}
 
 	// Get the authorizing terminal for applying the granted permission.
@@ -63,7 +64,7 @@ func checkAccessCode(t terminal.OpTerminal, opID uint32, initData *container.Con
 
 	// Grant permissions.
 	authTerm.GrantPermission(granted)
-	log.Debugf("spn/access: granted %s permissions via %s zone", t.FmtID(), code.Zone)
+	log.Debugf("spn/access: granted %s permissions via %s zone", t.FmtID(), receivedToken.Zone)
 
 	// End successfully.
 	return nil, terminal.ErrExplicitAck

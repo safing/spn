@@ -1,33 +1,41 @@
 package access
 
 import (
+	"context"
 	"errors"
-	"flag"
 	"fmt"
+	"time"
 
-	"github.com/safing/jess/lhash"
+	"github.com/safing/spn/access/account"
+	"github.com/tevino/abool"
+
+	"github.com/safing/portbase/config"
+	"github.com/safing/portbase/log"
 	"github.com/safing/portbase/modules"
 	"github.com/safing/spn/conf"
-	"github.com/safing/spn/terminal"
 )
 
 var (
-	MainZone = "alpha2"
+	module *modules.Module
 
-	module         *modules.Module
-	accessCodeFlag string
+	accountUpdateTask *modules.Task
+
+	tokenIssuerIsFailing     = abool.New()
+	tokenIssuerRetryDuration = 10 * time.Minute
 )
 
+// Errors.
 var (
-	ErrNotLoggedIn        = errors.New("not logged in")
-	ErrDeviceLimitReached = errors.New("device limit reached")
-	ErrDeviceIsLocked = errors.New("device is locked")
-	ErrInvalidCredentials = errors.New("invalid credentials")
+	ErrDeviceIsLocked       = errors.New("device is locked")
+	ErrDeviceLimitReached   = errors.New("device limit reached")
+	ErrFallbackNotAvailable = errors.New("fallback tokens not available, token issuer is online")
+	ErrInvalidCredentials   = errors.New("invalid credentials")
+	ErrMayNotUseSPN         = errors.New("may not use SPN")
+	ErrNotLoggedIn          = errors.New("not logged in")
 )
 
 func init() {
-	module = modules.Register("access", prep, nil, nil)
-	flag.StringVar(&accessCodeFlag, "access-code", "", "Supply an SPN Special Access Code")
+	module = modules.Register("access", prep, start, stop)
 }
 
 func prep() error {
@@ -39,31 +47,99 @@ func prep() error {
 		}
 	}
 
-	// alpha2 handler
-	alpha2Handler, err := NewSaticCodeHandler(
-		"ZwojEvXZmAv7SZdNe7m94Xzu7F9J8vULqKf7QYtoTpN2tH",
-		lhash.BLAKE2b_256,
-	)
-	if err != nil {
-		return fmt.Errorf("failed to create alpha2 handler: %s", err)
-	}
-	RegisterZone("alpha2", alpha2Handler, terminal.AddPermissions(
-		terminal.MayExpand,
-		terminal.MayConnect,
-	))
+	return nil
+}
 
-	// parse access code flag
-	if accessCodeFlag != "" {
-		// test code
-		code, err := ParseCode(accessCodeFlag)
-		if err != nil {
-			return fmt.Errorf("the supplied access code is malformed: %s", err)
-		}
-		err = Import(code)
-		if err != nil {
-			return fmt.Errorf("failed to import supplied access code: %s", err)
-		}
+func start() error {
+	// Initialize zones.
+	if err := initializeZones(); err != nil {
+		return err
+	}
+
+	if conf.Client() {
+		// Register new task.
+		accountUpdateTask = module.NewTask(
+			"update account",
+			UpdateAccount,
+		).Repeat(24 * time.Hour)
+		// First execution is done by the client manager in the captain module.
 	}
 
 	return nil
+}
+
+func stop() error {
+	// Reset zones.
+	resetZones()
+
+	return nil
+}
+
+func UpdateAccount(_ context.Context, task *modules.Task) error {
+	// Retry sooner if the token issuer is failing.
+	defer func() {
+		if tokenIssuerIsFailing.IsSet() && task != nil {
+			task.Schedule(time.Now().Add(tokenIssuerRetryDuration))
+		}
+	}()
+
+	_, _, err := getUserProfile()
+	if err != nil {
+		return fmt.Errorf("failed to update user profile: %w", err)
+	}
+
+	err = getTokens()
+	if err != nil {
+		return fmt.Errorf("failed to get tokens: %w", err)
+	}
+
+	return nil
+}
+
+func enableSPN() {
+	err := config.SetConfigOption("spn/enable", true)
+	if err != nil {
+		log.Warningf("access: failed to enable the SPN during login: %s", err)
+	}
+}
+
+func disableSPN() {
+	err := config.SetConfigOption("spn/enable", false)
+	if err != nil {
+		log.Warningf("access: failed to disable the SPN during logout: %s", err)
+	}
+}
+
+func TokenIssuerIsFailing() bool {
+	return tokenIssuerIsFailing.IsSet()
+}
+
+func tokenIssuerFailed() {
+	if !tokenIssuerIsFailing.SetToIf(false, true) {
+		return
+	}
+	if !module.Online() {
+		return
+	}
+
+	accountUpdateTask.Schedule(time.Now().Add(tokenIssuerRetryDuration))
+}
+
+func (user *UserRecord) IsLoggedIn() bool {
+	user.Lock()
+	defer user.Unlock()
+
+	switch user.State {
+	case account.UserStateNone, account.UserStateLoggedOut:
+		return false
+	default:
+		return true
+	}
+}
+
+func (user *UserRecord) MayUseTheSPN() bool {
+	user.Lock()
+	defer user.Unlock()
+
+	return user.User.MayUseSPN()
 }

@@ -1,7 +1,6 @@
 package access
 
 import (
-	"context"
 	"os"
 	"testing"
 )
@@ -20,7 +19,7 @@ func TestClient(t *testing.T) {
 	clearUserCaches()
 	loginAndRefresh(t, false, 1)
 
-	err := logout(false)
+	err := logout(false, false)
 	if err != nil {
 		t.Fatalf("failed to log out: %s", err)
 	}
@@ -28,7 +27,7 @@ func TestClient(t *testing.T) {
 
 	loginAndRefresh(t, true, 1)
 
-	err = logout(true)
+	err = logout(false, true)
 	if err != nil {
 		t.Fatalf("failed to log out: %s", err)
 	}
@@ -39,7 +38,7 @@ func TestClient(t *testing.T) {
 
 func loginAndRefresh(t *testing.T, doLogin bool, refreshTimes int) {
 	if doLogin {
-		_, _, err := login(context.Background(), testUsername, testPassword)
+		_, _, err := login(testUsername, testPassword)
 		if err != nil {
 			t.Fatalf("login failed: %s", err)
 		}
@@ -57,7 +56,7 @@ func loginAndRefresh(t *testing.T, doLogin bool, refreshTimes int) {
 	}
 
 	for i := 0; i < refreshTimes; i++ {
-		user, _, err := getUserProfile(context.Background())
+		user, _, err := getUserProfile()
 		if err != nil {
 			t.Fatalf("getting profile failed: %s", err)
 		}

@@ -14,7 +14,6 @@ func registerAPIEndpoints() error {
 		Path:        `spn/account/login`,
 		Write:       api.PermitAdmin,
 		WriteMethod: http.MethodPost,
-		BelongsTo:   module,
 		HandlerFunc: handleLogin,
 		Name:        "SPN Login",
 		Description: "Log into your SPN account.",
@@ -26,7 +25,6 @@ func registerAPIEndpoints() error {
 		Path:        `spn/account/logout`,
 		Write:       api.PermitAdmin,
 		WriteMethod: http.MethodDelete,
-		BelongsTo:   module,
 		ActionFunc:  handleLogout,
 		Name:        "SPN Logout",
 		Description: "Logout from your SPN account.",
@@ -46,7 +44,6 @@ func registerAPIEndpoints() error {
 		Path:        `spn/account/user/profile`,
 		Read:        api.PermitUser,
 		ReadMethod:  http.MethodGet,
-		BelongsTo:   module,
 		RecordFunc:  handleGetUserProfile,
 		Name:        "SPN User Profile",
 		Description: "Get the user profile of the logged in SPN account.",
@@ -87,7 +84,7 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Process login.
-	user, code, err := login(module.Ctx, username, password)
+	user, code, err := login(username, password)
 	if err != nil {
 		if code == 0 {
 			http.Error(w, "Internal error: "+err.Error(), http.StatusInternalServerError)
@@ -106,7 +103,7 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 
 func handleLogout(ar *api.Request) (msg string, err error) {
 	_, purge := ar.URLVars["purge"]
-	err = logout(purge)
+	err = logout(false, purge)
 	switch {
 	case err != nil:
 		return "", err
@@ -129,7 +126,7 @@ func handleGetUserProfile(ar *api.Request) (r record.Record, err error) {
 
 	// Should we refresh the user profile?
 	if _, ok := ar.URLVars["refresh"]; ok {
-		user, _, err = getUserProfile(module.Ctx)
+		user, _, err = getUserProfile()
 		if err != nil {
 			return nil, err
 		}

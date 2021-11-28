@@ -2,91 +2,155 @@ package access
 
 import (
 	"fmt"
-	"sync"
 
+	"github.com/safing/jess/lhash"
+	"github.com/safing/portbase/log"
+	"github.com/safing/spn/access/token"
 	"github.com/safing/spn/terminal"
 )
 
 var (
-	zones     = make(map[string]*Zone)
-	zonesLock sync.Mutex
+	ExpandAndConnectZones = []string{"pblind1", "alpha2", "fallback1"}
+
+	zonePermissions = map[string]terminal.Permission{
+		"pblind1":   terminal.AddPermissions(terminal.MayExpand, terminal.MayConnect),
+		"alpha2":    terminal.AddPermissions(terminal.MayExpand, terminal.MayConnect),
+		"fallback1": terminal.AddPermissions(terminal.MayExpand, terminal.MayConnect),
+	}
 )
 
-type Zone struct {
-	handler CodeHandler
-	grants  terminal.Permission
-}
-
-// RegisterZone registers a handler with the given zone name.
-func RegisterZone(zone string, handler CodeHandler, grants terminal.Permission) {
-	zonesLock.Lock()
-	defer zonesLock.Unlock()
-
-	zones[zone] = &Zone{
-		handler: handler,
-		grants:  grants,
+func initializeZones() error {
+	// Register pblind1 as the first primary zone.
+	ph, err := token.NewPBlindHandler(token.PBlindOptions{
+		Zone:           "pblind1",
+		CurveName:      "P-256",
+		PublicKey:      "eXoJXzXbM66UEsM2eVi9HwyBPLMfVnNrC7gNrsfMUJDs",
+		UseSerials:     true,
+		BatchSize:      1000,
+		RandomizeOrder: true,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create pblind1 token handler: %w", err)
 	}
+	err = token.RegisterPBlindHandler(ph)
+	if err != nil {
+		return fmt.Errorf("failed to register pblind1 token handler: %w", err)
+	}
+
+	// Register fallback1 zone as fallback when the issuer is not available.
+	sh, err := token.NewScrambleHandler(token.ScrambleOptions{
+		Zone:             "fallback1",
+		Algorithm:        lhash.BLAKE2b_256,
+		InitialVerifiers: []string{"ZwkQoaAttVBMURzeLzNXokFBMAMUUwECfM1iHojcVKBmjk"},
+		Fallback:         true,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create fallback1 token handler: %w", err)
+	}
+	err = token.RegisterScrambleHandler(sh)
+	if err != nil {
+		return fmt.Errorf("failed to register fallback1 token handler: %w", err)
+	}
+
+	// Register alpha2 zone for transition phase.
+	sh, err = token.NewScrambleHandler(token.ScrambleOptions{
+		Zone:             "alpha2",
+		Algorithm:        lhash.BLAKE2b_256,
+		InitialVerifiers: []string{"ZwojEvXZmAv7SZdNe7m94Xzu7F9J8vULqKf7QYtoTpN2tH"},
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create alpha2 token handler: %w", err)
+	}
+	err = token.RegisterScrambleHandler(sh)
+	if err != nil {
+		return fmt.Errorf("failed to register alpha2 token handler: %w", err)
+	}
+
+	return nil
 }
 
-// GetZone returns the zone data for the given zone ID.
-func GetZone(zoneID string) (*Zone, error) {
-	zonesLock.Lock()
-	defer zonesLock.Unlock()
+func resetZones() {
+	token.ResetRegistry()
+}
 
-	zone, ok := zones[zoneID]
+func GetTokenAmount(zones []string) (regular, fallback int) {
+handlerLoop:
+	for _, zone := range zones {
+		// Get handler and check if it should be used.
+		handler, ok := token.GetHandler(zone)
+		if !ok {
+			log.Warningf("access: use of non-registered zone %q", zone)
+			continue handlerLoop
+		}
+
+		if handler.IsFallback() {
+			fallback += handler.Amount()
+		} else {
+			regular += handler.Amount()
+		}
+	}
+
+	return
+}
+
+func GetToken(zones []string) (t *token.Token, err error) {
+handlerSelection:
+	for _, zone := range zones {
+		// Get handler and check if it should be used.
+		handler, ok := token.GetHandler(zone)
+		switch {
+		case !ok:
+			log.Warningf("access: use of non-registered zone %q", zone)
+			continue handlerSelection
+		case handler.IsFallback() && !TokenIssuerIsFailing():
+			// Skip fallback zone if everything works.
+			continue handlerSelection
+		}
+
+		// Get token from handler.
+		t, err = token.GetToken(zone)
+		if err == nil {
+			return t, nil
+		}
+	}
+
+	// Return existing error, if exists.
+	if err != nil {
+		return nil, err
+	}
+	return nil, token.ErrEmpty
+}
+
+func VerifyRawToken(data []byte) (granted terminal.Permission, err error) {
+	t, err := token.ParseRawToken(data)
+	if err != nil {
+		return 0, fmt.Errorf("failed to parse token: %w", err)
+	}
+
+	return VerifyToken(t)
+}
+
+func VerifyToken(t *token.Token) (granted terminal.Permission, err error) {
+	handler, ok := token.GetHandler(t.Zone)
 	if !ok {
-		return nil, fmt.Errorf("zone %q not registered", zoneID)
+		return terminal.NoPermission, token.ErrZoneUnknown
 	}
 
-	return zone, nil
-}
+	// Check if the token is a fallback token.
+	if handler.IsFallback() && !healthCheck() {
+		return terminal.NoPermission, ErrFallbackNotAvailable
+	}
 
-// Generate generates a new code for the given zone.
-func Generate(zoneID string) (*Code, error) {
-	zone, err := GetZone(zoneID)
+	// Verify token.
+	err = handler.Verify(t)
 	if err != nil {
-		return nil, err
+		return 0, fmt.Errorf("failed to verify token: %w", err)
 	}
 
-	code, err := zone.handler.Generate()
-	if err != nil {
-		return nil, err
+	// Return permission of zone.
+	granted, ok = zonePermissions[t.Zone]
+	if !ok {
+		return terminal.NoPermission, nil
 	}
-
-	code.Zone = zoneID
-	return code, nil
-}
-
-// Check checks if the given code is valid.
-func Check(code *Code) (granted terminal.Permission, err error) {
-	zone, err := GetZone(code.Zone)
-	if err != nil {
-		return 0, err
-	}
-
-	err = zone.handler.Check(code)
-	if err != nil {
-		return 0, err
-	}
-
-	return zone.grants, nil
-}
-
-// Import imports a code into the given zone.
-func Import(code *Code) error {
-	zone, err := GetZone(code.Zone)
-	if err != nil {
-		return err
-	}
-
-	return zone.handler.Import(code)
-}
-
-func GetCode(zoneID string) (code *Code, err error) {
-	zone, err := GetZone(zoneID)
-	if err != nil {
-		return nil, err
-	}
-
-	return zone.handler.Get()
+	return granted, nil
 }

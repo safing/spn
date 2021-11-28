@@ -22,18 +22,18 @@ func homeHubManager(ctx context.Context) (err error) {
 	defer ready.UnSet()
 	defer netenv.ConnectedToSPN.UnSet()
 
-	module.Hint(
-		"spn:establishing-home-hub",
-		"Connecting to SPN...",
-		"Connecting to the SPN network is in progress.",
-	)
-
 managing:
 	for {
-		select {
-		case <-ctx.Done():
-			return nil
-		case <-time.After(1 * time.Second):
+		// Check if we are online enough for connecting.
+		switch netenv.GetOnlineStatus() {
+		case netenv.StatusOffline,
+			netenv.StatusLimited:
+			select {
+			case <-ctx.Done():
+				return nil
+			case <-time.After(1 * time.Second):
+				continue managing
+			}
 		}
 
 		home, homeTerminal := navigator.Main.GetHome()
@@ -52,7 +52,7 @@ managing:
 					"SPN Failed to Connect",
 					fmt.Sprintf("Failed to connect to a home hub: %s. The Portmaster will retry to connect automatically.", err),
 					spnTestPhaseStatusLinkButton,
-					spnTestPhaseSettingsButton,
+					spnSettingsButton,
 				).AttachToModule(module)
 				resetSPNStatus(StatusFailed)
 				select {
@@ -69,7 +69,7 @@ managing:
 				"Connected to SPN",
 				fmt.Sprintf("You are connected to the SPN at %s. This notification is persistent for awareness.", homeTerminal.RemoteAddr()),
 				spnTestPhaseStatusLinkButton,
-				spnTestPhaseSettingsButton,
+				spnSettingsButton,
 			).AttachToModule(module)
 			ready.Set()
 			netenv.ConnectedToSPN.Set()
@@ -101,6 +101,13 @@ managing:
 
 			log.Infof("spn/captain: established new home %s", home.Hub)
 			log.Infof("spn/captain: client is ready")
+		}
+
+		// Try again after a short break.
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-time.After(1 * time.Second):
 		}
 	}
 

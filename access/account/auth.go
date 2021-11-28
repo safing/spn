@@ -53,6 +53,6 @@ func GetNextTokenFromResponse(resp *http.Response) (token string, ok bool) {
 	return token, token != ""
 }
 
-func ApplyNextTokenToResponse(resp *http.Response, token string) {
-	resp.Header.Set(AuthHeaderNextToken, token)
+func ApplyNextTokenToResponse(w http.ResponseWriter, token string) {
+	w.Header().Set(AuthHeaderNextToken, token)
 }

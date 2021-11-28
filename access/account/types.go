@@ -11,6 +11,7 @@ const (
 	UserStateQueued    = "queued"
 	UserStateApproved  = "approved"
 	UserStateSuspended = "suspended"
+	UserStateLoggedOut = "loggedout" // Portmaster only.
 
 	SubscriptionStatePending   = "pending"
 	SubscriptionStateActive    = "active"
