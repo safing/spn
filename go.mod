@@ -12,6 +12,7 @@ require (
 	github.com/klauspost/reedsolomon v1.9.14 // indirect
 	github.com/mitchellh/copystructure v1.2.0
 	github.com/mr-tron/base58 v1.2.0
+	github.com/rot256/pblind v0.0.0-20211117203330-22455f90b565
 	github.com/safing/jess v0.2.3
 	github.com/safing/portbase v0.12.4
 	github.com/safing/portmaster v0.7.6

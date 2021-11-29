@@ -3,6 +3,7 @@ package terminal
 type Permission uint16
 
 const (
+	NoPermission      Permission = 0x0
 	MayExpand         Permission = 0x1
 	MayConnect        Permission = 0x2
 	IsHubOwner        Permission = 0x100

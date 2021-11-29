@@ -1,4 +1,4 @@
-package access
+package token
 
 import (
 	"bytes"
@@ -11,19 +11,30 @@ import (
 	"github.com/safing/portbase/container"
 )
 
-type Code struct {
+type Token struct {
 	Zone string
 	Data []byte
 }
 
-type CodeHandler interface {
-	Generate() (*Code, error)
-	Check(code *Code) error
-	Import(code *Code) error
-	Get() (*Code, error)
+func GetToken(zone string) (*Token, error) {
+	handler, ok := GetHandler(zone)
+	if !ok {
+		return nil, ErrZoneUnknown
+	}
+
+	return handler.GetToken()
 }
 
-func (c *Code) Raw() []byte {
+func VerifyToken(token *Token) error {
+	handler, ok := GetHandler(token.Zone)
+	if !ok {
+		return ErrZoneUnknown
+	}
+
+	return handler.Verify(token)
+}
+
+func (c *Token) Raw() []byte {
 	cont := container.New()
 	cont.Append([]byte(c.Zone))
 	cont.Append([]byte(":"))
@@ -31,23 +42,23 @@ func (c *Code) Raw() []byte {
 	return cont.CompileData()
 }
 
-func (c *Code) String() string {
+func (c *Token) String() string {
 	return c.Zone + ":" + base58.Encode(c.Data)
 }
 
-func ParseRawCode(code []byte) (*Code, error) {
+func ParseRawToken(code []byte) (*Token, error) {
 	splitted := bytes.SplitN(code, []byte(":"), 2)
 	if len(splitted) < 2 {
 		return nil, errors.New("invalid code format: zone/data separator missing")
 	}
 
-	return &Code{
+	return &Token{
 		Zone: string(splitted[0]),
 		Data: splitted[1],
 	}, nil
 }
 
-func ParseCode(code string) (*Code, error) {
+func ParseToken(code string) (*Token, error) {
 	splitted := strings.SplitN(code, ":", 2)
 	if len(splitted) < 2 {
 		return nil, errors.New("invalid code format: zone/data separator missing")
@@ -58,7 +69,7 @@ func ParseCode(code string) (*Code, error) {
 		return nil, fmt.Errorf("invalid code format: %s", err)
 	}
 
-	return &Code{
+	return &Token{
 		Zone: splitted[0],
 		Data: data,
 	}, nil

@@ -1,4 +1,4 @@
-package access
+package token
 
 import (
 	"testing"
@@ -6,25 +6,25 @@ import (
 	"github.com/safing/portbase/rng"
 )
 
-func TestCode(t *testing.T) {
+func TestToken(t *testing.T) {
 	randomData, err := rng.Bytes(32)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	c := &Code{
+	c := &Token{
 		Zone: "test",
 		Data: randomData,
 	}
 
 	s := c.String()
-	_, err = ParseCode(s)
+	_, err = ParseToken(s)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	r := c.Raw()
-	_, err = ParseRawCode(r)
+	_, err = ParseRawToken(r)
 	if err != nil {
 		t.Fatal(err)
 	}
