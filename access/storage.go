@@ -91,6 +91,8 @@ func storeTokens() {
 		// Let tokens expire after one month.
 		// This will regularly happen when we switch zones.
 		r.UpdateMeta()
+		r.Meta().MakeSecret()
+		r.Meta().MakeCrownJewel()
 		r.Meta().SetRelativateExpiry(30 * 86400)
 
 		// Save to database.
