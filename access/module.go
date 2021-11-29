@@ -57,6 +57,9 @@ func start() error {
 	}
 
 	if conf.Client() {
+		// Load tokens from database.
+		loadTokens()
+
 		// Register new task.
 		accountUpdateTask = module.NewTask(
 			"update account",
@@ -69,6 +72,15 @@ func start() error {
 }
 
 func stop() error {
+	if conf.Client() {
+		// Stop account update task.
+		accountUpdateTask.Cancel()
+		accountUpdateTask = nil
+
+		// Store tokens to database.
+		storeTokens()
+	}
+
 	// Reset zones.
 	resetZones()
 

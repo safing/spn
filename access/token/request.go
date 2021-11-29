@@ -105,7 +105,7 @@ func CreateTokenRequest(setup *SetupResponse) (request *TokenRequest, requestReq
 	defer registryLock.RUnlock()
 
 	// Check setup data.
-	if setup.SessionID == "" {
+	if setup != nil && setup.SessionID == "" {
 		return nil, false, errors.New("setup data is missing a session ID")
 	}
 
@@ -119,22 +119,24 @@ func CreateTokenRequest(setup *SetupResponse) (request *TokenRequest, requestReq
 	}
 
 	// Go through handlers and create requests.
-	for _, pblindHandler := range pblindRegistry {
-		// Check if we have setup data for this handler.
-		pblindSetup, ok := setup.PBlind[pblindHandler.Zone()]
-		if !ok {
-			// TODO: Abort if we should have received request data.
-			continue
-		}
+	if setup != nil {
+		for _, pblindHandler := range pblindRegistry {
+			// Check if we have setup data for this handler.
+			pblindSetup, ok := setup.PBlind[pblindHandler.Zone()]
+			if !ok {
+				// TODO: Abort if we should have received request data.
+				continue
+			}
 
-		// Create request.
-		pblindRequest, err := pblindHandler.CreateTokenRequest(pblindSetup)
-		if err != nil {
-			return nil, false, fmt.Errorf("failed to create token request for %s: %w", pblindHandler.Zone(), err)
-		}
+			// Create request.
+			pblindRequest, err := pblindHandler.CreateTokenRequest(pblindSetup)
+			if err != nil {
+				return nil, false, fmt.Errorf("failed to create token request for %s: %w", pblindHandler.Zone(), err)
+			}
 
-		requestRequired = true
-		request.PBlind[pblindHandler.Zone()] = pblindRequest
+			requestRequired = true
+			request.PBlind[pblindHandler.Zone()] = pblindRequest
+		}
 	}
 	for _, scrambleHandler := range scrambleRegistry {
 		// Check if we need to request with this handler.

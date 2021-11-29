@@ -6,6 +6,7 @@ import (
 
 	"github.com/safing/portbase/api"
 	"github.com/safing/portbase/database/record"
+	"github.com/safing/portbase/log"
 	"github.com/safing/spn/access/account"
 )
 
@@ -86,6 +87,7 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 	// Process login.
 	user, code, err := login(username, password)
 	if err != nil {
+		log.Warningf("access: failed to login: %s", err)
 		if code == 0 {
 			http.Error(w, "Internal error: "+err.Error(), http.StatusInternalServerError)
 		} else {
@@ -106,6 +108,7 @@ func handleLogout(ar *api.Request) (msg string, err error) {
 	err = logout(false, purge)
 	switch {
 	case err != nil:
+		log.Warningf("access: failed to logout: %s", err)
 		return "", err
 	case purge:
 		return "Logged out and user data purged.", nil

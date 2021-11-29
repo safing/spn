@@ -850,6 +850,8 @@ github.com/safing/portbase v0.12.3 h1:uMXTD/uiRaeLMI2ba7kOqmzc3g7W4IZO4pgkyKNhF3
 github.com/safing/portbase v0.12.3/go.mod h1:toxYHFJX5OILTmh5XxXxGExoGuCz1nUER9/jsjHzp88=
 github.com/safing/portbase v0.12.4 h1:Z+fWf6zdKTyD2sVCDkPxkaQuPkJpIafAMxPhjRBdPc4=
 github.com/safing/portbase v0.12.4/go.mod h1:HxWJg1mqwPh2B+ut2GRP3c2IFc1wAQntoK+IWlXpYH8=
+github.com/safing/portbase v0.13.0 h1:3+FdAZTZzhRh9M2/Ay6/UXw9okmHyORfZcgomYFigwc=
+github.com/safing/portbase v0.13.0/go.mod h1:5vj5IK5WJoSGareDe6yCMZfnF7txVRx7jZyTZInISP0=
 github.com/safing/portmaster v0.6.13 h1:022KE3nADJ/l8wVJcgJkp2g1T1/FkJgV4rzLL+iFiUY=
 github.com/safing/portmaster v0.6.13/go.mod h1:7Ux+qkINlWF3a1YKFWudA6uUrA+i4ik16JwYMmqTzGs=
 github.com/safing/portmaster v0.6.22 h1:PJ2LdwTEgziGNfd2369WZtxeHjD+MMxPJ3IzfFyKsUU=
@@ -864,6 +866,8 @@ github.com/safing/portmaster v0.7.4 h1:y1zenT4BzpvHDKAZd4RZtRRGTmHukUVHNkYwzklgW
 github.com/safing/portmaster v0.7.4/go.mod h1:Q93BWdF1oAL0oUMukshl8W1aPZhmrlTGi6tFTFc3pTw=
 github.com/safing/portmaster v0.7.6 h1:J5cH6MLFXkUewmyfBb+O8tO/bWF3lpLujdk9iwR/5ek=
 github.com/safing/portmaster v0.7.6/go.mod h1:qOs9hQtvAzTVICRbwLg3vddqOaqJHeWBjWQ0C+TJ/Bw=
+github.com/safing/portmaster v0.7.8 h1:FZR3/hnKLVZvEJAS7akZbCnC2gC37FJGMo3KH0Hoqds=
+github.com/safing/portmaster v0.7.8/go.mod h1:foSkhU9v3Kl+DUStSSpQc0bTr2bx9q7nTZ8N8ykDJpM=
 github.com/safing/spn v0.2.4/go.mod h1:ZA6za4rEP46GiVKJGZsQyqoqMvPhtF913mg5JtJl3Sc=
 github.com/safing/spn v0.2.5/go.mod h1:/WNZAVoJB8C1Ut771dYyxyYCdPge2NXoU++dp4cAMDg=
 github.com/safing/spn v0.3.0/go.mod h1:bZsO2kHMvymxLxIh6Ij99W/S0wT4HFcNQy4kEa5O52Q=
@@ -871,6 +875,7 @@ github.com/safing/spn v0.3.3/go.mod h1:bZsO2kHMvymxLxIh6Ij99W/S0wT4HFcNQy4kEa5O5
 github.com/safing/spn v0.3.4/go.mod h1:TfzNsZCbnlWv0UFDILFOUSudVKJZlnBVoR1fDXrjOK0=
 github.com/safing/spn v0.3.5/go.mod h1:jHkFF2Yu1fnjFu4KXjVA+iagMr/z4eB4p3jiwikvKj8=
 github.com/safing/spn v0.3.6/go.mod h1:RSeFb/h5Wt3yDVezXj3lhXJ/Iwd7FbtsGf5E+p5J2YQ=
+github.com/safing/spn v0.3.7/go.mod h1:OTKkMXFudQyDHzGbtbRbYzc7aRsWvm3vFOSoEnoweiA=
 github.com/satori/go.uuid v1.2.0 h1:0uYX9dsZ2yD7q2RtLRtPSdGDWzjeM3TbMJP9utgA0ww=
 github.com/satori/go.uuid v1.2.0/go.mod h1:dA0hQrYB0VpLJoorglMZABFdXlWrHn1NEOzdhQKdks0=
 github.com/sean-/seed v0.0.0-20170313163322-e2103e2c3529/go.mod h1:DxrIzT+xaE7yg65j358z/aeFdxmN0P9QXhEzd20vsDc=

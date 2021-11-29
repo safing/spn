@@ -16,8 +16,7 @@ import (
 )
 
 const (
-	AccountServer = "http://127.0.0.1:8081"
-	// AccountServer   = "https://account.safing.io"
+	AccountServer         = "https://api.account.safing.io"
 	LoginPath             = "/api/v1/authenticate"
 	UserProfilePath       = "/api/v1/user/profile"
 	TokenRequestSetupPath = "/api/v1/token/request/setup"
@@ -210,6 +209,7 @@ func login(username, password string) (user *UserRecord, code int, err error) {
 		if resp != nil && resp.StatusCode == account.StatusInvalidDevice {
 			// Try again without the previous device ID.
 			previousUser = nil
+			log.Info("access: retrying log in without re-using previous device ID")
 			resp, err = makeClientRequest(requestOptions)
 		}
 		if err != nil {
@@ -241,6 +241,7 @@ func login(username, password string) (user *UserRecord, code int, err error) {
 	// Enable the SPN right after login.
 	enableSPN()
 
+	log.Infof("access: logged in as %q on device %q", user.Username, user.Device.Name)
 	return user, resp.StatusCode, nil
 }
 
@@ -250,6 +251,9 @@ func logout(shallow, purge bool) error {
 
 	// Clear caches.
 	clearUserCaches()
+
+	// Clear tokens.
+	clearTokens()
 
 	// Delete auth token.
 	err := db.Delete(authTokenRecordKey)
@@ -266,6 +270,8 @@ func logout(shallow, purge bool) error {
 
 		// Disable SPN when the user logs out directly.
 		disableSPN()
+
+		log.Info("access: logged out and purged data")
 		return nil
 	}
 
@@ -304,7 +310,11 @@ func logout(shallow, purge bool) error {
 		return fmt.Errorf("failed to save user for logout: %w", err)
 	}
 
-	if !shallow {
+	if shallow {
+		log.Info("access: logged out shallow")
+	} else {
+		log.Info("access: logged out")
+
 		// Disable SPN when the user logs out directly.
 		disableSPN()
 	}
@@ -350,6 +360,8 @@ func getUserProfile() (user *UserRecord, statusCode int, err error) {
 		if err != nil {
 			log.Warningf("access: failed to save updated user profile: %s", err)
 		}
+
+		log.Infof("access: got user profile, updated existing")
 		return previousUser, resp.StatusCode, nil
 	}
 
@@ -363,6 +375,8 @@ func getUserProfile() (user *UserRecord, statusCode int, err error) {
 	if err != nil {
 		log.Warningf("access: failed to save new user profile: %s", err)
 	}
+
+	log.Infof("access: got user profile, saved as new")
 	return newUser, resp.StatusCode, nil
 }
 
@@ -423,10 +437,19 @@ func getTokens() error {
 		return fmt.Errorf("failed to request tokens: %w", err)
 	}
 
+	// Save tokens to handlers.
 	err = token.ProcessIssuedTokens(issuedTokens)
 	if err != nil {
 		return fmt.Errorf("failed to process issued tokens: %w", err)
 	}
+
+	// Log new status.
+	regular, fallback := GetTokenAmount(ExpandAndConnectZones)
+	log.Infof(
+		"access: got new tokens, now at %d regular and %d fallback tokens for expand and connect",
+		regular,
+		fallback,
+	)
 
 	return nil
 }

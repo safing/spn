@@ -40,7 +40,7 @@ managing:
 		if home == nil || homeTerminal == nil || homeTerminal.IsAbandoned() {
 			if ready.SetToIf(true, false) {
 				netenv.ConnectedToSPN.UnSet()
-				log.Infof("spn/captain: client not ready")
+				log.Info("spn/captain: client not ready")
 			}
 
 			resetSPNStatus(StatusConnecting)
@@ -101,7 +101,7 @@ managing:
 			}()
 
 			log.Infof("spn/captain: established new home %s", home.Hub)
-			log.Infof("spn/captain: client is ready")
+			log.Info("spn/captain: client is ready")
 		}
 
 		// Check again after a short break.

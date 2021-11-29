@@ -27,6 +27,9 @@ type Handler interface {
 
 	// Load loads the given tokens into the handler.
 	Load(data []byte) error
+
+	// Clear clears all the tokens in the handler.
+	Clear()
 }
 
 var (

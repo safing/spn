@@ -424,7 +424,6 @@ func (pbh *PBlindHandler) GetToken() (token *Token, err error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to pack token: %w", err)
 	}
-	fmt.Printf("token data: bytelen=%d val=%s\n", len(data), base58.Encode(data))
 
 	// Shift to next token.
 	pbh.Storage = pbh.Storage[1:]
@@ -493,6 +492,10 @@ func (pbh *PBlindHandler) Save() ([]byte, error) {
 	pbh.storageLock.Lock()
 	defer pbh.storageLock.Unlock()
 
+	if len(pbh.Storage) == 0 {
+		return nil, ErrEmpty
+	}
+
 	s := &PBlindStorage{
 		Storage: pbh.Storage,
 	}
@@ -527,4 +530,12 @@ func (pbh *PBlindHandler) Load(data []byte) error {
 
 	pbh.Storage = s.Storage
 	return nil
+}
+
+// Clear clears all the tokens in the handler.
+func (pbh *PBlindHandler) Clear() {
+	pbh.storageLock.Lock()
+	defer pbh.storageLock.Unlock()
+
+	pbh.Storage = nil
 }
