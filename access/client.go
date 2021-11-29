@@ -452,7 +452,7 @@ func healthCheck() (ok bool) {
 		url:    AccountServer + HealthCheckPath,
 	})
 	if err != nil {
-		log.Warningf("access: token issuer health check failed: %w", err)
+		log.Warningf("access: token issuer health check failed: %s", err)
 	}
 	// Update health check expiry.
 	lastHealthCheckExpires = time.Now().Add(lastHealthCheckValidityDuration)
