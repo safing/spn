@@ -57,7 +57,8 @@ managing:
 				resetSPNStatus(StatusFailed)
 				select {
 				case <-ctx.Done():
-				case <-time.After(4 * time.Second):
+					return nil
+				case <-time.After(5 * time.Second):
 				}
 				continue managing
 			}
@@ -103,7 +104,7 @@ managing:
 			log.Infof("spn/captain: client is ready")
 		}
 
-		// Try again after a short break.
+		// Check again after a short break.
 		select {
 		case <-ctx.Done():
 			return nil
