@@ -3,6 +3,8 @@ package access
 import (
 	"fmt"
 
+	"github.com/safing/spn/conf"
+
 	"github.com/safing/jess/lhash"
 	"github.com/safing/portbase/log"
 	"github.com/safing/spn/access/token"
@@ -11,6 +13,7 @@ import (
 
 var (
 	ExpandAndConnectZones = []string{"pblind1", "alpha2", "fallback1"}
+	persistentZones       = ExpandAndConnectZones
 
 	zonePermissions = map[string]terminal.Permission{
 		"pblind1":   terminal.AddPermissions(terminal.MayExpand, terminal.MayConnect),
@@ -20,14 +23,21 @@ var (
 )
 
 func initializeZones() error {
+	// Special client zone config.
+	var requestSignalHandler func(token.Handler)
+	if conf.Client() {
+		requestSignalHandler = shouldRequestTokensHandler
+	}
+
 	// Register pblind1 as the first primary zone.
 	ph, err := token.NewPBlindHandler(token.PBlindOptions{
-		Zone:           "pblind1",
-		CurveName:      "P-256",
-		PublicKey:      "eXoJXzXbM66UEsM2eVi9HwyBPLMfVnNrC7gNrsfMUJDs",
-		UseSerials:     true,
-		BatchSize:      1000,
-		RandomizeOrder: true,
+		Zone:                "pblind1",
+		CurveName:           "P-256",
+		PublicKey:           "eXoJXzXbM66UEsM2eVi9HwyBPLMfVnNrC7gNrsfMUJDs",
+		UseSerials:          true,
+		BatchSize:           1000,
+		RandomizeOrder:      true,
+		SignalShouldRequest: requestSignalHandler,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create pblind1 token handler: %w", err)
@@ -71,6 +81,17 @@ func initializeZones() error {
 
 func resetZones() {
 	token.ResetRegistry()
+}
+
+func shouldRequestTokensHandler(_ token.Handler) {
+	// accountUpdateTask is always set in client mode and when the module is online.
+	// Check if it's set in case this gets executed in other circumstances.
+	if accountUpdateTask == nil {
+		log.Warningf("access: trying to trigger account update, but the task is not available")
+		return
+	}
+
+	accountUpdateTask.StartASAP()
 }
 
 func GetTokenAmount(zones []string) (regular, fallback int) {

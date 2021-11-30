@@ -196,6 +196,10 @@ func (sh *ScrambleHandler) Save() ([]byte, error) {
 	sh.storageLock.Lock()
 	defer sh.storageLock.Unlock()
 
+	if len(sh.Storage) == 0 {
+		return nil, ErrEmpty
+	}
+
 	s := &ScrambleStorage{
 		Storage: sh.Storage,
 	}
@@ -216,4 +220,12 @@ func (sh *ScrambleHandler) Load(data []byte) error {
 
 	sh.Storage = s.Storage
 	return nil
+}
+
+// Clear clears all the tokens in the handler.
+func (sh *ScrambleHandler) Clear() {
+	sh.storageLock.Lock()
+	defer sh.storageLock.Unlock()
+
+	sh.Storage = nil
 }

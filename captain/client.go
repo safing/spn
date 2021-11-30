@@ -114,6 +114,13 @@ func preFlightCheck(ctx context.Context) error {
 		return access.ErrNotLoggedIn
 	}
 
+	// FIXME: When we are starting and the SPN module is faster online than the
+	// nameserver, then updating the account will fail as the DNS query is
+	// redirected to a closed port.
+	// We also can't add the nameserver as a module dependency, as the nameserver
+	// is not part of the server.
+	time.Sleep(1 * time.Second)
+
 	// Update account and get tokens.
 	err = access.UpdateAccount(nil, nil)
 	if err != nil {

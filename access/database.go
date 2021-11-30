@@ -12,8 +12,9 @@ import (
 )
 
 const (
-	userRecordKey      = "core:spn/account/user"
-	authTokenRecordKey = "core:spn/account/authtoken"
+	userRecordKey           = "core:spn/account/user"
+	authTokenRecordKey      = "core:spn/account/authtoken"
+	tokenStorageKeyTemplate = "core:spn/account/tokens/%s"
 )
 
 var db = database.NewInterface(&database.Options{
