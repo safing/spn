@@ -87,7 +87,7 @@ func shouldRequestTokensHandler(_ token.Handler) {
 	// accountUpdateTask is always set in client mode and when the module is online.
 	// Check if it's set in case this gets executed in other circumstances.
 	if accountUpdateTask == nil {
-		log.Warningf("access: trying to trigger account update, but the task is available")
+		log.Warningf("access: trying to trigger account update, but the task is not available")
 		return
 	}
 
