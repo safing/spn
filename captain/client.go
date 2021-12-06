@@ -126,9 +126,9 @@ func preFlightCheck(ctx context.Context) error {
 	if err != nil {
 		if errors.Is(err, access.ErrMayNotUseSPN) {
 			notifications.NotifyError(
-				"spn:access-denied",
-				"SPN Access Denied",
-				`You are currently not eligible to access the SPN. Please check your status on account.safing.io.`,
+				"spn:subscription-inactive",
+				"SPN Subscription Inactive",
+				`Your account is currently not subscribed to the SPN. Follow the instructions on account.safing.io to get started.`,
 				spnOpenAccountWeb,
 				spnSettingsButton,
 			).AttachToModule(module)
