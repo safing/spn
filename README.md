@@ -6,7 +6,7 @@ With the SPN you protect all your connections from mass surveillance. Prevent al
 
 ## Status
 
-We are currently finalizing the alpha version of the software and will start testing internally and early adopters soon.
+SPN is currently in Alpha. Check out the current status and capabilities on [the status page.](https://docs.safing.io/spn/alpha/status)
 
 ## Server Usage
 
@@ -16,4 +16,8 @@ We will provide a guide how to run a node soon.
 
 The SPN is built on the Portmaster. You will have to download and install the Portmaster to use the SPN. You will also need to [create an account](https://account.safing.io/) and subscribe.
 
-![portmaster modules](https://safing.io/assets/img/portmaster/modules.png)
+### Portmaster's Architecture
+
+You can [dive into the Portmaster docs](https://docs.safing.io/portmaster/architecture/overview) to get more technical details.
+
+![portmaster modules](https://docs.safing.io/assets/img/portmaster-architecture-diagram-simple.png)
