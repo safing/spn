@@ -1,7 +1,6 @@
 package terminal
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"runtime/pprof"
@@ -9,108 +8,17 @@ import (
 	"testing"
 	"time"
 
-	"github.com/safing/spn/hub"
-
-	"github.com/safing/spn/cabin"
-
 	"github.com/safing/portbase/container"
-	"github.com/safing/portbase/log"
+	"github.com/safing/spn/cabin"
 )
-
-const (
-	logTestCraneMsgs = false
-	testPadding      = 8
-)
-
-type TestTerminal struct {
-	*TerminalBase
-	*DuplexFlowQueue
-}
-
-func NewLocalTestTerminal(
-	ctx context.Context,
-	id uint32,
-	parentID string,
-	remoteHub *hub.Hub,
-	initMsg *TerminalOpts,
-	submitUpstream func(*container.Container),
-) (*TestTerminal, *container.Container, *Error) {
-	// Create Terminal Base.
-	t, initData, err := NewLocalBaseTerminal(ctx, id, parentID, remoteHub, initMsg)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	return initTestTerminal(t, initMsg, submitUpstream), initData, nil
-}
-
-func NewRemoteTestTerminal(
-	ctx context.Context,
-	id uint32,
-	parentID string,
-	identity *cabin.Identity,
-	initData *container.Container,
-	submitUpstream func(*container.Container),
-) (*TestTerminal, *TerminalOpts, *Error) {
-	// Create Terminal Base.
-	t, initMsg, err := NewRemoteBaseTerminal(ctx, id, parentID, identity, initData)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	return initTestTerminal(t, initMsg, submitUpstream), initMsg, nil
-}
-
-func initTestTerminal(
-	t *TerminalBase,
-	initMsg *TerminalOpts,
-	submitUpstream func(*container.Container),
-) *TestTerminal {
-	// Create Flow Queue.
-	dfq := NewDuplexFlowQueue(t, initMsg.QueueSize, submitUpstream)
-
-	// Create Crane Terminal and assign it as the extended Terminal.
-	ct := &TestTerminal{
-		TerminalBase:    t,
-		DuplexFlowQueue: dfq,
-	}
-	t.SetTerminalExtension(ct)
-
-	// Start workers.
-	module.StartWorker("test terminal handler", ct.Handler)
-	module.StartWorker("test terminal sender", ct.Sender)
-	module.StartWorker("test terminal flow queue", ct.FlowHandler)
-
-	return ct
-}
-
-func (t *TestTerminal) Flush() <-chan struct{} {
-	return t.TerminalBase.Flush()
-}
-
-func (t *TestTerminal) Abandon(err *Error) {
-	if t.Abandoned.SetToIf(false, true) {
-		switch err {
-		case nil:
-			// nil means that the Terminal is being shutdown by the owner.
-			log.Tracef("spn/terminal: %s is closing", fmtTerminalID(t.parentID, t.id))
-		default:
-			// All other errors are faults.
-			log.Warningf("spn/terminal: %s: %s", fmtTerminalID(t.parentID, t.id), err)
-		}
-
-		// End all operations and stop all connected workers.
-		t.Shutdown(nil, true)
-	}
-}
 
 func TestTerminals(t *testing.T) {
 	var testQueueSize uint16 = 10
 	countToQueueSize := uint64(testQueueSize)
 
 	initMsg := &TerminalOpts{
-		QueueSize: testQueueSize,
-		Padding:   testPadding,
+		QueueSize: defaultTestQueueSize,
+		Padding:   defaultTestPadding,
 	}
 
 	var term1 *TestTerminal
