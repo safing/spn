@@ -162,8 +162,35 @@ func registerError(id uint8, defaultMsg string) *Error {
 	return newErr
 }
 
-func (err *Error) IsSpecial() bool {
-	return err.id > 0 && err.id < 8
+// func (e *Error) IsSpecial() bool {
+// 	if e == nil {
+// 		return false
+// 	}
+// 	return e.id > 0 && e.id < 8
+// }
+
+func (e *Error) IsOK() bool {
+	if e == nil || e.err == nil {
+		return true
+	}
+	switch e.id {
+	case 2: // ErrStopping
+		return true
+	case 3: // ErrExplicitAck
+		return true
+	default:
+		return false
+	}
+}
+
+func (e *Error) IsError() bool {
+	if e == nil || e.err == nil {
+		return false
+	}
+	if e.id == 0 || e.id >= 8 {
+		return true
+	}
+	return false
 }
 
 // Terminal Errors.

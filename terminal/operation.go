@@ -174,7 +174,7 @@ func (t *TerminalBase) OpEnd(op Operation, err *Error) {
 	switch {
 	case err == nil:
 		log.Debugf("spn/terminal: operation %s %s ended", op.Type(), fmtOperationID(t.parentID, t.id, op.ID()))
-	case err.IsSpecial():
+	case err.IsOK():
 		log.Debugf("spn/terminal: operation %s %s ended: %s", op.Type(), fmtOperationID(t.parentID, t.id, op.ID()), err)
 	default:
 		log.Warningf("spn/terminal: operation %s %s failed: %s", op.Type(), fmtOperationID(t.parentID, t.id, op.ID()), err)

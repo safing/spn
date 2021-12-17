@@ -232,7 +232,7 @@ func (op *CounterOp) Wait() {
 }
 
 type flusher interface {
-	Flush() <-chan struct{}
+	Flush()
 }
 
 func (op *CounterOp) CounterWorker(ctx context.Context) error {

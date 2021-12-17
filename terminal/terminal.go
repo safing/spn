@@ -504,7 +504,7 @@ func (t *TerminalBase) handleOpMsg(data *container.Container) *Error {
 		if ok {
 			err := op.Deliver(data)
 			if err != nil {
-				if err.IsSpecial() {
+				if err.IsOK() {
 					t.OpEnd(op, err)
 				} else {
 					t.OpEnd(op, err.Wrap("data delivery failed"))

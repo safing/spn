@@ -658,7 +658,7 @@ func (crane *Crane) Stop(err *terminal.Error) {
 
 	// Log error message.
 	if err != nil {
-		if err.IsSpecial() {
+		if err.IsOK() {
 			log.Infof("spn/docks: %s is done", crane)
 		} else {
 			log.Warningf("spn/docks: %s is stopping: %s", crane, err)

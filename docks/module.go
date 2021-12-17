@@ -16,6 +16,8 @@ var (
 	allCranes      = make(map[string]*Crane) // ID = Crane ID
 	assignedCranes = make(map[string]*Crane) // ID = connected Hub ID
 	cranesLock     sync.RWMutex
+
+	runningTests bool
 )
 
 func init() {
