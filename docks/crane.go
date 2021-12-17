@@ -99,6 +99,19 @@ type Crane struct {
 
 	// targetLoadSize defines the optimal loading size.
 	targetLoadSize int
+
+	// metaLock locks the metadata fields below.
+	metaLock sync.Mutex
+	// laneLatency designates the latency. It is specified in nanoseconds.
+	laneLatency time.Duration
+	// laneLatencyExpires holds the time when the laneLatency expires and
+	// should be re-measured.
+	laneLatencyExpires time.Time
+	// laneCapacity designates the available bandwidth. It is specified in bit/s.
+	laneCapacity int
+	// laneCapacityExpires holds the time when the laneCapacity expires and
+	// should be re-measured.
+	laneCapacityExpires time.Time
 }
 
 func NewCrane(ctx context.Context, ship ships.Ship, connectedHub *hub.Hub, id *cabin.Identity) (*Crane, error) {
