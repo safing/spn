@@ -94,6 +94,11 @@ func runCapacityTestOp(t terminal.OpTerminal, opID uint32, data *container.Conta
 		return nil, terminal.ErrMalformedData.With("failed to parse options: %w", err)
 	}
 
+	// Check options.
+	if opts.TestVolume > maxCapacityTestVolume {
+		return nil, terminal.ErrInvalidOptions.With("maximum volume exceeded")
+	}
+
 	// Create operation.
 	op := &CapacityTestOp{
 		t:      t,
@@ -134,7 +139,7 @@ func (op *CapacityTestOp) countSentData(amount int) (done bool) {
 	op.measureLock.Lock()
 	defer op.measureLock.Unlock()
 
-	op.dataSent += len(capacityTestSendData)
+	op.dataSent += amount
 	if op.dataSent >= op.opts.TestVolume {
 		return true
 	}
@@ -175,22 +180,28 @@ func (op *CapacityTestOp) Deliver(c *container.Container) *terminal.Error {
 			op.t.OpEnd(op, tErr.Wrap("failed to send data received signal"))
 			return nil
 		}
+		op.dataSent += len(capacityTestDataReceivedSignal)
 		op.dataReceivedAckSent = true
-		return nil
+
+		// Flush last message.
+		op.t.Flush()
 	}
 
 	// Check if we can complete the test.
 	if op.dataReceived >= op.opts.TestVolume &&
+		op.dataReceivedAckSent &&
 		op.dataSent >= op.opts.TestVolume &&
-		op.dataSentAck {
+		op.dataSentAck &&
+		op.testResult == 0 {
 
 		// Calculate lane capacity and set it.
-		timeNeeded := int(time.Since(op.startTime) / time.Second)
+		timeNeeded := time.Since(op.startTime)
 		if timeNeeded <= 0 {
 			timeNeeded = 1
 		}
-		duplexBitRate := ((op.dataReceived + op.dataSent) * 8) / timeNeeded
-		op.testResult = duplexBitRate / 2
+		duplexNSBitRate := float64((op.dataReceived+op.dataSent)*8) / float64(timeNeeded)
+		bitRate := (duplexNSBitRate / 2) * float64(time.Second)
+		op.testResult = int(bitRate)
 
 		// Save the result to the crane.
 		if controller, ok := op.t.(*CraneControllerTerminal); ok {
