@@ -12,9 +12,9 @@ import (
 )
 
 const (
-	DefaultQueueSize    = 1000
-	MaxQueueSize        = 1000
-	forceReportFraction = 4
+	DefaultQueueSize        = 1000
+	MaxQueueSize            = 10000
+	forceReportBelowPercent = 0.75
 )
 
 type DuplexFlowQueue struct {
@@ -74,13 +74,13 @@ func NewDuplexFlowQueue(
 
 // shouldReportRecvSpace returns whether the receive space should be reported.
 func (dfq *DuplexFlowQueue) shouldReportRecvSpace() bool {
-	return atomic.LoadInt32(dfq.reportedSpace) < int32(cap(dfq.recvQueue)/forceReportFraction)
+	return atomic.LoadInt32(dfq.reportedSpace) < int32(float32(cap(dfq.recvQueue))*forceReportBelowPercent)
 }
 
 // decrementReportedRecvSpace decreases the reported recv space by 1 and
 // returns if the receive space should be reported.
 func (dfq *DuplexFlowQueue) decrementReportedRecvSpace() (shouldReportRecvSpace bool) {
-	return atomic.AddInt32(dfq.reportedSpace, -1) < int32(cap(dfq.recvQueue)/forceReportFraction)
+	return atomic.AddInt32(dfq.reportedSpace, -1) < int32(float32(cap(dfq.recvQueue))*forceReportBelowPercent)
 }
 
 // getSendSpace returns the current send space.
