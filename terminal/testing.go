@@ -135,6 +135,7 @@ func createDelayingTestForwardingFunc(
 
 func (t *TestTerminal) Flush() {
 	t.TerminalBase.Flush()
+	t.DuplexFlowQueue.Flush()
 }
 
 func (t *TestTerminal) Abandon(err *Error) {

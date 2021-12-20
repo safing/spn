@@ -97,6 +97,11 @@ func (t *CraneTerminal) Deliver(c *container.Container) *terminal.Error {
 	return t.DuplexFlowQueue.Deliver(c)
 }
 
+func (t *CraneTerminal) Flush() {
+	t.TerminalBase.Flush()
+	t.DuplexFlowQueue.Flush()
+}
+
 func (t *CraneTerminal) LocalAddr() net.Addr {
 	return t.crane.LocalAddr()
 }

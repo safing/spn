@@ -28,8 +28,7 @@ const (
 
 type LatencyTestOp struct {
 	terminal.OpBase
-	t          terminal.OpTerminal
-	controller *CraneControllerTerminal
+	t terminal.OpTerminal
 }
 
 type LatencyTestClientOp struct {
@@ -67,11 +66,6 @@ func NewLatencyTestOp(t terminal.OpTerminal) (*LatencyTestClientOp, *terminal.Er
 		result:            make(chan *terminal.Error, 1),
 	}
 	op.LatencyTestOp.OpBase.Init()
-
-	// Save a reference to the crane controller for flushing.
-	if controller, ok := op.t.(*CraneControllerTerminal); ok {
-		op.LatencyTestOp.controller = controller
-	}
 
 	// Make ping request.
 	pingRequest, err := op.createPingRequest()
@@ -118,15 +112,7 @@ func (op *LatencyTestClientOp) handler(ctx context.Context) error {
 				returnErr = tErr.Wrap("failed to send ping request")
 				return nil
 			}
-
-			// Attempt to flush.
-			if op.controller != nil {
-				// Production code path.
-				op.controller.DuplexFlowQueue.Flush()
-			} else if testTerminal, ok := op.t.(*terminal.TestTerminal); ok {
-				// Testing code path.
-				testTerminal.Flush()
-			}
+			op.t.Flush()
 
 			nextTest = nil
 
@@ -207,8 +193,8 @@ func (op *LatencyTestClientOp) reportMeasuredLatencies() {
 	op.testResult = lowestLatency
 
 	// Save the result to the crane.
-	if op.controller != nil {
-		op.controller.Crane.SetLaneLatency(op.testResult)
+	if controller, ok := op.t.(*CraneControllerTerminal); ok {
+		controller.Crane.SetLaneLatency(op.testResult)
 	} else if !runningTests {
 		log.Errorf("docks: latency operation was run on terminal that is not a crane controller, but %T", op.t)
 	}
@@ -248,11 +234,6 @@ func runLatencyTestOp(t terminal.OpTerminal, opID uint32, data *container.Contai
 	op.OpBase.Init()
 	op.OpBase.SetID(opID)
 
-	// Save a reference to the crane controller for flushing.
-	if controller, ok := op.t.(*CraneControllerTerminal); ok {
-		op.controller = controller
-	}
-
 	// Handle first request.
 	tErr := op.Deliver(data)
 	if tErr != nil {
@@ -278,15 +259,8 @@ func (op *LatencyTestOp) Deliver(c *container.Container) *terminal.Error {
 		if tErr != nil {
 			return tErr.Wrap("failed to send ping response")
 		}
+		op.t.Flush()
 
-		// Attempt to flush.
-		if op.controller != nil {
-			// Production code path.
-			op.controller.DuplexFlowQueue.Flush()
-		} else if testTerminal, ok := op.t.(*terminal.TestTerminal); ok {
-			// Testing code path.
-			testTerminal.Flush()
-		}
 		return nil
 
 	default:

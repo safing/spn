@@ -2,7 +2,6 @@ package terminal
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -231,20 +230,7 @@ func (op *CounterOp) Wait() {
 	op.wg.Wait()
 }
 
-type flusher interface {
-	Flush()
-}
-
 func (op *CounterOp) CounterWorker(ctx context.Context) error {
-	var flushingTerminal flusher
-	if op.opts.Flush {
-		var ok bool
-		flushingTerminal, ok = op.t.(flusher)
-		if !ok {
-			return errors.New("terminal cannot flush")
-		}
-	}
-
 	for {
 		// Send counter msg.
 		err := op.SendCounter()
@@ -264,7 +250,7 @@ func (op *CounterOp) CounterWorker(ctx context.Context) error {
 
 		// Maybe flush message.
 		if op.opts.Flush {
-			flushingTerminal.Flush()
+			op.t.Flush()
 		}
 
 		// Check if we are done with sending.

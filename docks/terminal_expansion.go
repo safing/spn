@@ -66,6 +66,11 @@ func (t *ExpansionTerminal) Deliver(c *container.Container) *terminal.Error {
 	return t.DuplexFlowQueue.Deliver(c)
 }
 
+func (t *ExpansionTerminal) Flush() {
+	t.TerminalBase.Flush()
+	t.DuplexFlowQueue.Flush()
+}
+
 func (t *ExpansionTerminal) submitUpstream(c *container.Container) {
 	err := t.relayOp.OpSend(t, c)
 	if err != nil {

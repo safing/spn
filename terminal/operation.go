@@ -126,6 +126,9 @@ type OpTerminal interface {
 
 	// FmtID returns the formatted ID the Operation's Terminal.
 	FmtID() string
+
+	// Flush writes all pending data waiting to be sent.
+	Flush()
 }
 
 // OpInit initialized the operation with the given data.

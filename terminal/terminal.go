@@ -28,6 +28,7 @@ type TerminalInterface interface {
 	Deliver(c *container.Container) *Error
 	Abandon(err *Error)
 	FmtID() string
+	Flush()
 }
 
 type TerminalExtension interface {

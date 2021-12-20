@@ -144,6 +144,8 @@ func (t *StreamingTerminal) FmtID() string {
 	return fmt.Sprintf("test-%d", t.id)
 }
 
+func (t *StreamingTerminal) Flush() {}
+
 func TestCraneLoadingUnloading(t *testing.T) {
 	testCraneWithStreaming(t, "plain-streaming", false, 100)
 	testCraneWithStreaming(t, "encrypted-streaming", true, 100)
