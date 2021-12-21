@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/awalterschulze/gographviz"
 	"github.com/safing/portbase/api"
@@ -139,7 +140,7 @@ func handleMapGraphRequest(w http.ResponseWriter, hr *http.Request) {
 	for _, pin := range m.sortedPins(true) {
 		graph.AddNode("", pin.Hub.ID, map[string]string{
 			"label":     graphNodeLabel(pin),
-			"tooltip":   graphTooltip(pin),
+			"tooltip":   graphNodeTooltip(pin),
 			"color":     graphNodeBorderColor(pin),
 			"fillcolor": graphNodeColor(pin),
 			"shape":     "circle",
@@ -152,7 +153,9 @@ func handleMapGraphRequest(w http.ResponseWriter, hr *http.Request) {
 			if graph.IsNode(lane.Pin.Hub.ID) {
 				// Create attributes.
 				edgeOptions := map[string]string{
-					"color": graphEdgeColor(pin, lane.Pin),
+					"tooltip": graphEdgeTooltip(lane),
+					"color":   graphEdgeColor(pin, lane.Pin, lane),
+					"weight":  strconv.Itoa(-int(lane.Latency / time.Millisecond)),
 				}
 				if edgeOptions["color"] == graphColorHomeAndConnected {
 					edgeOptions["penwidth"] = "2"
@@ -212,6 +215,10 @@ func graphNodeLabel(pin *Pin) (s string) {
 		comment = fmt.Sprintf("\n(%s)", comment)
 	}
 
+	if pin.Hub.Status.Load >= 80 {
+		comment += fmt.Sprintf("\nHIGH LOAD: %d", pin.Hub.Status.Load)
+	}
+
 	return fmt.Sprintf(
 		`"%s%s"`,
 		strings.ReplaceAll(pin.Hub.Name(), " ", "\n"),
@@ -219,7 +226,7 @@ func graphNodeLabel(pin *Pin) (s string) {
 	)
 }
 
-func graphTooltip(pin *Pin) string {
+func graphNodeTooltip(pin *Pin) string {
 	// Gather IP info.
 	var v4Info, v6Info string
 	if pin.Hub.Info.IPv4 != nil {
@@ -241,15 +248,34 @@ func graphTooltip(pin *Pin) string {
 		`"ID: %s
 States: %s
 IPv4: %s
-IPv6: %s"`,
+IPv6: %s
+Load: %d
+Cost: %.2f"`,
 		pin.Hub.ID,
 		pin.State,
 		v4Info,
 		v6Info,
+		pin.Hub.Status.Load,
+		pin.Cost,
 	)
 }
 
+func graphEdgeTooltip(lane *Lane) string {
+	return fmt.Sprintf(
+		`"Latency: %s
+Capacity: %.2f Mbit/s
+Cost: %.2f"`,
+		lane.Latency,
+		float64(lane.Capacity)/1000000,
+		lane.Cost,
+	)
+}
+
+// Graphviz colors.
+// See https://graphviz.org/doc/info/colors.html
 const (
+	graphColorWarning          = "orange2"
+	graphColorError            = "red2"
 	graphColorHomeAndConnected = "steelblue2"
 	graphColorDisregard        = "tomato2"
 	graphColorNotRegard        = "tan2"
@@ -261,6 +287,10 @@ const (
 
 func graphNodeColor(pin *Pin) string {
 	switch {
+	case pin.Hub.Status.Load >= 95:
+		return graphColorError
+	case pin.Hub.Status.Load >= 80:
+		return graphColorWarning
 	case pin.State.has(StateIsHomeHub):
 		return graphColorHomeAndConnected
 	case pin.State.hasAnyOf(StateSummaryDisregard):
@@ -283,7 +313,16 @@ func graphNodeBorderColor(pin *Pin) string {
 	}
 }
 
-func graphEdgeColor(from, to *Pin) string {
+func graphEdgeColor(from, to *Pin, lane *Lane) string {
+	// Check lane stats.
+	if lane.Capacity == 0 || lane.Latency == 0 {
+		return graphColorWarning
+	}
+	// Alert if capacity is under 10Mbit/s or latency is over 50ms.
+	if lane.Capacity < 10000000 || lane.Latency > 50*time.Millisecond {
+		return graphColorError
+	}
+
 	// Check for active edge forward.
 	if to.HasActiveTerminal() && len(to.Connection.Route.Path) >= 2 {
 		secondLastHopIndex := len(to.Connection.Route.Path) - 2
@@ -298,6 +337,7 @@ func graphEdgeColor(from, to *Pin) string {
 			return graphColorHomeAndConnected
 		}
 	}
+
 	// Return default color if edge is not active.
 	return graphColorDefaultEdge
 }
