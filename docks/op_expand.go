@@ -3,6 +3,8 @@ package docks
 import (
 	"context"
 	"fmt"
+	"sync/atomic"
+	"time"
 
 	"github.com/safing/portbase/container"
 	"github.com/safing/spn/conf"
@@ -11,6 +13,10 @@ import (
 )
 
 const ExpandOpType string = "expand"
+
+var (
+	activeExpandOps = new(int64)
+)
 
 type ExpandOp struct {
 	terminal.OpBase
@@ -23,7 +29,8 @@ type ExpandOp struct {
 	// cancelCtx cancels ctx.
 	cancelCtx context.CancelFunc
 
-	ended *abool.AtomicBool
+	dataRelayed *uint64
+	ended       *abool.AtomicBool
 
 	relayTerminal *ExpansionRelayTerminal
 }
@@ -90,8 +97,9 @@ func expand(t terminal.OpTerminal, opID uint32, data *container.Container) (term
 
 	// Create operation and terminal.
 	op := &ExpandOp{
-		opTerminal: t,
-		ended:      abool.New(),
+		opTerminal:  t,
+		dataRelayed: new(uint64),
+		ended:       abool.New(),
 		relayTerminal: &ExpansionRelayTerminal{
 			crane:     relayCrane,
 			id:        relayCrane.getNextTerminalID(),
@@ -138,11 +146,23 @@ func (op *ExpandOp) submitBackstream(c *container.Container) {
 }
 
 func (op *ExpandOp) forwardHandler(_ context.Context) error {
+	// Metrics setup and submitting.
+	atomic.AddInt64(activeExpandOps, 1)
+	started := time.Now()
+	defer func() {
+		atomic.AddInt64(activeExpandOps, -1)
+		expandOpDurationHistogram.UpdateDuration(started)
+		expandOpRelayedDataHistogram.Update(float64(atomic.LoadUint64(op.dataRelayed)))
+	}()
+
 	for {
 		select {
 		case c := <-op.DuplexFlowQueue.Receive():
 			// Debugging:
 			// log.Debugf("forwarding at %s: %s", op.FmtID(), spew.Sdump(c.CompileData()))
+
+			// Count relayed data for metrics.
+			atomic.AddUint64(op.dataRelayed, uint64(c.Length()))
 
 			// Receive data from the origin and forward it to the relay.
 			if err := op.relayTerminal.DuplexFlowQueue.Send(c); err != nil {
@@ -161,6 +181,9 @@ func (op *ExpandOp) backwardHandler(_ context.Context) error {
 		case c := <-op.relayTerminal.DuplexFlowQueue.Receive():
 			// Debugging:
 			// log.Debugf("backwarding at %s: %s", op.FmtID(), spew.Sdump(c.CompileData()))
+
+			// Count relayed data for metrics.
+			atomic.AddUint64(op.dataRelayed, uint64(c.Length()))
 
 			// Receive data from the relay and forward it to the origin.
 			if err := op.DuplexFlowQueue.Send(c); err != nil {

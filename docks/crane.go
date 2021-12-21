@@ -386,6 +386,9 @@ func (crane *Crane) unloadUntilFull(buf []byte) error {
 
 		// Return if buffer has been fully filled.
 		if bytesRead == len(buf) {
+			// Submit metrics.
+			totalIncomingTraffic.Add(bytesRead)
+
 			return nil
 		}
 	}
@@ -654,9 +657,15 @@ func (crane *Crane) load(c *container.Container) error {
 		return fmt.Errorf("failed to encrypt: %w", err)
 	}
 
-	// Load onto ship.
+	// Finalize data.
 	c.PrependLength()
-	err = crane.ship.Load(c.CompileData())
+	readyToSend := c.CompileData()
+
+	// Submit metrics.
+	totalOutgoingTraffic.Add(len(readyToSend))
+
+	// Load onto ship.
+	err = crane.ship.Load(readyToSend)
 	if err != nil {
 		return fmt.Errorf("failed to load ship: %w", err)
 	}
