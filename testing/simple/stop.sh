@@ -2,12 +2,14 @@
 
 cd "$( dirname "${BASH_SOURCE[0]}" )"
 
-docker stop $(docker ps -a | grep spn-simpletest | cut -d" " -f1)
-docker rm $(docker ps -a | grep spn-simpletest | cut -d" " -f1)
+docker-compose -p spn-test-simple stop
+docker-compose -p spn-test-simple rm
 
-docker network ls | grep spn-simpletest-network >/dev/null 2>&1
-if [[ $? -eq 0 ]]; then
-  docker network rm spn-simpletest-network
+oldnet=$(docker network ls | grep spn-test-simple | cut -d" " -f1)
+if [[ $oldnet != "" ]]; then
+  docker network rm $oldnet
 fi
 
-rm -r data/shared
+if [[ -d "data/shared" ]]; then
+  rm -r "data/shared"
+fi

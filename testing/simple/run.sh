@@ -8,7 +8,7 @@ realpath() {
     echo $(cd "$folder"; pwd)/$(basename "$path"); 
 }
 
-leftovers=$(docker ps -a | grep spn-simpletest | cut -d" " -f1)
+leftovers=$(docker ps -a | grep spn-test-simple | cut -d" " -f1)
 if [[ $leftovers != "" ]]; then
   docker stop $leftovers
   docker rm $leftovers
@@ -35,4 +35,4 @@ export SPN_TEST_DATA_DIR
 export SPN_TEST_SHARED_DATA_DIR
 
 # Run!
-docker-compose up
+docker-compose -p spn-test-simple up --remove-orphans
