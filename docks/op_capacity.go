@@ -10,6 +10,7 @@ import (
 	"github.com/safing/portbase/formats/dsd"
 	"github.com/safing/portbase/log"
 	"github.com/safing/spn/terminal"
+	"github.com/tevino/abool"
 )
 
 const (
@@ -25,6 +26,8 @@ const (
 var (
 	capacityTestSendData           = make([]byte, capacityTestMsgSize)
 	capacityTestDataReceivedSignal = []byte("ACK")
+
+	capacityTestRunning = abool.New()
 )
 
 type CapacityTestOp struct {
@@ -62,6 +65,11 @@ func init() {
 }
 
 func NewCapacityTestOp(t terminal.OpTerminal) (*CapacityTestOp, *terminal.Error) {
+	// Check if another test is already running.
+	if !capacityTestRunning.SetToIf(false, true) {
+		return nil, terminal.ErrTryAgainLater.With("another capacity op is already running")
+	}
+
 	// Create and init.
 	op := &CapacityTestOp{
 		t: t,
@@ -75,18 +83,25 @@ func NewCapacityTestOp(t terminal.OpTerminal) (*CapacityTestOp, *terminal.Error)
 	// Make capacity test request.
 	request, err := dsd.Dump(op.opts, dsd.CBOR)
 	if err != nil {
+		capacityTestRunning.UnSet()
 		return nil, terminal.ErrInternalError.With("failed to serialize capactity test options: %w", err)
 	}
 
 	// Send test request.
 	tErr := t.OpInit(op, container.New(request))
 	if tErr != nil {
+		capacityTestRunning.UnSet()
 		return nil, tErr
 	}
 	return op, nil
 }
 
 func runCapacityTestOp(t terminal.OpTerminal, opID uint32, data *container.Container) (terminal.Operation, *terminal.Error) {
+	// Check if another test is already running.
+	if !capacityTestRunning.SetToIf(false, true) {
+		return nil, terminal.ErrTryAgainLater.With("another capacity op is already running")
+	}
+
 	// Parse options.
 	opts := &CapacityTestOptions{}
 	_, err := dsd.Load(data.CompileData(), opts)
@@ -218,6 +233,8 @@ func (op *CapacityTestOp) Deliver(c *container.Container) *terminal.Error {
 }
 
 func (op *CapacityTestOp) End(tErr *terminal.Error) {
+	capacityTestRunning.UnSet()
+
 	select {
 	case op.result <- tErr:
 	default:

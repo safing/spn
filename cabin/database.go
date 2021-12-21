@@ -52,7 +52,7 @@ func LoadIdentity(key string) (id *Identity, changed bool, err error) {
 	if err != nil {
 		return nil, false, fmt.Errorf("failed to initialize announcement: %w", err)
 	}
-	statusChanged, err := id.MaintainStatus(nil, true)
+	statusChanged, err := id.MaintainStatus(nil, -1, true)
 	if err != nil {
 		return nil, false, fmt.Errorf("failed to initialize status: %w", err)
 	}

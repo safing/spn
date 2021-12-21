@@ -216,6 +216,7 @@ var (
 	ErrHubNotReady            = registerError(16, "hub not ready")
 	ErrIncorrectUsage         = registerError(22, "incorrect usage")
 	ErrTimeout                = registerError(62, "timed out")
+	ErrTryAgainLater          = registerError(87, "try again later")
 	ErrUnsupportedVersion     = registerError(93, "unsupported version")
 	ErrHubUnavailable         = registerError(101, "hub unavailable")
 	ErrShipSunk               = registerError(108, "ship sunk")

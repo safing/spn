@@ -14,13 +14,15 @@ import (
 type Status struct {
 	Timestamp int64
 
+	// Version holds the current software version of the Hub.
+	Version string
+
 	// Routing Information
 	Keys  map[string]*Key // public keys (with type)
 	Lanes []*Lane         // Connections to other Hubs.
 
-	// Load describes max(CPU, Memory) in percent, averages over the last hour
-	// only update if change is significant in terms of impact on routing
-	// do not update more often than once an hour
+	// Load describes max(CPU, Memory) in percent, averaged over at least 15
+	// minutes. Load is published in fixed steps only.
 	Load int
 }
 

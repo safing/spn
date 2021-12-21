@@ -727,3 +727,7 @@ func (crane *Crane) String() string {
 		return fmt.Sprintf("crane %s from %s", crane.ID, crane.ship.MaskAddress(crane.ship.RemoteAddr()))
 	}
 }
+
+func (crane *Crane) Stopped() bool {
+	return crane.stopped.IsSet()
+}
