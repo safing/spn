@@ -169,13 +169,13 @@ func (m *Map) updateHub(h *hub.Hub, lockMap, lockHub bool) {
 	// Update Hub cost.
 	switch {
 	case pin.Hub.Status.Load >= 100:
-		pin.Cost = 10000
-	case pin.Hub.Status.Load >= 95:
 		pin.Cost = 1000
+	case pin.Hub.Status.Load >= 95:
+		pin.Cost = 100
 	case pin.Hub.Status.Load >= 80:
-		pin.Cost = 200
-	default:
 		pin.Cost = 50
+	default:
+		pin.Cost = 10
 	}
 
 	// Mark all existing Lanes as inactive.
