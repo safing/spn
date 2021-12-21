@@ -114,7 +114,7 @@ func (m *Map) findRoutes(dsts *nearbyPins, opts *Options, maxRoutes int) (*Route
 		}
 
 		// Add Pin to the current path and remove when done.
-		route.addHop(lane.Pin, int(lane.Latency/100000))
+		route.addHop(lane.Pin, lane.Cost+lane.Pin.Cost)
 		defer route.removeHop()
 
 		// Check if the route would even make it into the list.

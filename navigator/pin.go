@@ -22,9 +22,14 @@ type Pin struct {
 	LocationV6 *geoip.Location
 
 	// Hub Status
-	State       PinState
+	State PinState
+	// HopDistance signifies the needed hops to reach this Hub.
+	// HopDistance is measured from the view of a client.
+	// A Hub itself will have itself at distance 1.
 	HopDistance int
-	Load        int              // estimated in microseconds this port adds to latency
+	// Cost is the routing cost of this Hub.
+	Cost float32
+	// ConnectedTo holds validated lanes.
 	ConnectedTo map[string]*Lane // Key is Hub ID.
 
 	// FailingUntil specifies until when this Hub should be regarded as failing.
@@ -66,6 +71,9 @@ type Lane struct {
 	// Lateny designates the latency between these Hubs.
 	// It is specified in nanoseconds.
 	Latency time.Duration
+
+	// Cost is the routing cost of this lane.
+	Cost float32
 
 	// active is a helper flag in order help remove abandoned Lanes.
 	active bool

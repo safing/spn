@@ -8,8 +8,8 @@ import (
 
 type Routes struct {
 	All       []*Route
-	maxCost   int // automatic
-	maxRoutes int // manual setting
+	maxCost   float32 // automatic
+	maxRoutes int     // manual setting
 }
 
 // Len is the number of elements in the collection.
@@ -61,14 +61,14 @@ func (r *Routes) clean() {
 
 type Route struct {
 	// DstCost is the calculated cost between the Destination Hub and the destination IP.
-	DstCost int
+	DstCost float32
 
 	// Path is a list of Transit Hubs and the Destination Hub, including the Cost
 	// for each Hop.
 	Path []*Hop
 
 	// TotalCost is the sum of all costs of this Route.
-	TotalCost int
+	TotalCost float32
 
 	// Algorithm is the ID of the algorithm used to calculate the route.
 	Algorithm string
@@ -81,11 +81,11 @@ type Hop struct {
 	HubID string
 
 	// Cost is the cost for both Lane to this Hub and the Hub itself.
-	Cost int
+	Cost float32
 }
 
 // addHop adds a hop to the route.
-func (r *Route) addHop(pin *Pin, cost int) {
+func (r *Route) addHop(pin *Pin, cost float32) {
 	r.Path = append(r.Path, &Hop{
 		pin:  pin,
 		Cost: cost,
@@ -95,7 +95,7 @@ func (r *Route) addHop(pin *Pin, cost int) {
 
 // completeRoute completes the route by adding the destination cost of the
 // connection between the last hop and the destination IP.
-func (r *Route) completeRoute(dstCost int) {
+func (r *Route) completeRoute(dstCost float32) {
 	r.DstCost = dstCost
 	r.recalculateTotalCost()
 }
@@ -117,7 +117,7 @@ func (r *Route) recalculateTotalCost() {
 	for _, hop := range r.Path {
 		if hop.pin.HasActiveTerminal() {
 			// If we have an active connection, only take 90% of the cost.
-			r.TotalCost += (hop.Cost * 9) / 10
+			r.TotalCost += hop.Cost * 0.9
 		} else {
 			r.TotalCost += hop.Cost
 		}
