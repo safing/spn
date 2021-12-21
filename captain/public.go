@@ -219,6 +219,9 @@ func maintainPublicStatus(ctx context.Context, task *modules.Task) error {
 	default:
 		load = 0
 	}
+	if loadAvg >= 0.8 {
+		log.Warningf("spn/captain: publishing 15m system load average of %.2f as %d", loadAvg, load)
+	}
 
 	// Run maintenance with the new data.
 	changed, err := publicIdentity.MaintainStatus(lanes, load, false)

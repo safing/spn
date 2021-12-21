@@ -1,6 +1,10 @@
 package docks
 
-import "time"
+import (
+	"time"
+
+	"github.com/safing/portbase/log"
+)
 
 const (
 	LaneLatencyTTL  = 1 * time.Hour
@@ -14,6 +18,8 @@ func (crane *Crane) SetLaneLatency(latency time.Duration) {
 
 	crane.laneLatency = latency
 	crane.laneLatencyExpires = time.Now().Add(LaneLatencyTTL)
+
+	log.Infof("docks: %s lane latency set to %s", crane, latency)
 }
 
 // GetLaneLatency returns the lane latency.
@@ -41,6 +47,8 @@ func (crane *Crane) SetLaneCapacity(capacity int) {
 
 	crane.laneCapacity = capacity
 	crane.laneCapacityExpires = time.Now().Add(LaneCapacityTTL)
+
+	log.Infof("docks: %s lane capacity set to %.2f mbit/s", crane, float64(capacity)/1000000)
 }
 
 // GetLaneCapacity returns the lane capacity.
