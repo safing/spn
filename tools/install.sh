@@ -170,6 +170,24 @@ EOT
 
 }
 
+write_config_file() {
+    cat >${1} <<EOT
+{
+  "core": {
+    "metrics": {
+      "instance": "$HOSTNAME",
+      "push": "$PUSHMETRICS"
+    }
+  },
+  "spn": {
+    "publicHub": {
+      "name": "$HOSTNAME"
+    }
+  }
+}
+EOT
+}
+
 confirm_config() {
     log "Installation configuration:"
     echo ""
@@ -179,6 +197,12 @@ confirm_config() {
     echo "Install systemd: ${BOLD}${INSTALLSYSTEMD}${RESET}"
     echo "      Unit path: ${BOLD}${SYSTEMDINSTALLPATH}${RESET}"
     echo "      Start Now: ${BOLD}${ENABLENOW}${RESET}"
+    echo ""
+    echo "         Config:"
+    tmpfile=$(mktemp)
+    write_config_file $tmpfile
+    cat $tmpfile
+    echo ""
     echo ""
 
     if [ ! -z "${interactive}" ]
@@ -272,6 +296,7 @@ EOT
 
     # Setup hub
     setup_hub
+    write_config_file "${INSTALLDIR}/config.json"
 
     # setup systemd
     setup_systemd
