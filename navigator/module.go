@@ -6,6 +6,7 @@ import (
 
 	"github.com/safing/portbase/config"
 	"github.com/safing/portbase/modules"
+	"github.com/safing/spn/conf"
 )
 
 var (
@@ -32,7 +33,7 @@ func prep() error {
 }
 
 func start() error {
-	Main = NewMap("main")
+	Main = NewMap(conf.MainMapName)
 	devMode = config.Concurrent.GetAsBool(config.CfgDevModeKey, false)
 
 	err := registerMapDatabase()

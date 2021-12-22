@@ -8,6 +8,7 @@ import (
 
 	"github.com/safing/portbase/updater"
 	"github.com/safing/portmaster/updates"
+	"github.com/safing/spn/conf"
 	"github.com/safing/spn/hub"
 	"github.com/safing/spn/navigator"
 )
@@ -15,6 +16,7 @@ import (
 var (
 	intelResource           *updater.File
 	intelResourcePath       = "intel/spn/main-intel.dsd"
+	intelResourceMapName    = "main"
 	intelResourceUpdateLock sync.Mutex
 )
 
@@ -30,6 +32,11 @@ func registerIntelUpdateHook() error {
 func updateSPNIntel(ctx context.Context, _ interface{}) (err error) {
 	intelResourceUpdateLock.Lock()
 	defer intelResourceUpdateLock.Unlock()
+
+	// Only update SPN intel when using the matching map.
+	if conf.MainMapName != intelResourceMapName {
+		return nil
+	}
 
 	// Check if there is something to do.
 	if intelResource != nil && !intelResource.UpgradeAvailable() {

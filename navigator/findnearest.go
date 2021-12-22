@@ -77,8 +77,8 @@ func (nb *nearbyPins) clean() {
 }
 
 // nearbyPin represents a Pin and the proximity to a certain location.
-func (nb *nearbyPin) DstCost() int {
-	return 100 - nb.proximity // TODO: weigh with other costs
+func (nb *nearbyPin) DstCost() float32 {
+	return 100 - float32(nb.proximity) // TODO: weigh with other costs
 }
 
 // FindNearestHubs searches for the nearest Hubs to the given IP address. The returned Hubs must not be modified in any way.

@@ -18,8 +18,6 @@ import (
 )
 
 func TestExpansion(t *testing.T) {
-	access.EnableTestMode()
-
 	testExpansion(t, "plain-expansion", false, 200, 200, false)
 	testExpansion(t, "encrypted-expansion", true, 200, 200, false)
 	testExpansion(t, "parallel-plain-expansion", false, 200, 200, true)
@@ -199,7 +197,7 @@ func testExpansion(t *testing.T, testID string, encrypting bool, clientCountTo, 
 		t.Fatalf("expansion test %s failed to auth with home terminal: %s", testID, tErr)
 	}
 	tErr = <-opAuthTo2.Ended
-	if tErr != nil && !tErr.IsSpecial() {
+	if tErr.IsError() {
 		t.Fatalf("expansion test %s failed to auth with home terminal: %s", testID, tErr)
 	}
 	expansionTerminalTo3, err := ExpandTo(homeTerminal, crane3HubID, connectedHub3)
@@ -227,7 +225,7 @@ func testExpansion(t *testing.T, testID string, encrypting bool, clientCountTo, 
 		t.Fatalf("expansion test %s failed to auth with extenstion terminal: %s", testID, tErr)
 	}
 	tErr = <-opAuthTo3.Ended
-	if tErr != nil && !tErr.IsSpecial() {
+	if tErr.IsError() {
 		t.Fatalf("expansion test %s failed to auth with extenstion terminal: %s", testID, tErr)
 	}
 

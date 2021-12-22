@@ -25,7 +25,7 @@ type RoutingProfile struct {
 	// cost of the currently best route. This is an optimization option and
 	// should not interfere with finding the best route, but might reduce the
 	// amount of routes found.
-	MaxExtraCost int
+	MaxExtraCost float32
 }
 
 const (

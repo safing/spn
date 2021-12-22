@@ -224,7 +224,7 @@ func expand(fromTerminal terminal.OpTerminal, from, to *navigator.Pin) (expansio
 // connection.
 type TunnelContext struct {
 	Path       []*TunnelContextHop
-	PathCost   int
+	PathCost   float32
 	RoutingAlg string
 }
 

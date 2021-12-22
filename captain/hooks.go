@@ -1,11 +1,12 @@
 package captain
 
 import (
-	"github.com/safing/portbase/log"
+	"time"
+
+	"github.com/safing/portmaster/updates"
+
 	"github.com/safing/spn/conf"
 	"github.com/safing/spn/docks"
-	"github.com/safing/spn/hub"
-	"github.com/safing/spn/navigator"
 )
 
 func initDockHooks() {
@@ -28,48 +29,20 @@ func handleCraneUpdate(crane *docks.Crane) {
 }
 
 func updateConnectionStatus() {
-	// export new connection status from controllers
+	// Delay updating status for a better chance to combine multiple changes.
+	// Add randomness in order to evade doing a capacity op at the same time.
+	maintainStatusSoon(
+		15*time.Second,
+		1*time.Minute,
+	)
+
+	// Check if we lost all connections and trigger a pending restart if we did.
 	cranes := docks.GetAllAssignedCranes()
-	lanes := make([]*hub.Lane, 0, len(cranes))
 	for _, crane := range cranes {
-		if crane.Public() {
-			lanes = append(lanes, &hub.Lane{
-				ID:       crane.ConnectedHub.ID,
-				Capacity: 0, // TODO
-				Latency:  0, // TODO
-			})
-		}
-	}
-	// Sort Lanes for comparing.
-	hub.SortLanes(lanes)
-
-	defer func() {
-		log.Infof("spn/captain: current lanes: %v", publicIdentity.Hub.Status.Lanes)
-	}()
-
-	// update status
-	changed, err := publicIdentity.MaintainStatus(lanes, false)
-	if err != nil {
-		log.Warningf("spn/captain: failed to update public hub status: %s", err)
-		return
-	}
-
-	// Propagate changes.
-	if changed {
-		// Update hub in map.
-		navigator.Main.UpdateHub(publicIdentity.Hub)
-		log.Debug("spn/captain: updated own hub on map after status change")
-
-		// Export status data.
-		statusData, err := publicIdentity.ExportStatus()
-		if err != nil {
-			log.Warningf("spn/captain: failed to export public hub status: %s", err)
+		if crane.Public() && !crane.Stopped() {
+			// There is at least one public and active crane, so don't restart now.
 			return
 		}
-
-		// Forward status data to other connected Hubs.
-		gossipRelayMsg("", GossipHubStatusMsg, statusData)
 	}
-
-	// TODO: Detect if we lost all connections and trigger a restart, if one is pending.
+	updates.TriggerRestartIfPending()
 }

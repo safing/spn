@@ -8,25 +8,35 @@ realpath() {
     echo $(cd "$folder"; pwd)/$(basename "$path"); 
 }
 
-if [[ ! -f "../../${1}" ]]; then
-  echo "please compile ${1}.go in main directory"
-  exit 1
-fi
-
-bin_path="$(realpath ../../${1})"
-data_path="$(realpath ./data/me)"
-if [[ ! -d "$data_path" ]]; then
-  mkdir "$data_path"
-fi
-
-leftover=$(docker ps -a | grep spn-simpletest-me | cut -d" " -f1)
+leftover=$(docker ps -a | grep spn-test-simple-me | cut -d" " -f1)
 if [[ $leftover != "" ]]; then
   docker stop $leftover
   docker rm $leftover
 fi
 
-shift # remove first arg
+if [[ ! -f "../../cmds/hub/hub" ]]; then
+  echo "please build the hub cmd using cmds/hub/build"
+  exit 1
+fi
 
-docker run -ti --name spn-simpletest-me --network spn-simpletest-network -v $bin_path:/opt/spn:ro -v $data_path/me:/opt/data --entrypoint /opt/spn toolset.safing.network/dev --data /opt/data -name me -log trace $2 $3 $4 $5 $6 $7 $8 $9
+SPN_TEST_BIN="$(realpath ../../cmds/hub/hub)"
+SPN_TEST_DATA_DIR="$(realpath ./data)"
+if [[ ! -d "$SPN_TEST_DATA_DIR" ]]; then
+  mkdir "$SPN_TEST_DATA_DIR"
+fi
+SPN_TEST_SHARED_DATA_DIR="$(realpath ./data/shared)"
+if [[ ! -d "$SPN_TEST_SHARED_DATA_DIR" ]]; then
+  mkdir "$SPN_TEST_SHARED_DATA_DIR"
+fi
 
-# docker rm spn-simpletest-me
+docker run -ti \
+--name spn-test-simple-me \
+--hostname me \
+--network spn-test-simple_default \
+-v $SPN_TEST_BIN:/opt/hub_me:ro \
+-v $SPN_TEST_DATA_DIR/me:/opt/data \
+-v $SPN_TEST_SHARED_DATA_DIR/me:/opt/shared \
+--entrypoint /opt/hub_me \
+toolset.safing.network/dev \
+--devmode --api-address 0.0.0.0:8081 \
+--data /opt/data -log trace --spn-map test --bootstrap-file /opt/shared/bootstrap.dsd

@@ -166,8 +166,17 @@ func (m *Map) updateHub(h *hub.Hub, lockMap, lockHub bool) {
 	// Update Trust and Advisory Statuses.
 	m.updateIntelStatuses(pin)
 
-	// Update Hub load.
-	pin.Load = pin.Hub.Status.Load
+	// Update Hub cost.
+	switch {
+	case pin.Hub.Status.Load >= 100:
+		pin.Cost = 1000
+	case pin.Hub.Status.Load >= 95:
+		pin.Cost = 100
+	case pin.Hub.Status.Load >= 80:
+		pin.Cost = 50
+	default:
+		pin.Cost = 10
+	}
 
 	// Mark all existing Lanes as inactive.
 	for _, lane := range pin.ConnectedTo {
@@ -220,6 +229,17 @@ func (m *Map) updateHub(h *hub.Hub, lockMap, lockHub bool) {
 	m.PushPinChanges()
 }
 
+const (
+	minUnconfirmedLatency  = 10 * time.Millisecond
+	maxUnconfirmedCapacity = 100000000 // 100Mbit/s
+
+	cap1Mbit   = 1000000
+	cap10Mbit  = 10000000
+	cap100Mbit = 100000000
+	cap1Gbit   = 1000000000
+	cap10Gbit  = 10000000000
+)
+
 // updateHubLane updates a lane between two Hubs on the Map.
 // pin must already be locked, lane belongs to pin.
 // peer will be locked by this function.
@@ -246,16 +266,46 @@ func (m *Map) updateHubLane(pin *Pin, lane *hub.Lane, peer *Pin) {
 		return
 	}
 
-	// Calculate matching Capacity and Latency values between both Hubs.
-	combinedCapacity := lane.Capacity
-	if peerLane.Capacity < combinedCapacity {
-		// For Capacity, use the lesser value of both.
-		combinedCapacity = peerLane.Capacity
-	}
+	// Calculate combined latency, use the greater value.
 	combinedLatency := lane.Latency
 	if peerLane.Latency > combinedLatency {
-		// For Latency, use the greater value of both.
 		combinedLatency = peerLane.Latency
+	}
+	// Enforce minimum value if at least one side has no data.
+	if (lane.Latency == 0 || peerLane.Latency == 0) && combinedLatency < minUnconfirmedLatency {
+		combinedLatency = minUnconfirmedLatency
+	}
+
+	// Calculate combined capacity, use the lesser existing value.
+	combinedCapacity := lane.Capacity
+	if combinedCapacity == 0 || (peerLane.Capacity > 0 && peerLane.Capacity < combinedCapacity) {
+		combinedCapacity = peerLane.Capacity
+	}
+	// Enforce maximum value if at least one side has no data.
+	if (lane.Capacity == 0 || peerLane.Capacity == 0) && combinedCapacity > maxUnconfirmedCapacity {
+		combinedCapacity = maxUnconfirmedCapacity
+	}
+
+	// Calculate cost:
+	var laneCost float32
+	// - One point for every ms in latency (linear)
+	laneCost += float32(combinedLatency) / float32(time.Millisecond)
+	switch {
+	case combinedCapacity < cap1Mbit:
+		// - Between 1000 and 10000 points for ranges below 1Mbit/s
+		laneCost += 1000 + 9000*((cap1Mbit-float32(combinedCapacity))/cap1Mbit)
+	case combinedCapacity < cap10Mbit:
+		// - Between 200 and 1000 points for ranges below 10Mbit/s
+		laneCost += 200 + 800*((cap10Mbit-float32(combinedCapacity))/cap10Mbit)
+	case combinedCapacity < cap100Mbit:
+		// - Between 20 and 200 points for ranges below 100Mbit/s
+		laneCost += 20 + 180*((cap100Mbit-float32(combinedCapacity))/cap100Mbit)
+	case combinedCapacity < cap1Gbit:
+		// - Between 5 and 20 points for ranges below 1Gbit/s
+		laneCost += 5 + 15*((cap1Gbit-float32(combinedCapacity))/cap1Gbit)
+	case combinedCapacity < cap10Gbit:
+		// - Between 0 and 5 points for ranges below 10Gbit/s
+		laneCost += 5 * ((cap10Gbit - float32(combinedCapacity)) / cap10Gbit)
 	}
 
 	// Add Lane to both Pins and override old values in the process.
@@ -263,12 +313,14 @@ func (m *Map) updateHubLane(pin *Pin, lane *hub.Lane, peer *Pin) {
 		Pin:      peer,
 		Capacity: combinedCapacity,
 		Latency:  combinedLatency,
+		Cost:     laneCost,
 		active:   true,
 	}
 	peer.ConnectedTo[pin.Hub.ID] = &Lane{
 		Pin:      pin,
 		Capacity: combinedCapacity,
 		Latency:  combinedLatency,
+		Cost:     laneCost,
 		active:   true,
 	}
 	peer.pushChanges.Set()

@@ -23,9 +23,8 @@ type BootstrapFileEntry struct {
 }
 
 var (
-	bootstrapHubFlag      string
-	bootstrapFileFlag     string
-	bootstrapResourcePath = "intel/spn/bootstrap.dsd"
+	bootstrapHubFlag  string
+	bootstrapFileFlag string
 )
 
 func init() {

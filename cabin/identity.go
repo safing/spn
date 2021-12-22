@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/safing/portbase/info"
+
 	"github.com/safing/portbase/database/record"
 	"github.com/safing/portbase/log"
 
@@ -82,7 +84,7 @@ func CreateIdentity(ctx context.Context, mapName string) (*Identity, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize announcement: %w", err)
 	}
-	_, err = id.MaintainStatus(nil, true)
+	_, err = id.MaintainStatus(nil, 0, true)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize status: %w", err)
 	}
@@ -135,7 +137,7 @@ func (id *Identity) MaintainAnnouncement(selfcheck bool) (changed bool, err erro
 }
 
 // MaintainStatus maintains the Hub's Status and returns whether there was a change that should be communicated to other Hubs.
-func (id *Identity) MaintainStatus(lanes []*hub.Lane, selfcheck bool) (changed bool, err error) {
+func (id *Identity) MaintainStatus(lanes []*hub.Lane, load int, selfcheck bool) (changed bool, err error) {
 	id.Lock()
 	defer id.Unlock()
 
@@ -150,7 +152,13 @@ func (id *Identity) MaintainStatus(lanes []*hub.Lane, selfcheck bool) (changed b
 		newStatus = &hub.Status{}
 	}
 
-	// update keys
+	// Update software version.
+	if newStatus.Version != info.Version() {
+		newStatus.Version = info.Version()
+		changed = true
+	}
+
+	// Update keys.
 	keysChanged, err := id.MaintainExchKeys(newStatus, time.Now())
 	if err != nil {
 		return false, fmt.Errorf("failed to maintain keys: %w", err)
@@ -165,8 +173,14 @@ func (id *Identity) MaintainStatus(lanes []*hub.Lane, selfcheck bool) (changed b
 		changed = true
 	}
 
+	// Update load.
+	if load >= 0 && newStatus.Load != load {
+		newStatus.Load = load
+		changed = true
+	}
+
+	// Update timestamp if something changed.
 	if changed {
-		// Update timestamp.
 		newStatus.Timestamp = time.Now().Unix()
 	}
 

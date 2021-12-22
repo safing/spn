@@ -99,6 +99,19 @@ type Crane struct {
 
 	// targetLoadSize defines the optimal loading size.
 	targetLoadSize int
+
+	// metaLock locks the metadata fields below.
+	metaLock sync.Mutex
+	// laneLatency designates the latency. It is specified in nanoseconds.
+	laneLatency time.Duration
+	// laneLatencyExpires holds the time when the laneLatency expires and
+	// should be re-measured.
+	laneLatencyExpires time.Time
+	// laneCapacity designates the available bandwidth. It is specified in bit/s.
+	laneCapacity int
+	// laneCapacityExpires holds the time when the laneCapacity expires and
+	// should be re-measured.
+	laneCapacityExpires time.Time
 }
 
 func NewCrane(ctx context.Context, ship ships.Ship, connectedHub *hub.Hub, id *cabin.Identity) (*Crane, error) {
@@ -373,6 +386,9 @@ func (crane *Crane) unloadUntilFull(buf []byte) error {
 
 		// Return if buffer has been fully filled.
 		if bytesRead == len(buf) {
+			// Submit metrics.
+			totalIncomingTraffic.Add(bytesRead)
+
 			return nil
 		}
 	}
@@ -641,9 +657,15 @@ func (crane *Crane) load(c *container.Container) error {
 		return fmt.Errorf("failed to encrypt: %w", err)
 	}
 
-	// Load onto ship.
+	// Finalize data.
 	c.PrependLength()
-	err = crane.ship.Load(c.CompileData())
+	readyToSend := c.CompileData()
+
+	// Submit metrics.
+	totalOutgoingTraffic.Add(len(readyToSend))
+
+	// Load onto ship.
+	err = crane.ship.Load(readyToSend)
 	if err != nil {
 		return fmt.Errorf("failed to load ship: %w", err)
 	}
@@ -658,7 +680,7 @@ func (crane *Crane) Stop(err *terminal.Error) {
 
 	// Log error message.
 	if err != nil {
-		if err.IsSpecial() {
+		if err.IsOK() {
 			log.Infof("spn/docks: %s is done", crane)
 		} else {
 			log.Warningf("spn/docks: %s is stopping: %s", crane, err)
@@ -713,4 +735,8 @@ func (crane *Crane) String() string {
 	default:
 		return fmt.Sprintf("crane %s from %s", crane.ID, crane.ship.MaskAddress(crane.ship.RemoteAddr()))
 	}
+}
+
+func (crane *Crane) Stopped() bool {
+	return crane.stopped.IsSet()
 }

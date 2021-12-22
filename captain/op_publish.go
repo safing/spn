@@ -38,7 +38,7 @@ func NewPublishOp(controller *docks.CraneControllerTerminal, identity *cabin.Ide
 	op := &PublishOp{
 		controller: controller,
 		identity:   identity,
-		result:     make(chan *terminal.Error),
+		result:     make(chan *terminal.Error, 1),
 	}
 	op.OpBase.Init()
 	msg := container.New()
@@ -104,7 +104,7 @@ func runPublishOp(t terminal.OpTerminal, opID uint32, data *container.Container)
 		controller:    controller,
 		requestingHub: h,
 		verification:  v,
-		result:        make(chan *terminal.Error),
+		result:        make(chan *terminal.Error, 1),
 	}
 	op.OpBase.Init()
 	op.OpBase.SetID(opID)

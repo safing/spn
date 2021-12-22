@@ -28,6 +28,7 @@ type TerminalInterface interface {
 	Deliver(c *container.Container) *Error
 	Abandon(err *Error)
 	FmtID() string
+	Flush()
 }
 
 type TerminalExtension interface {
@@ -504,7 +505,7 @@ func (t *TerminalBase) handleOpMsg(data *container.Container) *Error {
 		if ok {
 			err := op.Deliver(data)
 			if err != nil {
-				if err.IsSpecial() {
+				if err.IsOK() {
 					t.OpEnd(op, err)
 				} else {
 					t.OpEnd(op, err.Wrap("data delivery failed"))

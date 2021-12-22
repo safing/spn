@@ -9,12 +9,10 @@ networks:
 
 services:
   hub1:
-    container_name: hub1
+    container_name: spn-test-simple-hub1
     hostname: hub1
     image: toolset.safing.network/dev
-    entrypoint: ["/bin/sh", "-c"]
-    command: ["/opt/hub1 --data /opt/data --log trace --bootstrap-file /opt/shared/bootstrap.dsd"]
-    # command: ["ifconfig"]
+    entrypoint: "/opt/shared/entrypoint.sh"
     volumes:
       - ${SPN_TEST_BIN}:/opt/hub1:ro
       - ${SPN_TEST_DATA_DIR}/hub1:/opt/data
@@ -24,11 +22,10 @@ services:
         ipv4_address: 6.0.0.11
 
   hub2:
-    container_name: hub2
+    container_name: spn-test-simple-hub2
     hostname: hub2
     image: toolset.safing.network/dev
-    entrypoint: ["/bin/sh", "-c"]
-    command: ["/opt/hub2 --data /opt/data --log trace --bootstrap-file /opt/shared/bootstrap.dsd"]
+    entrypoint: "/opt/shared/entrypoint.sh"
     volumes:
       - ${SPN_TEST_BIN}:/opt/hub2:ro
       - ${SPN_TEST_DATA_DIR}/hub2:/opt/data
@@ -38,11 +35,10 @@ services:
         ipv4_address: 6.0.0.12
 
   hub3:
-    container_name: hub3
+    container_name: spn-test-simple-hub3
     hostname: hub3
     image: toolset.safing.network/dev
-    entrypoint: ["/bin/sh", "-c"]
-    command: ["/opt/hub3 --data /opt/data --log trace --bootstrap-file /opt/shared/bootstrap.dsd"]
+    entrypoint: "/opt/shared/entrypoint.sh"
     volumes:
       - ${SPN_TEST_BIN}:/opt/hub3:ro
       - ${SPN_TEST_DATA_DIR}/hub3:/opt/data
@@ -52,11 +48,10 @@ services:
         ipv4_address: 6.0.0.13
 
   hub4:
-    container_name: hub4
+    container_name: spn-test-simple-hub4
     hostname: hub4
     image: toolset.safing.network/dev
-    entrypoint: ["/bin/sh", "-c"]
-    command: ["/opt/hub4 --data /opt/data --log trace --bootstrap-file /opt/shared/bootstrap.dsd"]
+    entrypoint: "/opt/shared/entrypoint.sh"
     volumes:
       - ${SPN_TEST_BIN}:/opt/hub4:ro
       - ${SPN_TEST_DATA_DIR}/hub4:/opt/data
@@ -66,11 +61,10 @@ services:
         ipv4_address: 6.0.0.14
 
   hub5:
-    container_name: hub5
+    container_name: spn-test-simple-hub5
     hostname: hub5
     image: toolset.safing.network/dev
-    entrypoint: ["/bin/sh", "-c"]
-    command: ["/opt/hub5 --data /opt/data --log trace --bootstrap-file /opt/shared/bootstrap.dsd"]
+    entrypoint: "/opt/shared/entrypoint.sh"
     volumes:
       - ${SPN_TEST_BIN}:/opt/hub5:ro
       - ${SPN_TEST_DATA_DIR}/hub5:/opt/data
@@ -80,11 +74,10 @@ services:
         ipv4_address: 6.0.0.15
 
   hub6:
-    container_name: hub6
+    container_name: spn-test-simple-hub6
     hostname: hub6
     image: toolset.safing.network/dev
-    entrypoint: ["/bin/sh", "-c"]
-    command: ["/opt/hub6 --data /opt/data --log trace --bootstrap-file /opt/shared/bootstrap.dsd"]
+    entrypoint: "/opt/shared/entrypoint.sh"
     volumes:
       - ${SPN_TEST_BIN}:/opt/hub6:ro
       - ${SPN_TEST_DATA_DIR}/hub6:/opt/data
@@ -94,11 +87,10 @@ services:
         ipv4_address: 6.0.0.16
 
   hub7:
-    container_name: hub7
+    container_name: spn-test-simple-hub7
     hostname: hub7
     image: toolset.safing.network/dev
-    entrypoint: ["/bin/sh", "-c"]
-    command: ["/opt/hub7 --data /opt/data --log trace --bootstrap-file /opt/shared/bootstrap.dsd"]
+    entrypoint: "/opt/shared/entrypoint.sh"
     volumes:
       - ${SPN_TEST_BIN}:/opt/hub7:ro
       - ${SPN_TEST_DATA_DIR}/hub7:/opt/data
@@ -108,11 +100,10 @@ services:
         ipv4_address: 6.0.0.17
 
   hub8:
-    container_name: hub8
+    container_name: spn-test-simple-hub8
     hostname: hub8
     image: toolset.safing.network/dev
-    entrypoint: ["/bin/sh", "-c"]
-    command: ["/opt/hub8 --data /opt/data --log trace --bootstrap-file /opt/shared/bootstrap.dsd"]
+    entrypoint: "/opt/shared/entrypoint.sh"
     volumes:
       - ${SPN_TEST_BIN}:/opt/hub8:ro
       - ${SPN_TEST_DATA_DIR}/hub8:/opt/data
@@ -122,11 +113,10 @@ services:
         ipv4_address: 6.0.0.18
 
   hub9:
-    container_name: hub9
+    container_name: spn-test-simple-hub9
     hostname: hub9
     image: toolset.safing.network/dev
-    entrypoint: ["/bin/sh", "-c"]
-    command: ["/opt/hub9 --data /opt/data --log trace --bootstrap-file /opt/shared/bootstrap.dsd"]
+    entrypoint: "/opt/shared/entrypoint.sh"
     volumes:
       - ${SPN_TEST_BIN}:/opt/hub9:ro
       - ${SPN_TEST_DATA_DIR}/hub9:/opt/data
@@ -136,11 +126,10 @@ services:
         ipv4_address: 6.0.0.19
 
   hub10:
-    container_name: hub10
+    container_name: spn-test-simple-hub10
     hostname: hub10
     image: toolset.safing.network/dev
-    entrypoint: ["/bin/sh", "-c"]
-    command: ["/opt/hub10 --data /opt/data --log trace --bootstrap-file /opt/shared/bootstrap.dsd"]
+    entrypoint: "/opt/shared/entrypoint.sh"
     volumes:
       - ${SPN_TEST_BIN}:/opt/hub10:ro
       - ${SPN_TEST_DATA_DIR}/hub10:/opt/data

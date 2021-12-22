@@ -79,6 +79,11 @@ func (controller *CraneControllerTerminal) Deliver(c *container.Container) *term
 	return controller.DuplexFlowQueue.Deliver(c)
 }
 
+func (controller *CraneControllerTerminal) Flush() {
+	controller.TerminalBase.Flush()
+	controller.DuplexFlowQueue.Flush()
+}
+
 func (controller *CraneControllerTerminal) Abandon(err *terminal.Error) {
 	if controller.Abandoned.SetToIf(false, true) {
 		// Send stop msg and end all operations.

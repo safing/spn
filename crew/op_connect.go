@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"strconv"
+	"sync/atomic"
 	"time"
 
 	"github.com/safing/portbase/container"
@@ -20,6 +21,10 @@ import (
 
 const ConnectOpType string = "connect"
 
+var (
+	activeConnectOps = new(int64)
+)
+
 type ConnectOp struct {
 	terminal.OpBase
 	*terminal.DuplexFlowQueue
@@ -28,6 +33,9 @@ type ConnectOp struct {
 	ctx context.Context
 	// cancelCtx cancels ctx.
 	cancelCtx context.CancelFunc
+
+	downloaded *uint64
+	uploaded   *uint64
 
 	t       terminal.OpTerminal
 	conn    net.Conn
@@ -160,6 +168,10 @@ func runConnectOp(t terminal.OpTerminal, opID uint32, data *container.Container)
 	op.ctx, op.cancelCtx = context.WithCancel(context.Background())
 	op.DuplexFlowQueue = terminal.NewDuplexFlowQueue(op, request.QueueSize, op.submitUpstream)
 
+	// Setup metrics.
+	op.downloaded = new(uint64)
+	op.uploaded = new(uint64)
+
 	// Start worker.
 	module.StartWorker("connect op conn reader", op.connReader)
 	module.StartWorker("connect op conn writer", op.connWriter)
@@ -177,6 +189,18 @@ func (op *ConnectOp) submitUpstream(c *container.Container) {
 }
 
 func (op *ConnectOp) connReader(_ context.Context) error {
+	// Metrics setup and submitting.
+	if !op.entry {
+		atomic.AddInt64(activeConnectOps, 1)
+		started := time.Now()
+		defer func() {
+			atomic.AddInt64(activeConnectOps, -1)
+			connectOpDurationHistogram.UpdateDuration(started)
+			connectOpDownloadDataHistogram.Update(float64(atomic.LoadUint64(op.downloaded)))
+			connectOpUploadDataHistogram.Update(float64(atomic.LoadUint64(op.uploaded)))
+		}()
+	}
+
 	for {
 		buf := make([]byte, 1500)
 		n, err := op.conn.Read(buf)
@@ -191,6 +215,11 @@ func (op *ConnectOp) connReader(_ context.Context) error {
 		if n == 0 {
 			log.Tracef("spn/crew: connect op %s>%d read 0 bytes from %s", op.t.FmtID(), op.ID(), op.connectedType())
 			continue
+		}
+
+		// Count downloaded data for metrics on the Hub.
+		if !op.entry {
+			atomic.AddUint64(op.downloaded, uint64(n))
 		}
 
 		tErr := op.DuplexFlowQueue.Send(container.New(buf[:n]))
@@ -226,6 +255,11 @@ writing:
 		data := c.CompileData()
 		if len(data) == 0 {
 			continue writing
+		}
+
+		// Count uploaded data for metrics on the Hub.
+		if !op.entry {
+			atomic.AddUint64(op.uploaded, uint64(len(data)))
 		}
 
 		// Send all given data.

@@ -16,10 +16,16 @@ var (
 	allCranes      = make(map[string]*Crane) // ID = Crane ID
 	assignedCranes = make(map[string]*Crane) // ID = connected Hub ID
 	cranesLock     sync.RWMutex
+
+	runningTests bool
 )
 
 func init() {
-	module = modules.Register("docks", nil, nil, stopAllCranes, "base", "cabin", "access")
+	module = modules.Register("docks", nil, start, stopAllCranes, "base", "cabin", "access")
+}
+
+func start() error {
+	return registerMetrics()
 }
 
 func registerCrane(crane *Crane) error {

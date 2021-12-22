@@ -126,6 +126,9 @@ type OpTerminal interface {
 
 	// FmtID returns the formatted ID the Operation's Terminal.
 	FmtID() string
+
+	// Flush writes all pending data waiting to be sent.
+	Flush()
 }
 
 // OpInit initialized the operation with the given data.
@@ -174,7 +177,7 @@ func (t *TerminalBase) OpEnd(op Operation, err *Error) {
 	switch {
 	case err == nil:
 		log.Debugf("spn/terminal: operation %s %s ended", op.Type(), fmtOperationID(t.parentID, t.id, op.ID()))
-	case err.IsSpecial():
+	case err.IsOK():
 		log.Debugf("spn/terminal: operation %s %s ended: %s", op.Type(), fmtOperationID(t.parentID, t.id, op.ID()), err)
 	default:
 		log.Warningf("spn/terminal: operation %s %s failed: %s", op.Type(), fmtOperationID(t.parentID, t.id, op.ID()), err)
