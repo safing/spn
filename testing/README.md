@@ -2,7 +2,10 @@
 
 ## Simple Docker Setup
 
+Run `run.sh` to start the docker compose test network.
+Then, connect to the test network, by starting the core with the "test" spn map and the correct bootstrap file.
 
+Run `stop.sh` to remove all docker resources again.
 
 ## Advanced Setup with Shadow
 

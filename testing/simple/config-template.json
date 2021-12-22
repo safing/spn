@@ -1,0 +1,13 @@
+{
+  "core": {
+    "metrics": {
+      "instance": "test_$HUBNAME",
+      "push": ""
+    }
+  },
+  "spn": {
+    "publicHub": {
+      "name": "test-$HUBNAME"
+    }
+  }
+}
