@@ -201,11 +201,28 @@ func (id *Identity) MaintainStatus(lanes []*hub.Lane, load int, selfcheck bool) 
 		// Save message to hub message storage.
 		err = hub.SaveHubMsg(id.ID, conf.MainMapName, hub.MsgTypeStatus, newStatusData)
 		if err != nil {
-			log.Warningf("spn/cabin: failed to save own new/updated status of %s: %s", id.ID, err)
+			log.Warningf("spn/cabin: failed to save own new/updated status: %s", err)
 		}
 	}
 
 	return changed, nil
+}
+
+// MakeOfflineStatus creates and signs an offline status message.
+func (id *Identity) MakeOfflineStatus() (offlineStatusExport []byte, err error) {
+	// Make offline status.
+	newStatus := &hub.Status{
+		Timestamp: time.Now().Unix(),
+		Version:   hub.VersionOffline,
+	}
+
+	// Export new data.
+	newStatusData, err := newStatus.Export(id.signingEnvelope())
+	if err != nil {
+		return nil, fmt.Errorf("failed to export: %w", err)
+	}
+
+	return newStatusData, nil
 }
 
 func (id *Identity) signingEnvelope() *jess.Envelope {
