@@ -15,7 +15,7 @@ import (
 
 var (
 	intelResource           *updater.File
-	intelResourcePath       = "intel/spn/main-intel.dsd"
+	intelResourcePath       = "intel/spn/main-intel.json"
 	intelResourceMapName    = "main"
 	intelResourceUpdateLock sync.Mutex
 )

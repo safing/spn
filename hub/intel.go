@@ -57,7 +57,7 @@ func (i *Intel) Parsed() *ParsedIntel {
 func ParseIntel(data []byte) (*Intel, error) {
 	// Load data into struct.
 	intel := &Intel{}
-	_, err := dsd.Load(data, intel)
+	err := dsd.LoadAsFormat(data, dsd.JSON, intel)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse data: %w", err)
 	}
