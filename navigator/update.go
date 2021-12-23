@@ -167,16 +167,7 @@ func (m *Map) updateHub(h *hub.Hub, lockMap, lockHub bool) {
 	m.updateIntelStatuses(pin)
 
 	// Update Hub cost.
-	switch {
-	case pin.Hub.Status.Load >= 100:
-		pin.Cost = 1000
-	case pin.Hub.Status.Load >= 95:
-		pin.Cost = 100
-	case pin.Hub.Status.Load >= 80:
-		pin.Cost = 50
-	default:
-		pin.Cost = 10
-	}
+	pin.Cost = CalculateHubCost(pin.Hub.Status.Load)
 
 	// Mark all existing Lanes as inactive.
 	for _, lane := range pin.ConnectedTo {
@@ -286,27 +277,8 @@ func (m *Map) updateHubLane(pin *Pin, lane *hub.Lane, peer *Pin) {
 		combinedCapacity = maxUnconfirmedCapacity
 	}
 
-	// Calculate cost:
-	var laneCost float32
-	// - One point for every ms in latency (linear)
-	laneCost += float32(combinedLatency) / float32(time.Millisecond)
-	switch {
-	case combinedCapacity < cap1Mbit:
-		// - Between 1000 and 10000 points for ranges below 1Mbit/s
-		laneCost += 1000 + 9000*((cap1Mbit-float32(combinedCapacity))/cap1Mbit)
-	case combinedCapacity < cap10Mbit:
-		// - Between 200 and 1000 points for ranges below 10Mbit/s
-		laneCost += 200 + 800*((cap10Mbit-float32(combinedCapacity))/cap10Mbit)
-	case combinedCapacity < cap100Mbit:
-		// - Between 20 and 200 points for ranges below 100Mbit/s
-		laneCost += 20 + 180*((cap100Mbit-float32(combinedCapacity))/cap100Mbit)
-	case combinedCapacity < cap1Gbit:
-		// - Between 5 and 20 points for ranges below 1Gbit/s
-		laneCost += 5 + 15*((cap1Gbit-float32(combinedCapacity))/cap1Gbit)
-	case combinedCapacity < cap10Gbit:
-		// - Between 0 and 5 points for ranges below 10Gbit/s
-		laneCost += 5 * ((cap10Gbit - float32(combinedCapacity)) / cap10Gbit)
-	}
+	// Calculate lane cost.
+	laneCost := CalculateLaneCost(combinedLatency, combinedCapacity)
 
 	// Add Lane to both Pins and override old values in the process.
 	pin.ConnectedTo[peer.Hub.ID] = &Lane{
