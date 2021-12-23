@@ -172,8 +172,8 @@ func (hop *Hop) Pin() *Pin {
 func (r *Route) String() string {
 	s := make([]string, 0, len(r.Path)+1)
 	for _, hop := range r.Path {
-		s = append(s, fmt.Sprintf("=> %d$ %s", hop.Cost, hop.pin))
+		s = append(s, fmt.Sprintf("=> %.2f$ %s", hop.Cost, hop.pin))
 	}
-	s = append(s, fmt.Sprintf("=> %d$", r.DstCost))
+	s = append(s, fmt.Sprintf("=> %.2f$", r.DstCost))
 	return strings.Join(s, " ")
 }

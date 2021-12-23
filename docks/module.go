@@ -8,6 +8,7 @@ import (
 
 	"github.com/safing/portbase/modules"
 	"github.com/safing/portbase/rng"
+	_ "github.com/safing/spn/access" // Required module.
 )
 
 var (

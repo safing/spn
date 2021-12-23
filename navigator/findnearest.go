@@ -13,8 +13,10 @@ import (
 // nearbyPins is a list of nearby Pins to a certain location.
 type nearbyPins struct {
 	pins         []*nearbyPin
-	minProximity int
+	minPins      int
 	maxPins      int
+	minProximity int
+	cutOffLimit  int
 }
 
 // nearbyPin represents a Pin and the proximity to a certain location.
@@ -41,7 +43,7 @@ func (nb *nearbyPins) Swap(i, j int) {
 
 // add potentially adds a Pin to the list of nearby Pins.
 func (nb *nearbyPins) add(pin *Pin, proximity int) {
-	if proximity < nb.minProximity {
+	if len(nb.pins) > nb.minPins && proximity < nb.minProximity {
 		return
 	}
 
@@ -66,19 +68,38 @@ func (nb *nearbyPins) get(id string) *nearbyPin {
 func (nb *nearbyPins) clean() {
 	// Sort nearby Pins so that the closest one is on top.
 	sort.Sort(nb)
-	// Remove all remaining from the list.
+
+	// Set minimum proximity based on max difference, if we have enough pins.
+	if len(nb.pins) >= nb.minPins {
+		nb.minProximity = nb.pins[0].proximity - nb.cutOffLimit
+	}
+
+	// Remove superfluous Pins from the list.
 	if len(nb.pins) > nb.maxPins {
 		nb.pins = nb.pins[:nb.maxPins]
 	}
-	// Set new minimum proximity.
-	if len(nb.pins) > 0 {
+	// Remove Pins that are too far away.
+	if len(nb.pins) > nb.minPins {
+		// Search for first pin that is too far away.
+		okUntil := nb.minPins
+		for ; okUntil < len(nb.pins); okUntil++ {
+			if nb.pins[okUntil].proximity < nb.minProximity {
+				break
+			}
+		}
+		// Cut off the list at that point.
+		nb.pins = nb.pins[:okUntil]
+	}
+
+	// Raise minimum proximity to that of the last entry, if we have enough pins.
+	if len(nb.pins) >= nb.minPins && nb.pins[len(nb.pins)-1].proximity > nb.minProximity {
 		nb.minProximity = nb.pins[len(nb.pins)-1].proximity
 	}
 }
 
 // nearbyPin represents a Pin and the proximity to a certain location.
 func (nb *nearbyPin) DstCost() float32 {
-	return 100 - float32(nb.proximity) // TODO: weigh with other costs
+	return CalculateDestinationCost(nb.proximity)
 }
 
 // FindNearestHubs searches for the nearest Hubs to the given IP address. The returned Hubs must not be modified in any way.
@@ -115,9 +136,16 @@ func (m *Map) findNearestPins(locationV4, locationV6 *geoip.Location, matcher Pi
 		return nil, errors.New("no location provided")
 	}
 
+	// Raise maxMatches to nearestPinsMinimum.
+	if maxMatches < nearestPinsMinimum {
+		maxMatches = nearestPinsMinimum
+	}
+
 	// Create nearby Pins list.
 	nearby := &nearbyPins{
-		maxPins: maxMatches,
+		minPins:     nearestPinsMinimum,
+		maxPins:     maxMatches,
+		cutOffLimit: nearestPinsMaxProximityDifference,
 	}
 
 	// Iterate over all Pins in the Map to find the nearest ones.
