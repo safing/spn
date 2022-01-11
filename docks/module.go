@@ -90,25 +90,25 @@ func GetAssignedCrane(hubID string) *Crane {
 }
 
 func getAllCranes() map[string]*Crane {
-	new := make(map[string]*Crane, len(allCranes))
+	copiedCranes := make(map[string]*Crane, len(allCranes))
 
 	cranesLock.RLock()
 	defer cranesLock.RUnlock()
 
 	for id, crane := range allCranes {
-		new[id] = crane
+		copiedCranes[id] = crane
 	}
-	return new
+	return copiedCranes
 }
 
 func GetAllAssignedCranes() map[string]*Crane {
-	new := make(map[string]*Crane, len(assignedCranes))
+	copiedCranes := make(map[string]*Crane, len(assignedCranes))
 
 	cranesLock.RLock()
 	defer cranesLock.RUnlock()
 
 	for destination, crane := range assignedCranes {
-		new[destination] = crane
+		copiedCranes[destination] = crane
 	}
-	return new
+	return copiedCranes
 }

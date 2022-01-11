@@ -160,8 +160,8 @@ func maintainPublicStatus(ctx context.Context, task *modules.Task) error {
 	// Maintain cranes.
 	cranes := docks.GetAllAssignedCranes()
 	for _, crane := range cranes {
-		// Ignore private or stopped cranes.
-		if !crane.Public() || crane.Stopped() {
+		// Ignore private, stopped and stopping cranes.
+		if !crane.Public() || crane.Stopped() || crane.Stopping() {
 			continue
 		}
 
