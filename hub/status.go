@@ -10,6 +10,10 @@ import (
 	"github.com/safing/jess"
 )
 
+const (
+	VersionOffline = "offline"
+)
+
 // Status is the message type used to update changing Hub Information. Changes are made automatically.
 type Status struct {
 	Timestamp int64

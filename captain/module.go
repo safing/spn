@@ -20,7 +20,7 @@ var (
 )
 
 func init() {
-	module = modules.Register("captain", prep, start, nil, "base", "cabin", "docks", "crew", "navigator", "sluice", "netenv")
+	module = modules.Register("captain", prep, start, stop, "base", "cabin", "docks", "crew", "navigator", "sluice", "netenv")
 	subsystems.Register(
 		"spn",
 		"SPN",
@@ -110,6 +110,15 @@ func start() error {
 	// client + home hub manager
 	if conf.Client() {
 		module.StartServiceWorker("client manager", 0, clientManager)
+	}
+
+	return nil
+}
+
+func stop() error {
+	// Send shutdown status message.
+	if conf.PublicHub() {
+		publishShutdownStatus()
 	}
 
 	return nil

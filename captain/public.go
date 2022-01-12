@@ -254,6 +254,20 @@ func maintainPublicStatus(ctx context.Context, task *modules.Task) error {
 	return nil
 }
 
+func publishShutdownStatus() {
+	// Create offline status.
+	offlineStatusData, err := publicIdentity.MakeOfflineStatus()
+	if err != nil {
+		log.Errorf("spn/captain: failed to create offline status: %s", err)
+		return
+	}
+
+	// Forward to other connected Hubs.
+	gossipRelayMsg("", GossipHubStatusMsg, offlineStatusData)
+
+	log.Infof("spn/captain: broadcasted offline status")
+}
+
 func maintainCrane(ctx context.Context, crane *docks.Crane) *terminal.Error {
 	// Don't maintain private or stopped cranes.
 	if !crane.Public() || crane.Stopped() {
