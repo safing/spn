@@ -46,6 +46,9 @@ const (
 func (crane *Crane) Start() error {
 	log.Infof("spn/docks: %s is starting", crane)
 
+	// Submit metrics.
+	newCranes.Inc()
+
 	// Start crane depending on situation.
 	var tErr *terminal.Error
 	if crane.ship.IsMine() {

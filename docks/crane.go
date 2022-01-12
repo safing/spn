@@ -44,13 +44,6 @@ var (
 	ErrDone = errors.New("crane is done")
 )
 
-// Crane Status Options.
-var (
-	CraneStatusStopped int8 = -1
-	CraneStatusPrivate int8 = 0
-	CraneStatusPublic  int8 = 1
-)
-
 type Crane struct {
 	// ID is the ID of the Crane.
 	ID string
@@ -61,10 +54,15 @@ type Crane struct {
 	ctx context.Context
 	// cancelCtx cancels ctx.
 	cancelCtx context.CancelFunc
+	// stopping indicates if the Crane will be stopped soon. The Crane may still
+	// be used until stopped, but must not be advertised anymore.
+	stopping *abool.AtomicBool
 	// stopped indicates if the Crane has been stopped. Whoever stopped the Crane
 	// already took care of notifying everyone, so a silent fail is normally the
 	// best response.
 	stopped *abool.AtomicBool
+	// authenticated indicates if there is has been any successful authentication.
+	authenticated *abool.AtomicBool
 
 	// ConnectedHub is the identity of the remote Hub.
 	ConnectedHub *hub.Hub
@@ -118,9 +116,11 @@ func NewCrane(ctx context.Context, ship ships.Ship, connectedHub *hub.Hub, id *c
 	ctx, cancelCtx := context.WithCancel(ctx)
 
 	new := &Crane{
-		ctx:       ctx,
-		cancelCtx: cancelCtx,
-		stopped:   abool.NewBool(false),
+		ctx:           ctx,
+		cancelCtx:     cancelCtx,
+		stopping:      abool.NewBool(false),
+		stopped:       abool.NewBool(false),
+		authenticated: abool.NewBool(false),
 
 		ConnectedHub: connectedHub,
 		identity:     id,
@@ -164,10 +164,19 @@ func (crane *Crane) Public() bool {
 	return crane.ship.Public()
 }
 
+func (crane *Crane) Authenticated() bool {
+	return crane.authenticated.IsSet()
+}
+
 func (crane *Crane) Publish() error {
 	// Check if crane is connected.
 	if crane.ConnectedHub == nil {
 		return fmt.Errorf("spn/docks: %s: cannot publish without defined connected hub", crane)
+	}
+
+	// Submit metrics.
+	if !crane.Public() {
+		newPublicCranes.Inc()
 	}
 
 	// Mark crane as public.
@@ -387,7 +396,7 @@ func (crane *Crane) unloadUntilFull(buf []byte) error {
 		// Return if buffer has been fully filled.
 		if bytesRead == len(buf) {
 			// Submit metrics.
-			totalIncomingTraffic.Add(bytesRead)
+			crane.submitCraneTrafficStats(bytesRead)
 
 			return nil
 		}
@@ -662,7 +671,7 @@ func (crane *Crane) load(c *container.Container) error {
 	readyToSend := c.CompileData()
 
 	// Submit metrics.
-	totalOutgoingTraffic.Add(len(readyToSend))
+	crane.submitCraneTrafficStats(len(readyToSend))
 
 	// Load onto ship.
 	err = crane.ship.Load(readyToSend)
@@ -735,6 +744,10 @@ func (crane *Crane) String() string {
 	default:
 		return fmt.Sprintf("crane %s from %s", crane.ID, crane.ship.MaskAddress(crane.ship.RemoteAddr()))
 	}
+}
+
+func (crane *Crane) Stopping() bool {
+	return crane.stopping.IsSet()
 }
 
 func (crane *Crane) Stopped() bool {

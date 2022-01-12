@@ -34,8 +34,8 @@ type ConnectOp struct {
 	// cancelCtx cancels ctx.
 	cancelCtx context.CancelFunc
 
-	downloaded *uint64
-	uploaded   *uint64
+	incomingTraffic *uint64
+	outgoingTraffic *uint64
 
 	t       terminal.OpTerminal
 	conn    net.Conn
@@ -107,6 +107,10 @@ func NewConnectOp(t terminal.OpTerminal, request *ConnectRequest, conn net.Conn)
 		return nil, tErr
 	}
 
+	// Setup metrics.
+	op.incomingTraffic = new(uint64)
+	op.outgoingTraffic = new(uint64)
+
 	module.StartWorker("connect op conn reader", op.connReader)
 	module.StartWorker("connect op conn writer", op.connWriter)
 	module.StartWorker("connect op flow handler", op.DuplexFlowQueue.FlowHandler)
@@ -114,6 +118,9 @@ func NewConnectOp(t terminal.OpTerminal, request *ConnectRequest, conn net.Conn)
 }
 
 func runConnectOp(t terminal.OpTerminal, opID uint32, data *container.Container) (terminal.Operation, *terminal.Error) {
+	// Submit metrics.
+	newConnectOp.Inc()
+
 	// Check if we are running a public hub.
 	if !conf.PublicHub() {
 		return nil, terminal.ErrPermissinDenied.With("connecting is only allowed on public hubs")
@@ -169,8 +176,8 @@ func runConnectOp(t terminal.OpTerminal, opID uint32, data *container.Container)
 	op.DuplexFlowQueue = terminal.NewDuplexFlowQueue(op, request.QueueSize, op.submitUpstream)
 
 	// Setup metrics.
-	op.downloaded = new(uint64)
-	op.uploaded = new(uint64)
+	op.incomingTraffic = new(uint64)
+	op.outgoingTraffic = new(uint64)
 
 	// Start worker.
 	module.StartWorker("connect op conn reader", op.connReader)
@@ -196,8 +203,8 @@ func (op *ConnectOp) connReader(_ context.Context) error {
 		defer func() {
 			atomic.AddInt64(activeConnectOps, -1)
 			connectOpDurationHistogram.UpdateDuration(started)
-			connectOpDownloadDataHistogram.Update(float64(atomic.LoadUint64(op.downloaded)))
-			connectOpUploadDataHistogram.Update(float64(atomic.LoadUint64(op.uploaded)))
+			connectOpIncomingDataHistogram.Update(float64(atomic.LoadUint64(op.incomingTraffic)))
+			connectOpOutgoingDataHistogram.Update(float64(atomic.LoadUint64(op.outgoingTraffic)))
 		}()
 	}
 
@@ -217,10 +224,9 @@ func (op *ConnectOp) connReader(_ context.Context) error {
 			continue
 		}
 
-		// Count downloaded data for metrics on the Hub.
-		if !op.entry {
-			atomic.AddUint64(op.downloaded, uint64(n))
-		}
+		// Submit metrics.
+		connectOpIncomingBytes.Add(n)
+		atomic.AddUint64(op.incomingTraffic, uint64(n))
 
 		tErr := op.DuplexFlowQueue.Send(container.New(buf[:n]))
 		if tErr != nil {
@@ -257,10 +263,9 @@ writing:
 			continue writing
 		}
 
-		// Count uploaded data for metrics on the Hub.
-		if !op.entry {
-			atomic.AddUint64(op.uploaded, uint64(len(data)))
-		}
+		// Submit metrics.
+		connectOpOutgoingBytes.Add(len(data))
+		atomic.AddUint64(op.outgoingTraffic, uint64(len(data)))
 
 		// Send all given data.
 		for {

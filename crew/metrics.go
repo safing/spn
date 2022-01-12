@@ -9,9 +9,13 @@ import (
 )
 
 var (
+	newConnectOp           *metrics.Counter
+	connectOpIncomingBytes *metrics.Counter
+	connectOpOutgoingBytes *metrics.Counter
+
 	connectOpDurationHistogram     *metrics.Histogram
-	connectOpDownloadDataHistogram *metrics.Histogram
-	connectOpUploadDataHistogram   *metrics.Histogram
+	connectOpIncomingDataHistogram *metrics.Histogram
+	connectOpOutgoingDataHistogram *metrics.Histogram
 
 	metricsRegistered = abool.New()
 )
@@ -24,8 +28,20 @@ func registerMetrics() (err error) {
 
 	// Connect Op Stats.
 
+	newConnectOp, err = metrics.NewCounter(
+		"spn/op/connect/total",
+		nil,
+		&metrics.Options{
+			Name:       "SPN Total Connect Operations",
+			Permission: api.PermitUser,
+		},
+	)
+	if err != nil {
+		return err
+	}
+
 	_, err = metrics.NewGauge(
-		"spn/op/connect/active/total",
+		"spn/op/connect/active",
 		nil,
 		getActiveConnectOpsStat,
 		&metrics.Options{
@@ -37,11 +53,35 @@ func registerMetrics() (err error) {
 		return err
 	}
 
+	connectOpIncomingBytes, err = metrics.NewCounter(
+		"spn/op/connect/incoming/bytes",
+		nil,
+		&metrics.Options{
+			Name:       "SPN Connect Operation Incoming Bytes",
+			Permission: api.PermitUser,
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	connectOpOutgoingBytes, err = metrics.NewCounter(
+		"spn/op/connect/outgoing/bytes",
+		nil,
+		&metrics.Options{
+			Name:       "SPN Connect Operation Outgoing Bytes",
+			Permission: api.PermitUser,
+		},
+	)
+	if err != nil {
+		return err
+	}
+
 	connectOpDurationHistogram, err = metrics.NewHistogram(
-		"spn/op/connect/duration/seconds",
+		"spn/op/connect/histogram/duration/seconds",
 		nil,
 		&metrics.Options{
-			Name:       "SPN Connect Operation Duration",
+			Name:       "SPN Connect Operation Duration Histogram",
 			Permission: api.PermitUser,
 		},
 	)
@@ -49,11 +89,11 @@ func registerMetrics() (err error) {
 		return err
 	}
 
-	connectOpDownloadDataHistogram, err = metrics.NewHistogram(
-		"spn/op/connect/download/bytes",
+	connectOpIncomingDataHistogram, err = metrics.NewHistogram(
+		"spn/op/connect/histogram/incoming/bytes",
 		nil,
 		&metrics.Options{
-			Name:       "SPN Connect Operation Downloaded Data",
+			Name:       "SPN Connect Operation Downloaded Data Histogram",
 			Permission: api.PermitUser,
 		},
 	)
@@ -61,11 +101,11 @@ func registerMetrics() (err error) {
 		return err
 	}
 
-	connectOpUploadDataHistogram, err = metrics.NewHistogram(
-		"spn/op/connect/upload/bytes",
+	connectOpOutgoingDataHistogram, err = metrics.NewHistogram(
+		"spn/op/connect/histogram/outgoing/bytes",
 		nil,
 		&metrics.Options{
-			Name:       "SPN Connect Operation Uploaded Data",
+			Name:       "SPN Connect Operation Outgoing Data Histogram",
 			Permission: api.PermitUser,
 		},
 	)

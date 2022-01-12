@@ -70,6 +70,9 @@ func init() {
 }
 
 func expand(t terminal.OpTerminal, opID uint32, data *container.Container) (terminal.Operation, *terminal.Error) {
+	// Submit metrics.
+	newExpandOp.Inc()
+
 	// Check if we are running a public hub.
 	if !conf.PublicHub() {
 		return nil, terminal.ErrPermissinDenied.With("expanding is only allowed on public hubs")

@@ -93,6 +93,19 @@ func initCraneTerminal(
 	return ct
 }
 
+func (t *CraneTerminal) GrantPermission(grant terminal.Permission) {
+	// Forward granted permission to base terminal.
+	t.TerminalBase.GrantPermission(grant)
+
+	// Mark crane as authenticated if not public or already authenticated.
+	if !t.crane.Public() && !t.crane.Authenticated() {
+		t.crane.authenticated.Set()
+
+		// Submit metrics.
+		newAuthenticatedCranes.Inc()
+	}
+}
+
 func (t *CraneTerminal) Deliver(c *container.Container) *terminal.Error {
 	return t.DuplexFlowQueue.Deliver(c)
 }

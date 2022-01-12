@@ -11,9 +11,15 @@ import (
 )
 
 var (
-	totalIncomingTraffic *metrics.Counter
-	totalOutgoingTraffic *metrics.Counter
+	newCranes              *metrics.Counter
+	newPublicCranes        *metrics.Counter
+	newAuthenticatedCranes *metrics.Counter
 
+	trafficBytesPublicCranes        *metrics.Counter
+	trafficBytesAuthenticatedCranes *metrics.Counter
+	trafficBytesPrivateCranes       *metrics.Counter
+
+	newExpandOp                  *metrics.Counter
 	expandOpDurationHistogram    *metrics.Histogram
 	expandOpRelayedDataHistogram *metrics.Histogram
 
@@ -26,13 +32,13 @@ func registerMetrics() (err error) {
 		return nil
 	}
 
-	// Global Traffic Stats.
+	// Total Crane Stats.
 
-	totalIncomingTraffic, err = metrics.NewCounter(
-		"spn/traffic/in/bytes",
+	newCranes, err = metrics.NewCounter(
+		"spn/cranes/total",
 		nil,
 		&metrics.Options{
-			Name:       "SPN Total Incoming Traffic",
+			Name:       "SPN New Cranes",
 			Permission: api.PermitUser,
 		},
 	)
@@ -40,11 +46,114 @@ func registerMetrics() (err error) {
 		return err
 	}
 
-	totalOutgoingTraffic, err = metrics.NewCounter(
-		"spn/traffic/out/bytes",
+	newPublicCranes, err = metrics.NewCounter(
+		"spn/cranes/public/total",
 		nil,
 		&metrics.Options{
-			Name:       "SPN Total Outgoing Traffic",
+			Name:       "SPN New Public Cranes",
+			Permission: api.PermitUser,
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	newAuthenticatedCranes, err = metrics.NewCounter(
+		"spn/cranes/authenticated/total",
+		nil,
+		&metrics.Options{
+			Name:       "SPN New Authenticated Cranes",
+			Permission: api.PermitUser,
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	// Active Crane Stats.
+
+	_, err = metrics.NewGauge(
+		"spn/cranes/active",
+		map[string]string{
+			"status": "public",
+		},
+		getActivePublicCranes,
+		&metrics.Options{
+			Name:       "SPN Active Public Cranes",
+			Permission: api.PermitUser,
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	_, err = metrics.NewGauge(
+		"spn/cranes/active",
+		map[string]string{
+			"status": "authenticated",
+		},
+		getActiveAuthenticatedCranes,
+		&metrics.Options{
+			Name:       "SPN Active Authenticated Cranes",
+			Permission: api.PermitUser,
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	_, err = metrics.NewGauge(
+		"spn/cranes/active",
+		map[string]string{
+			"status": "private",
+		},
+		getActivePrivateCranes,
+		&metrics.Options{
+			Name:       "SPN Active Private Cranes",
+			Permission: api.PermitUser,
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	// Crane Traffic Stats.
+
+	trafficBytesPublicCranes, err = metrics.NewCounter(
+		"spn/cranes/bytes",
+		map[string]string{
+			"status": "public",
+		},
+		&metrics.Options{
+			Name:       "SPN Public Crane Traffic",
+			Permission: api.PermitUser,
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	trafficBytesAuthenticatedCranes, err = metrics.NewCounter(
+		"spn/cranes/bytes",
+		map[string]string{
+			"status": "authenticated",
+		},
+		&metrics.Options{
+			Name:       "SPN Authenticated Crane Traffic",
+			Permission: api.PermitUser,
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	trafficBytesPrivateCranes, err = metrics.NewCounter(
+		"spn/cranes/bytes",
+		map[string]string{
+			"status": "private",
+		},
+		&metrics.Options{
+			Name:       "SPN Private Crane Traffic",
 			Permission: api.PermitUser,
 		},
 	)
@@ -55,11 +164,11 @@ func registerMetrics() (err error) {
 	// Lane Stats.
 
 	_, err = metrics.NewGauge(
-		"spn/lanes/total",
+		"spn/lanes/latency/avg/seconds",
 		nil,
-		getLaneCntStat,
+		getAvgLaneLatencyStat,
 		&metrics.Options{
-			Name:       "SPN Lanes",
+			Name:       "SPN Avg Lane Latency",
 			Permission: api.PermitUser,
 		},
 	)
@@ -68,11 +177,11 @@ func registerMetrics() (err error) {
 	}
 
 	_, err = metrics.NewGauge(
-		"spn/lanes/latency/seconds/total",
+		"spn/lanes/latency/min/seconds",
 		nil,
-		getTotalLaneLatencyStat,
+		getMinLaneLatencyStat,
 		&metrics.Options{
-			Name:       "SPN Total Lane Latency",
+			Name:       "SPN Min Lane Latency",
 			Permission: api.PermitUser,
 		},
 	)
@@ -81,11 +190,24 @@ func registerMetrics() (err error) {
 	}
 
 	_, err = metrics.NewGauge(
-		"spn/lanes/capacity/bytes/total",
+		"spn/lanes/capacity/avg/bytes",
 		nil,
-		getTotalLaneCapacityStat,
+		getAvgLaneCapacityStat,
 		&metrics.Options{
-			Name:       "SPN Total Lane Capacity",
+			Name:       "SPN Avg Lane Capacity",
+			Permission: api.PermitUser,
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	_, err = metrics.NewGauge(
+		"spn/lanes/capacity/max/bytes",
+		nil,
+		getMaxLaneCapacityStat,
+		&metrics.Options{
+			Name:       "SPN Max Lane Capacity",
 			Permission: api.PermitUser,
 		},
 	)
@@ -95,8 +217,20 @@ func registerMetrics() (err error) {
 
 	// Expand Op Stats.
 
+	newExpandOp, err = metrics.NewCounter(
+		"spn/op/expand/total",
+		nil,
+		&metrics.Options{
+			Name:       "SPN Total Expand Operations",
+			Permission: api.PermitUser,
+		},
+	)
+	if err != nil {
+		return err
+	}
+
 	_, err = metrics.NewGauge(
-		"spn/op/expand/active/total",
+		"spn/op/expand/active",
 		nil,
 		getActiveExpandOpsStat,
 		&metrics.Options{
@@ -109,10 +243,10 @@ func registerMetrics() (err error) {
 	}
 
 	expandOpDurationHistogram, err = metrics.NewHistogram(
-		"spn/op/expand/duration/seconds",
+		"spn/op/expand/histogram/duration/seconds",
 		nil,
 		&metrics.Options{
-			Name:       "SPN Expand Operation Duration",
+			Name:       "SPN Expand Operation Duration Histogram",
 			Permission: api.PermitUser,
 		},
 	)
@@ -121,10 +255,10 @@ func registerMetrics() (err error) {
 	}
 
 	expandOpRelayedDataHistogram, err = metrics.NewHistogram(
-		"spn/op/expand/traffic/bytes",
+		"spn/op/expand/histogram/traffic/bytes",
 		nil,
 		&metrics.Options{
-			Name:       "SPN Expand Operation Relayed Data",
+			Name:       "SPN Expand Operation Relayed Data Histogram",
 			Permission: api.PermitUser,
 		},
 	)
@@ -135,48 +269,60 @@ func registerMetrics() (err error) {
 	return err
 }
 
-func getLaneCntStat() (cnt float64) {
-	cnt, _, _ = getLaneStats()
-	return
-}
-
-func getTotalLaneLatencyStat() (latency float64) {
-	_, latency, _ = getLaneStats()
-	return
-}
-
-func getTotalLaneCapacityStat() (capacity float64) {
-	_, _, capacity = getLaneStats()
-	return
-}
-
 func getActiveExpandOpsStat() float64 {
 	return float64(atomic.LoadInt64(activeExpandOps))
 }
 
 var (
-	laneStatsTotal         float64
-	laneStatsTotalLatency  float64
-	laneStatsTotalCapacity float64
-	laneStatsExpires       time.Time
-	laneStatsLock          sync.Mutex
-	laneStatsTTL           = 1 * time.Minute
+	craneStats        *craneGauges
+	craneStatsExpires time.Time
+	craneStatsLock    sync.Mutex
+	craneStatsTTL     = 55 * time.Second
 )
 
-func getLaneStats() (cnt, latency, capacity float64) {
-	laneStatsLock.Lock()
-	defer laneStatsLock.Unlock()
+type craneGauges struct {
+	publicActive        float64
+	authenticatedActive float64
+	privateActive       float64
+
+	laneLatencyAvg  float64
+	laneLatencyMin  float64
+	laneCapacityAvg float64
+	laneCapacityMax float64
+}
+
+func getActivePublicCranes() float64        { return getCraneStats().publicActive }
+func getActiveAuthenticatedCranes() float64 { return getCraneStats().authenticatedActive }
+func getActivePrivateCranes() float64       { return getCraneStats().privateActive }
+func getAvgLaneLatencyStat() float64        { return getCraneStats().laneLatencyAvg }
+func getMinLaneLatencyStat() float64        { return getCraneStats().laneLatencyMin }
+func getAvgLaneCapacityStat() float64       { return getCraneStats().laneCapacityAvg }
+func getMaxLaneCapacityStat() float64       { return getCraneStats().laneCapacityMax }
+
+func getCraneStats() *craneGauges {
+	craneStatsLock.Lock()
+	defer craneStatsLock.Unlock()
 
 	// Return cache if still valid.
-	if time.Now().Before(laneStatsExpires) {
-		return laneStatsTotal, laneStatsTotalLatency, laneStatsTotalCapacity
+	if time.Now().Before(craneStatsExpires) {
+		return craneStats
 	}
 
 	// Refresh.
-	laneStatsTotal = 0
-	laneStatsTotalLatency = 0
-	laneStatsTotalCapacity = 0
-	for _, crane := range GetAllAssignedCranes() {
+	craneStats = &craneGauges{}
+	var laneStatCnt float64
+	for _, crane := range getAllCranes() {
+		switch {
+		case crane.Stopped() || crane.Stopping():
+			continue
+		case crane.Public():
+			craneStats.publicActive++
+		case crane.Authenticated():
+			craneStats.authenticatedActive++
+		default:
+			craneStats.privateActive++
+		}
+
 		// Get lane stats.
 		laneLatency := crane.GetLaneLatency()
 		if laneLatency == 0 {
@@ -187,14 +333,45 @@ func getLaneStats() (cnt, latency, capacity float64) {
 			continue
 		}
 
-		// Only count if all data is available.
-		laneStatsTotal++
+		// Only use data if both latency and capacity is available.
+		laneStatCnt++
+
 		// Convert to base unit: seconds.
-		laneStatsTotalLatency += float64(laneLatency) / float64(time.Second)
+		latency := laneLatency.Seconds()
+		// Add to avg and set min if lower.
+		craneStats.laneLatencyAvg += latency
+		if craneStats.laneLatencyMin > latency || craneStats.laneLatencyMin == 0 {
+			craneStats.laneLatencyMin = latency
+		}
+
 		// Convert in base unit: bytes.
-		laneStatsTotalCapacity += float64(laneCapacity) / 8
+		capacity := float64(laneCapacity) / 8
+		// Add to avg and set max if higher.
+		craneStats.laneCapacityAvg += capacity
+		if craneStats.laneCapacityMax < capacity {
+			craneStats.laneCapacityMax = capacity
+		}
 	}
 
-	laneStatsExpires = time.Now().Add(laneStatsTTL)
-	return laneStatsTotal, laneStatsTotalLatency, laneStatsTotalCapacity
+	// Create averages.
+	if laneStatCnt > 0 {
+		craneStats.laneLatencyAvg /= laneStatCnt
+		craneStats.laneCapacityAvg /= laneStatCnt
+	}
+
+	craneStatsExpires = time.Now().Add(craneStatsTTL)
+	return craneStats
+}
+
+func (crane *Crane) submitCraneTrafficStats(bytes int) {
+	switch {
+	case crane.Stopped() || crane.Stopping():
+		return
+	case crane.Public():
+		trafficBytesPublicCranes.Add(bytes)
+	case crane.Authenticated():
+		trafficBytesAuthenticatedCranes.Add(bytes)
+	default:
+		trafficBytesPrivateCranes.Add(bytes)
+	}
 }
