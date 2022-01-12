@@ -15,14 +15,14 @@ type nearbyPins struct {
 	pins         []*nearbyPin
 	minPins      int
 	maxPins      int
-	minProximity int
-	cutOffLimit  int
+	minProximity float32
+	cutOffLimit  float32
 }
 
 // nearbyPin represents a Pin and the proximity to a certain location.
 type nearbyPin struct {
 	pin       *Pin
-	proximity int
+	proximity float32
 }
 
 // Len is the number of elements in the collection.
@@ -42,7 +42,7 @@ func (nb *nearbyPins) Swap(i, j int) {
 }
 
 // add potentially adds a Pin to the list of nearby Pins.
-func (nb *nearbyPins) add(pin *Pin, proximity int) {
+func (nb *nearbyPins) add(pin *Pin, proximity float32) {
 	if len(nb.pins) > nb.minPins && proximity < nb.minProximity {
 		return
 	}
