@@ -117,6 +117,21 @@ func registerMetrics() (err error) {
 		return err
 	}
 
+	_, err = metrics.NewGauge(
+		"spn/cranes/active",
+		map[string]string{
+			"status": "stopping",
+		},
+		getActiveStoppingCranes,
+		&metrics.Options{
+			Name:       "SPN Active Stopping Cranes",
+			Permission: api.PermitUser,
+		},
+	)
+	if err != nil {
+		return err
+	}
+
 	// Crane Traffic Stats.
 
 	trafficBytesPublicCranes, err = metrics.NewCounter(
@@ -284,6 +299,7 @@ type craneGauges struct {
 	publicActive        float64
 	authenticatedActive float64
 	privateActive       float64
+	stoppingActive      float64
 
 	laneLatencyAvg  float64
 	laneLatencyMin  float64
@@ -294,6 +310,7 @@ type craneGauges struct {
 func getActivePublicCranes() float64        { return getCraneStats().publicActive }
 func getActiveAuthenticatedCranes() float64 { return getCraneStats().authenticatedActive }
 func getActivePrivateCranes() float64       { return getCraneStats().privateActive }
+func getActiveStoppingCranes() float64      { return getCraneStats().stoppingActive }
 func getAvgLaneLatencyStat() float64        { return getCraneStats().laneLatencyAvg }
 func getMinLaneLatencyStat() float64        { return getCraneStats().laneLatencyMin }
 func getAvgLaneCapacityStat() float64       { return getCraneStats().laneCapacityAvg }
@@ -313,22 +330,31 @@ func getCraneStats() *craneGauges {
 	var laneStatCnt float64
 	for _, crane := range getAllCranes() {
 		switch {
-		case crane.Stopped() || crane.Stopping():
+		case crane.Stopped():
+			continue
+		case crane.Stopping.IsSet():
+			craneStats.stoppingActive++
 			continue
 		case crane.Public():
 			craneStats.publicActive++
 		case crane.Authenticated():
 			craneStats.authenticatedActive++
+			continue
 		default:
 			craneStats.privateActive++
+			continue
 		}
 
 		// Get lane stats.
-		laneLatency := crane.GetLaneLatency()
+		if crane.ConnectedHub == nil {
+			continue
+		}
+		measurements := crane.ConnectedHub.GetMeasurements()
+		laneLatency, _ := measurements.GetLatency()
 		if laneLatency == 0 {
 			continue
 		}
-		laneCapacity := crane.GetLaneCapacity()
+		laneCapacity, _ := measurements.GetCapacity()
 		if laneCapacity == 0 {
 			continue
 		}
@@ -365,7 +391,7 @@ func getCraneStats() *craneGauges {
 
 func (crane *Crane) submitCraneTrafficStats(bytes int) {
 	switch {
-	case crane.Stopped() || crane.Stopping():
+	case crane.Stopped():
 		return
 	case crane.Public():
 		trafficBytesPublicCranes.Add(bytes)
