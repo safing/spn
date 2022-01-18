@@ -1,17 +1,21 @@
 package navigator
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
+	"text/tabwriter"
 	"time"
 
 	"github.com/awalterschulze/gographviz"
 	"github.com/safing/portbase/api"
 	"github.com/safing/portbase/log"
+	"github.com/safing/spn/hub"
 )
 
 var (
@@ -48,7 +52,41 @@ func registerAPIEndpoints() error {
 		BelongsTo:   module,
 		StructFunc:  handleMapPinsRequest,
 		Name:        "Get SPN map pins",
-		Description: "Returns a list of pins on the given SPN map.",
+		Description: "Returns a list of pins on the map.",
+	}); err != nil {
+		return err
+	}
+
+	if err := api.RegisterEndpoint(api.Endpoint{
+		Path:        `spn/map/{map:[A-Za-z0-9]{1,255}}/optimization`,
+		Read:        api.PermitUser,
+		BelongsTo:   module,
+		StructFunc:  handleMapOptimizationRequest,
+		Name:        "Get SPN map optimization",
+		Description: "Returns the calculated optimization for the map.",
+	}); err != nil {
+		return err
+	}
+
+	if err := api.RegisterEndpoint(api.Endpoint{
+		Path:        `spn/map/{map:[A-Za-z0-9]{1,255}}/measurements`,
+		Read:        api.PermitUser,
+		BelongsTo:   module,
+		StructFunc:  handleMapMeasurementsRequest,
+		Name:        "Get SPN map measurements",
+		Description: "Returns the measurements of the map.",
+	}); err != nil {
+		return err
+	}
+
+	if err := api.RegisterEndpoint(api.Endpoint{
+		Path:        `spn/map/{map:[A-Za-z0-9]{1,255}}/measurements/table`,
+		MimeType:    api.MimeTypeText,
+		Read:        api.PermitUser,
+		BelongsTo:   module,
+		DataFunc:    handleMapMeasurementsTableRequest,
+		Name:        "Get SPN map measurements as a table",
+		Description: "Returns the measurements of the map as a table.",
 	}); err != nil {
 		return err
 	}
@@ -96,6 +134,91 @@ func handleMapPinsRequest(ar *api.Request) (i interface{}, err error) {
 	}
 
 	return exportedPins, nil
+}
+
+func handleMapOptimizationRequest(ar *api.Request) (i interface{}, err error) {
+	// Get map.
+	m, ok := getMapForAPI(ar.URLVars["map"])
+	if !ok {
+		return nil, errors.New("map not found")
+	}
+
+	return m.Optimize(nil)
+}
+
+func handleMapMeasurementsRequest(ar *api.Request) (i interface{}, err error) {
+	// Get map.
+	m, ok := getMapForAPI(ar.URLVars["map"])
+	if !ok {
+		return nil, errors.New("map not found")
+	}
+
+	// Get and sort pins.
+	list := m.pinList(true)
+	sort.Sort(sortByLowestMeasuredCost(list))
+
+	// Copy data and return.
+	measurements := make([]*hub.Measurements, 0, len(list))
+	for _, pin := range list {
+		measurements = append(measurements, pin.measurements.Copy())
+	}
+	return measurements, nil
+}
+
+func handleMapMeasurementsTableRequest(ar *api.Request) (data []byte, err error) {
+	// Get map.
+	m, ok := getMapForAPI(ar.URLVars["map"])
+	if !ok {
+		return nil, errors.New("map not found")
+	}
+	matcher := m.DefaultOptions().Matcher(TransitHub)
+
+	// Get and sort pins.
+	list := m.pinList(true)
+	sort.Sort(sortByLowestMeasuredCost(list))
+
+	// Build table and return.
+	buf := bytes.NewBuffer(nil)
+	tabWriter := tabwriter.NewWriter(buf, 8, 4, 3, ' ', 0)
+	fmt.Fprint(tabWriter, "Remote\tCountry\tLatency\tCapacity\tCost\n")
+	for _, pin := range list {
+		// Only print regarded Hubs.
+		if !matcher(pin) {
+			continue
+		}
+
+		// Add row.
+		pin.measurements.Lock()
+		defer pin.measurements.Unlock()
+		fmt.Fprint(tabWriter, strings.Join([]string{
+			pin.Hub.Name(),
+			getPinCountry(pin),
+			pin.measurements.Latency.String(),
+			fmt.Sprintf("%.2fMbit/s", float64(pin.measurements.Capacity)/1000000),
+			fmt.Sprintf("%.2fc", pin.measurements.CalculatedCost),
+		}, "\t"))
+
+		// Add linebreak.
+		fmt.Fprint(tabWriter, "\n")
+	}
+	tabWriter.Flush()
+
+	return buf.Bytes(), nil
+}
+
+func getPinCountry(pin *Pin) string {
+	switch {
+	case pin.LocationV4 != nil && pin.LocationV4.Country.ISOCode != "":
+		return pin.LocationV4.Country.ISOCode
+	case pin.LocationV6 != nil && pin.LocationV6.Country.ISOCode != "":
+		return pin.LocationV6.Country.ISOCode
+	case pin.EntityV4 != nil && pin.EntityV4.Country != "":
+		return pin.EntityV4.Country
+	case pin.EntityV6 != nil && pin.EntityV6.Country != "":
+		return pin.EntityV6.Country
+	default:
+		return ""
+	}
 }
 
 func handleMapGraphRequest(w http.ResponseWriter, hr *http.Request) {
@@ -150,12 +273,12 @@ func handleMapGraphRequest(w http.ResponseWriter, hr *http.Request) {
 			"margin":    "0",
 		})
 		for _, lane := range pin.ConnectedTo {
-			if graph.IsNode(lane.Pin.Hub.ID) {
+			if graph.IsNode(lane.Pin.Hub.ID) && pin.State != StateNone {
 				// Create attributes.
 				edgeOptions := map[string]string{
 					"tooltip": graphEdgeTooltip(lane),
 					"color":   graphEdgeColor(pin, lane.Pin, lane),
-					"weight":  strconv.Itoa(-int(lane.Latency / time.Millisecond)),
+					"len":     strconv.Itoa(int(lane.Latency / time.Millisecond)),
 				}
 				if edgeOptions["color"] == graphColorHomeAndConnected {
 					edgeOptions["penwidth"] = "2"
@@ -202,6 +325,8 @@ d3.select("#graph").graphviz(useWorker=false).renderDot(%s%s%s);
 func graphNodeLabel(pin *Pin) (s string) {
 	var comment string
 	switch {
+	case pin.State == StateNone:
+		comment = "dead"
 	case pin.State.has(StateIsHomeHub):
 		comment = "Home"
 	case pin.State.hasAnyOf(StateSummaryDisregard):
@@ -287,6 +412,8 @@ const (
 
 func graphNodeColor(pin *Pin) string {
 	switch {
+	case pin.State == StateNone:
+		return graphColorNone
 	case pin.Hub.Status.Load >= 95:
 		return graphColorError
 	case pin.Hub.Status.Load >= 80:
@@ -318,8 +445,8 @@ func graphEdgeColor(from, to *Pin, lane *Lane) string {
 	if lane.Capacity == 0 || lane.Latency == 0 {
 		return graphColorWarning
 	}
-	// Alert if capacity is under 10Mbit/s or latency is over 50ms.
-	if lane.Capacity < 10000000 || lane.Latency > 50*time.Millisecond {
+	// Alert if capacity is under 10Mbit/s or latency is over 100ms.
+	if lane.Capacity < 10000000 || lane.Latency > 100*time.Millisecond {
 		return graphColorError
 	}
 

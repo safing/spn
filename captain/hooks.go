@@ -30,15 +30,10 @@ func handleCraneUpdate(crane *docks.Crane) {
 
 func updateConnectionStatus() {
 	// Delay updating status for a better chance to combine multiple changes.
-	// Add randomness in order to evade doing a capacity op at the same time.
-	maintainStatusSoon(
-		15*time.Second,
-		1*time.Minute,
-	)
+	statusUpdateTask.Schedule(time.Now().Add(maintainStatusUpdateDelay))
 
 	// Check if we lost all connections and trigger a pending restart if we did.
-	cranes := docks.GetAllAssignedCranes()
-	for _, crane := range cranes {
+	for _, crane := range docks.GetAllAssignedCranes() {
 		if crane.Public() && !crane.Stopped() {
 			// There is at least one public and active crane, so don't restart now.
 			return

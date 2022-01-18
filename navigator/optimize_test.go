@@ -1,10 +1,9 @@
 package navigator
 
 import (
+	"strings"
 	"sync"
 	"testing"
-
-	"github.com/brianvoe/gofakeit"
 
 	"github.com/safing/spn/hub"
 )
@@ -24,7 +23,7 @@ func getOptimizedDefaultTestMap(t *testing.T) *Map {
 
 func (m *Map) optimizeTestMap(t *testing.T) {
 	if t != nil {
-		t.Logf("optimizing test map %s with %d pins", m.Name, len(m.All))
+		t.Logf("optimizing test map %s with %d pins", m.Name, len(m.all))
 	}
 
 	// Save original Home, as we will be switching around the home for the
@@ -33,7 +32,8 @@ func (m *Map) optimizeTestMap(t *testing.T) {
 	newLanes := 0
 	newLanesInRun := 0
 	lastRun := false
-	originalHome := m.Home
+	originalHome := m.home
+	mcf := newMeasurementCachedFactory()
 
 	for {
 		run++
@@ -41,38 +41,47 @@ func (m *Map) optimizeTestMap(t *testing.T) {
 		// Let's check if we have a run without any map changes.
 		lastRun = true
 
-		for _, pin := range m.All {
-
+		for _, pin := range m.all {
 			// Set Home to this Pin for this iteration.
-			m.Home = pin
-			err := m.recalculateReachableHubs()
-			if err != nil {
-				panic(err)
+			if !m.SetHome(pin.Hub.ID, nil) {
+				panic("failed to set home")
 			}
 
-			connectTo, err := m.optimize(m.defaultOptions())
+			// Update measurements for the new home.
+			updateMeasurements(m, mcf)
+
+			optimizeResult, err := m.optimize(m.defaultOptions())
 			if err != nil {
 				panic(err)
 			}
-			if connectTo != nil {
+			lanesCreatedWithResult := 0
+			for _, connectToHub := range optimizeResult.SuggestedConnections {
+				// Check if lane to suggested Hub already exists.
+				if m.home.Hub.GetLaneTo(connectToHub.ID) != nil {
+					continue
+				}
+
 				// Add lanes to the Hub status.
-				m.Home.Hub.AddLane(&hub.Lane{
-					ID:       connectTo.Hub.ID,
-					Capacity: gofakeit.Number(10, 100),
-					Latency:  gofakeit.Number(10, 100),
-				})
-				connectTo.Hub.AddLane(&hub.Lane{
-					ID:       m.Home.Hub.ID,
-					Capacity: gofakeit.Number(10, 100),
-					Latency:  gofakeit.Number(10, 100),
-				})
+				m.home.Hub.AddLane(createLane(connectToHub.ID))
+				connectToHub.AddLane(createLane(m.home.Hub.ID))
+
 				// Update Hubs in map.
-				m.UpdateHub(m.Home.Hub)
-				m.UpdateHub(connectTo.Hub)
+				m.UpdateHub(m.home.Hub)
+				m.UpdateHub(connectToHub)
 				newLanes++
 				newLanesInRun++
 
 				// We are changing the map in this run, so this is not the last.
+				lastRun = false
+
+				// Only create as many lanes as suggested by the result.
+				lanesCreatedWithResult++
+				if lanesCreatedWithResult >= optimizeResult.MaxConnect {
+					break
+				}
+			}
+			if optimizeResult.Purpose != OptimizePurposeTargetStructure {
+				// If we aren't yet building the target structure, we need to keep building.
 				lastRun = false
 			}
 		}
@@ -83,7 +92,7 @@ func (m *Map) optimizeTestMap(t *testing.T) {
 				"optimizing: added %d lanes in run #%d (%d Hubs) - %d new lanes in total",
 				newLanesInRun,
 				run,
-				len(m.All),
+				len(m.all),
 				newLanes,
 			)
 		}
@@ -98,23 +107,23 @@ func (m *Map) optimizeTestMap(t *testing.T) {
 	if t != nil {
 		t.Logf("finished optimizing test map %s: added %d lanes in %d runs", m.Name, newLanes, run)
 	}
-	m.Home = originalHome
+	m.home = originalHome
 }
 
 func TestOptimize(t *testing.T) {
 	m := getOptimizedDefaultTestMap(t)
 	matcher := m.defaultOptions().Matcher(DestinationHub)
-	originalHome := m.Home
+	originalHome := m.home
 
-	for _, pin := range m.All {
+	for _, pin := range m.all {
 		// Set Home to this Pin for this iteration.
-		m.Home = pin
+		m.home = pin
 		err := m.recalculateReachableHubs()
 		if err != nil {
 			panic(err)
 		}
 
-		for _, peer := range m.All {
+		for _, peer := range m.all {
 			// Check if the Pin matches the criteria.
 			if !matcher(peer) {
 				continue
@@ -129,5 +138,49 @@ func TestOptimize(t *testing.T) {
 	// Print stats
 	t.Logf("optimized map:\n%s\n", m.Stats())
 
-	m.Home = originalHome
+	m.home = originalHome
+}
+
+func updateMeasurements(m *Map, mcf *measurementCachedFactory) {
+	for _, pin := range m.all {
+		pin.measurements = mcf.getOrCreate(m.home.Hub.ID, pin.Hub.ID)
+	}
+}
+
+type measurementCachedFactory struct {
+	cache map[string]*hub.Measurements
+}
+
+func newMeasurementCachedFactory() *measurementCachedFactory {
+	return &measurementCachedFactory{
+		cache: make(map[string]*hub.Measurements),
+	}
+}
+
+func (mcf *measurementCachedFactory) getOrCreate(from, to string) *hub.Measurements {
+	var id string
+	comparison := strings.Compare(from, to)
+	switch {
+	case comparison == 0:
+		return nil
+	case comparison > 0:
+		id = from + "-" + to
+	case comparison < 0:
+		id = to + "-" + from
+	}
+
+	m, ok := mcf.cache[id]
+	if ok {
+		return m
+	}
+
+	m = hub.NewMeasurements()
+	m.Latency = createLatency()
+	m.Capacity = createCapacity()
+	m.CalculatedCost = CalculateLaneCost(
+		m.Latency,
+		m.Capacity,
+	)
+	mcf.cache[id] = m
+	return m
 }

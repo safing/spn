@@ -3,7 +3,9 @@ package navigator
 import (
 	"sort"
 	"sync"
+	"time"
 
+	"github.com/safing/portbase/database"
 	"github.com/safing/portbase/log"
 	"github.com/safing/spn/docks"
 	"github.com/safing/spn/hub"
@@ -22,6 +24,11 @@ type Map struct {
 
 	measuringEnabled bool
 	hubUpdateHook    *database.RegisteredHook
+
+	// analysisLock guards access to all of this map's Pin.analysis and the
+	// lastDesegrationAttempt fields.
+	analysisLock           sync.Mutex
+	lastDesegrationAttempt time.Time
 }
 
 // NewMap returns a new and empty Map.
@@ -102,24 +109,26 @@ func (m *Map) isEmpty() bool {
 	return len(m.all) == 0
 }
 
-func (m *Map) sortedPins(lockMap bool) []*Pin {
+func (m *Map) pinList(lockMap bool) []*Pin {
 	if lockMap {
 		m.RLock()
 		defer m.RUnlock()
 	}
 
 	// Copy into slice.
-	sorted := make([]*Pin, 0, len(m.all))
+	list := make([]*Pin, 0, len(m.all))
 	for _, pin := range m.all {
-		sorted = append(sorted, pin)
+		list = append(list, pin)
 	}
-	// Sort slice.
-	sort.Sort(sortByPinID(sorted))
-	return sorted
+
+	return list
 }
 
-type sortByPinID []*Pin
+func (m *Map) sortedPins(lockMap bool) []*Pin {
+	// Get list.
+	list := m.pinList(lockMap)
 
-func (a sortByPinID) Len() int           { return len(a) }
-func (a sortByPinID) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
-func (a sortByPinID) Less(i, j int) bool { return a[i].Hub.ID < a[j].Hub.ID }
+	// Sort list.
+	sort.Sort(sortByPinID(list))
+	return list
+}

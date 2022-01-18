@@ -32,7 +32,7 @@ func TestRandomMapCreation(t *testing.T) {
 	m := getDefaultTestMap()
 
 	fmt.Println("All Pins:")
-	for _, pin := range m.All {
+	for _, pin := range m.all {
 		fmt.Printf("%s: %s %s\n", pin, pin.Hub.Info.IPv4, pin.Hub.Info.IPv6)
 	}
 
@@ -40,7 +40,7 @@ func TestRandomMapCreation(t *testing.T) {
 	fmt.Printf("\n%s\n", m.Stats())
 
 	// Print home
-	fmt.Printf("Selected Home Hub: %s\n", m.Home)
+	fmt.Printf("Selected Home Hub: %s\n", m.home)
 }
 
 func createRandomTestMap(seed int64, size int) *Map {
@@ -112,19 +112,11 @@ func createRandomTestMap(seed int64, size int) *Map {
 		}
 
 		// Create connections.
-		hubA.AddLane(&hub.Lane{
-			ID:       hubB.ID,
-			Capacity: gofakeit.Number(10, 100),
-			Latency:  gofakeit.Number(10, 100),
-		})
+		hubA.AddLane(createLane(hubB.ID))
 		// Add the second connection in 99% of cases.
 		// If this is missing, the Pins should not show up as connected.
 		if gofakeit.Number(0, 100) != 0 {
-			hubB.AddLane(&hub.Lane{
-				ID:       hubA.ID,
-				Capacity: gofakeit.Number(10, 100),
-				Latency:  gofakeit.Number(10, 100),
-			})
+			hubB.AddLane(createLane(hubA.ID))
 		}
 	}
 
@@ -135,15 +127,15 @@ func createRandomTestMap(seed int64, size int) *Map {
 	}
 
 	// Create map and add Pins.
-	m := NewMap(fmt.Sprintf("Test-Map-%d", seed))
-	m.Intel = mapIntel
+	m := NewMap(fmt.Sprintf("Test-Map-%d", seed), true)
+	m.intel = mapIntel
 	for _, h := range hubs {
 		m.UpdateHub(h)
 	}
 
 	// Fake communication error with three Hubs.
 	var i int
-	for _, pin := range m.All {
+	for _, pin := range m.all {
 		pin.FailingUntil = time.Now().Add(1 * time.Hour)
 		pin.addStates(StateFailing)
 
@@ -162,11 +154,12 @@ func createFakeHub(group string, randomFailes bool, mapIntel *hub.Intel) *hub.Hu
 	// Create fake Hub ID.
 	idSrc := gofakeit.Password(true, true, true, true, true, 64)
 	id := lhash.Digest(lhash.BLAKE2b_256, []byte(idSrc)).Base58()
+	ip4, _ := createGoodIP(true)
+	ip6, _ := createGoodIP(false)
 
 	// Create and return new fake Hub.
 	h := &hub.Hub{
-		ID:    id,
-		Scope: hub.ScopePublic,
+		ID: id,
 		Info: &hub.Announcement{
 			ID:        id,
 			Timestamp: time.Now().Unix(),
@@ -176,8 +169,8 @@ func createFakeHub(group string, randomFailes bool, mapIntel *hub.Intel) *hub.Hu
 			// ContactService // TODO
 			// Hosters    []string // TODO
 			// Datacenter string   // TODO
-			IPv4: createGoodIP(true),
-			IPv6: createGoodIP(false),
+			IPv4: ip4,
+			IPv6: ip6,
 		},
 		Status: &hub.Status{
 			Timestamp: time.Now().Unix(),
@@ -245,7 +238,7 @@ func createFakeHub(group string, randomFailes bool, mapIntel *hub.Intel) *hub.Hu
 	return h
 }
 
-func createGoodIP(v4 bool) net.IP {
+func createGoodIP(v4 bool) (net.IP, *geoip.Location) {
 	var candidate net.IP
 	for i := 0; i < 100; i++ {
 		if v4 {
@@ -255,8 +248,26 @@ func createGoodIP(v4 bool) net.IP {
 		}
 		loc, err := geoip.GetLocation(candidate)
 		if err == nil && loc.Coordinates.Latitude != 0 {
-			return candidate
+			return candidate, loc
 		}
 	}
-	return candidate
+	return candidate, nil
+}
+
+func createLane(toHubID string) *hub.Lane {
+	return &hub.Lane{
+		ID:       toHubID,
+		Latency:  createLatency(),
+		Capacity: createCapacity(),
+	}
+}
+
+func createLatency() time.Duration {
+	// Return a value between 10ms and 100ms.
+	return time.Duration(gofakeit.Float64Range(10, 100) * float64(time.Millisecond))
+}
+
+func createCapacity() int {
+	// Return a value between 10Mbit/s and 1Gbit/s.
+	return gofakeit.Number(10000000, 1000000000)
 }

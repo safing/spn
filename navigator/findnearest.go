@@ -190,5 +190,5 @@ func (nb *nearbyPins) String() string {
 }
 
 func (nb *nearbyPin) String() string {
-	return fmt.Sprintf("%s at %d prox", nb.pin, nb.proximity)
+	return fmt.Sprintf("%s at %.2f prox", nb.pin, nb.proximity)
 }

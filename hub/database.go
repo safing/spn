@@ -98,6 +98,7 @@ func checkAndReturn(h *Hub) *Hub {
 	if h.Status == nil {
 		h.Status = &Status{}
 	}
+	h.Measurements = getSharedMeasurements(h.ID, h.Measurements)
 	return h
 }
 
