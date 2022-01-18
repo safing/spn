@@ -155,6 +155,13 @@ func (m *Map) updateHub(h *hub.Hub, lockMap, lockHub bool) {
 		pin.removeStates(StateInvalid)
 	}
 
+	// Update online status of the Pin.
+	if pin.Hub.Status.Version == hub.VersionOffline {
+		pin.addStates(StateOffline)
+	} else {
+		pin.removeStates(StateOffline)
+	}
+
 	// Add/Update location data from IP addresses.
 	pin.updateLocationData()
 

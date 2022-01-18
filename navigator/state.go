@@ -29,7 +29,8 @@ const (
 	// re-evaluated at earliest.
 	StateFailing // 0x04
 
-	_ // 0x08: Reserved
+	// StateOffline signifies that the Hub is offline.
+	StateOffline // 0x08
 
 	// Positive States
 
@@ -76,7 +77,12 @@ const (
 	StateSummaryRegard = StateReachable | StateActive
 
 	// StateSummaryDisregard summarizes all states that must not be set in order to take a Hub into consideration for any task.
-	StateSummaryDisregard = StateInvalid | StateSuperseded | StateFailing | StateUsageDiscouraged | StateIsHomeHub
+	StateSummaryDisregard = StateInvalid |
+		StateSuperseded |
+		StateFailing |
+		StateOffline |
+		StateUsageDiscouraged |
+		StateIsHomeHub
 )
 
 var (
@@ -84,6 +90,7 @@ var (
 		StateInvalid,
 		StateSuperseded,
 		StateFailing,
+		StateOffline,
 		StateHasRequiredInfo,
 		StateReachable,
 		StateActive,
@@ -331,6 +338,8 @@ func (pinState PinState) Name() string {
 		return "Superseded"
 	case StateFailing:
 		return "Failing"
+	case StateOffline:
+		return "Offline"
 	case StateHasRequiredInfo:
 		return "HasRequiredInfo"
 	case StateReachable:
