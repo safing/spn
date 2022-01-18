@@ -9,7 +9,9 @@ import (
 
 const (
 	optimizationHopDistanceTarget = 3
-	desegrationAttemptBackoff     = time.Hour
+	waitUntilMeasuredUpToPercent  = 0 // FIXME: Change back to 0.8 after migration.
+
+	desegrationAttemptBackoff = time.Hour
 
 	OptimizePurposeBootstrap       = "bootstrap"
 	OptimizePurposeDesegregate     = "desegregate"
@@ -156,7 +158,7 @@ func (m *Map) optimize(opts *Options) (result *OptimizationResult, err error) {
 
 	// Check if we have the measurements we need.
 	if m.measuringEnabled &&
-		validMeasurements/float32(len(regardedPins)) < 0.8 {
+		validMeasurements/float32(len(regardedPins)) < waitUntilMeasuredUpToPercent {
 		// Less than 80% of regarded Pins have valid measurements, let's wait until we have that.
 		return &OptimizationResult{
 			Purpose:  OptimizePurposeWait,
