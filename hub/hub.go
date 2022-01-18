@@ -27,6 +27,11 @@ const (
 	ScopeTest Scope = 0xFF
 )
 
+const (
+	obsoleteValidAfter   = 30 * 24 * time.Hour
+	obsoleteInvalidAfter = 7 * 24 * time.Hour
+)
+
 type MsgType string
 
 const (
@@ -200,6 +205,36 @@ func (h *Hub) getName() string {
 		return h.Info.Name[:30] + " " + shortenedID
 	default:
 		return h.Info.Name + " " + shortenedID
+	}
+}
+
+// Obsolete returns if the Hub is obsolete and may be deleted.
+func (h *Hub) Obsolete() bool {
+	h.Lock()
+	defer h.Unlock()
+
+	// Check if Hub is valid.
+	var valid bool
+	switch {
+	case h.InvalidInfo:
+	case h.InvalidStatus:
+	case h.Status.Version == VersionOffline:
+		// Treat offline as invalid.
+	default:
+		valid = true
+	}
+
+	// Check when Hub was last seen.
+	lastSeen := h.FirstSeen
+	if h.Status.Timestamp != 0 {
+		lastSeen = time.Unix(h.Status.Timestamp, 0)
+	}
+
+	// Check if Hub is obsolete.
+	if valid {
+		return time.Now().Add(-obsoleteValidAfter).After(lastSeen)
+	} else {
+		return time.Now().Add(-obsoleteInvalidAfter).After(lastSeen)
 	}
 }
 

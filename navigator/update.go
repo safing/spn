@@ -118,10 +118,22 @@ func (m *Map) RemoveHub(id string) {
 	}
 	delete(m.all, id)
 
+	// Remove lanes from removed Pin.
+	for id, _ := range pin.ConnectedTo {
+		// Remove Lane from peer.
+		peer, ok := m.all[id]
+		if ok {
+			delete(peer.ConnectedTo, pin.Hub.ID)
+			peer.pushChanges.Set()
+		}
+	}
+
 	// Push update to subscriptions.
 	export := pin.Export()
 	export.Meta().Delete()
 	mapDBController.PushUpdate(export)
+	// Push lane changes.
+	m.PushPinChanges()
 }
 
 // UpdateHub updates a Hub on the Map.
@@ -337,34 +349,30 @@ func (m *Map) updateHubLane(pin *Pin, lane *hub.Lane, peer *Pin) {
 }
 
 func (m *Map) updateStates(ctx context.Context, task *modules.Task) error {
-	now := time.Now()
-	oneMonthAgo := now.Add(-33 * 24 * time.Hour).Unix()
+	m.RLock()
+	defer m.RUnlock()
 
+	now := time.Now()
 	for _, pin := range m.all {
-		// Update StateFailing
+		// Update StateFailing.
 		if pin.State.has(StateFailing) && now.After(pin.FailingUntil) {
 			pin.removeStates(StateFailing)
 		}
 
-		// Delete stale Hubs that haven't been updated in over a month.
-		if pin.Hub.Info.Timestamp > 0 &&
-			pin.Hub.Info.Timestamp < oneMonthAgo &&
-			pin.Hub.Status.Timestamp < oneMonthAgo {
-			if pin.Hub.KeyIsSet() {
-				err := db.Delete(pin.Hub.Key())
-				if err != nil {
-					log.Warningf("spn/navigator: failed to delete stale %s: %s", pin.Hub, err)
-				}
-			} else {
-				m.RemoveHub(pin.Hub.ID)
+		// Delete obsolete Hubs.
+		if pin.State.hasNoneOf(StateActive) && pin.Hub.Obsolete() {
+			err := hub.RemoveHubAndMsgs(m.Name, pin.Hub.ID)
+			if err != nil {
+				log.Warningf("navigator: failed to delete obsolete %s", pin.Hub)
 			}
+			m.RemoveHub(pin.Hub.ID)
 		}
 	}
 
-	// Update StateActive
+	// Update StateActive.
 	m.updateActiveHubs()
 
-	// Update StateReachable
+	// Update StateReachable.
 	return m.recalculateReachableHubs()
 }
 
