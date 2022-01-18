@@ -1,6 +1,7 @@
 package terminal
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
@@ -146,7 +147,7 @@ var (
 	errorRegistry = make(map[uint8]*Error)
 )
 
-func registerError(id uint8, defaultMsg string) *Error {
+func registerError(id uint8, err error) *Error {
 	// Check for duplicate.
 	_, ok := errorRegistry[id]
 	if ok {
@@ -155,7 +156,7 @@ func registerError(id uint8, defaultMsg string) *Error {
 
 	newErr := &Error{
 		id:  id,
-		err: errors.New(defaultMsg),
+		err: err,
 	}
 
 	errorRegistry[id] = newErr
@@ -196,31 +197,32 @@ func (e *Error) IsError() bool {
 // Terminal Errors.
 var (
 	// ErrUnknownError is the default error.
-	ErrUnknownError = registerError(0, "unknown error")
+	ErrUnknownError = registerError(0, errors.New("unknown error"))
 
 	// Error IDs 1-7 are reserved for special values.
 
-	ErrStopping    = registerError(2, "stopping")
-	ErrExplicitAck = registerError(3, "explicit ack")
+	ErrStopping      = registerError(2, errors.New("stopping"))
+	ErrExplicitAck   = registerError(3, errors.New("explicit ack"))
+	ErrTryAgainLater = registerError(4, errors.New("try again later"))
 
 	// Errors IDs 8 and up are for regular errors.
 
-	ErrInternalError          = registerError(8, "internal error")
-	ErrMalformedData          = registerError(9, "malformed data")
-	ErrUnexpectedMsgType      = registerError(10, "unexpected message type")
-	ErrUnknownOperationType   = registerError(11, "unknown operation type")
-	ErrUnknownOperationID     = registerError(12, "unknown operation id")
-	ErrPermissinDenied        = registerError(13, "permission denied")
-	ErrIntegrity              = registerError(14, "integrity violated")
-	ErrInvalidOptions         = registerError(15, "invalid options")
-	ErrHubNotReady            = registerError(16, "hub not ready")
-	ErrIncorrectUsage         = registerError(22, "incorrect usage")
-	ErrTimeout                = registerError(62, "timed out")
-	ErrTryAgainLater          = registerError(87, "try again later")
-	ErrUnsupportedVersion     = registerError(93, "unsupported version")
-	ErrHubUnavailable         = registerError(101, "hub unavailable")
-	ErrShipSunk               = registerError(108, "ship sunk")
-	ErrDestinationUnavailable = registerError(113, "destination unavailable")
-	ErrConnectionError        = registerError(121, "connection error")
-	ErrQueueOverflow          = registerError(122, "queue overflowed")
+	ErrInternalError          = registerError(8, errors.New("internal error"))
+	ErrMalformedData          = registerError(9, errors.New("malformed data"))
+	ErrUnexpectedMsgType      = registerError(10, errors.New("unexpected message type"))
+	ErrUnknownOperationType   = registerError(11, errors.New("unknown operation type"))
+	ErrUnknownOperationID     = registerError(12, errors.New("unknown operation id"))
+	ErrPermissinDenied        = registerError(13, errors.New("permission denied"))
+	ErrIntegrity              = registerError(14, errors.New("integrity violated"))
+	ErrInvalidOptions         = registerError(15, errors.New("invalid options"))
+	ErrHubNotReady            = registerError(16, errors.New("hub not ready"))
+	ErrIncorrectUsage         = registerError(22, errors.New("incorrect usage"))
+	ErrTimeout                = registerError(62, errors.New("timed out"))
+	ErrUnsupportedVersion     = registerError(93, errors.New("unsupported version"))
+	ErrHubUnavailable         = registerError(101, errors.New("hub unavailable"))
+	ErrShipSunk               = registerError(108, errors.New("ship sunk"))
+	ErrDestinationUnavailable = registerError(113, errors.New("destination unavailable"))
+	ErrConnectionError        = registerError(121, errors.New("connection error"))
+	ErrQueueOverflow          = registerError(122, errors.New("queue overflowed"))
+	ErrCanceled               = registerError(125, context.Canceled)
 )
