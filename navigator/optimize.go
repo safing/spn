@@ -1,19 +1,111 @@
 package navigator
 
 import (
-	"errors"
-	"fmt"
+	"sort"
+	"time"
 
-	"github.com/safing/portbase/log"
 	"github.com/safing/spn/hub"
 )
 
 const (
 	optimizationHopDistanceTarget = 3
+	waitUntilMeasuredUpToPercent  = 0 // FIXME: Change back to 0.8 after migration.
+
+	desegrationAttemptBackoff = time.Hour
+
+	OptimizePurposeBootstrap       = "bootstrap"
+	OptimizePurposeDesegregate     = "desegregate"
+	OptimizePurposeWait            = "wait"
+	OptimizePurposeTargetStructure = "target-structure"
 )
 
-// FindNearestHubs searches for the nearest Hubs to the given IP address. The returned Hubs must not be modified in any way.
-func (m *Map) Optimize(opts *Options) (connectTo *hub.Hub, err error) {
+type AnalysisState struct {
+	// Suggested signifies that a direct connection to this Hub is suggested by the optimization algorithm.
+	Suggested bool
+
+	// SuggestedHopDistance holds the hop distance to this Hub when only considering the suggested Hubs as connected.
+	SuggestedHopDistance int
+}
+
+// initAnalysis creates all Pin.analysis fields.
+// The caller needs to hold the map and analysis lock..
+func (m *Map) initAnalysis() {
+	for _, pin := range m.all {
+		pin.analysis = &AnalysisState{}
+	}
+}
+
+// clearAnalysis reset all Pin.analysis fields.
+// The caller needs to hold the map and analysis lock.
+func (m *Map) clearAnalysis() {
+	for _, pin := range m.all {
+		pin.analysis = nil
+	}
+}
+
+// OptimizationResult holds the result of an optimizaion analysis.
+type OptimizationResult struct {
+	// Purpose holds a semi-human readable constant of the optimization purpose.
+	Purpose string
+
+	// Approach holds a human readable description of how the stated purpose
+	// should be achieved.
+	Approach string
+
+	// SuggestedConnections holds the Hubs to which connections are suggested.
+	SuggestedConnections []*hub.Hub
+
+	// MaxConnect specifies how many connections should be created at maximum
+	// based on this optimization.
+	MaxConnect int
+
+	// StopOthers specifies if other connections than the suggested ones may
+	// be stopped.
+	StopOthers bool
+
+	// regardedPins holds a list of Pins regarded for this optimization.
+	regardedPins []*Pin
+
+	// matcher is the matcher used to create the regarded Pins.
+	// Required for updating suggested hop distance.
+	matcher PinMatcher
+}
+
+func (or *OptimizationResult) addSuggested(pin *Pin) {
+	or.SuggestedConnections = append(or.SuggestedConnections, pin.Hub)
+
+	// Update hop distances if we have a matcher.
+	if or.matcher != nil {
+		or.markSuggestedReachable(pin, 2)
+	}
+}
+
+func (or *OptimizationResult) addSuggestedBatch(pins []*Pin) {
+	for _, pin := range pins {
+		or.addSuggested(pin)
+	}
+}
+
+func (or *OptimizationResult) markSuggestedReachable(suggested *Pin, hopDistance int) {
+	// Don't update if distance is greater or equal than than current one.
+	if hopDistance >= suggested.analysis.SuggestedHopDistance {
+		return
+	}
+
+	// Set suggested hop distance.
+	suggested.analysis.SuggestedHopDistance = hopDistance
+
+	// Increase distance and apply to matching Pins.
+	hopDistance++
+	for _, lane := range suggested.ConnectedTo {
+		if or.matcher(lane.Pin) {
+			or.markSuggestedReachable(lane.Pin, hopDistance)
+		}
+	}
+}
+
+// Optimize analyzes the map and suggests changes.
+func (m *Map) Optimize(opts *Options) (result *OptimizationResult, err error) {
 	m.RLock()
 	defer m.RUnlock()
 
@@ -27,113 +119,193 @@ func (m *Map) Optimize(opts *Options) (connectTo *hub.Hub, err error) {
 		opts = m.defaultOptions()
 	}
 
-	pin, err := m.optimize(opts)
-	switch {
-	case err != nil:
-		return nil, err
-	case pin == nil:
-		return nil, nil
-	default:
-		return pin.Hub, nil
-	}
+	return m.optimize(opts)
 }
 
-func (m *Map) optimize(opts *Options) (connectTo *Pin, err error) {
+func (m *Map) optimize(opts *Options) (result *OptimizationResult, err error) {
 	if m.home == nil {
 		return nil, ErrHomeHubUnset
 	}
 
-	// Create default matcher.
+	// Setup analyis.
+	m.analysisLock.Lock()
+	defer m.analysisLock.Unlock()
+	m.initAnalysis()
+	defer m.clearAnalysis()
+
+	// Compile list of regarded pins.
+	var validMeasurements float32
+	regardedPins := make([]*Pin, 0, len(m.all))
 	matcher := opts.Matcher(TransitHub)
-
-	// Define loop variables.
-	var (
-		mostDistantPin     *Pin
-		highestHopDistance = optimizationHopDistanceTarget
-	)
-
-	// Iterate over all Pins to find the most distant Pin.
-	var matchedAny bool
 	for _, pin := range m.all {
-		// Check if the Pin matches the criteria.
-		if !matcher(pin) {
-			// Debugging:
-			// log.Tracef("spn/navigator: skipping %s with states %s for optimizing", pin, pin.State)
-			continue
-		}
-		matchedAny = true
-
-		if pin.HopDistance > highestHopDistance {
-			highestHopDistance = pin.HopDistance
-			mostDistantPin = pin
+		if matcher(pin) {
+			regardedPins = append(regardedPins, pin)
+			if pin.measurements.Valid() {
+				validMeasurements++
+			}
 		}
 	}
-	// Return the most distant pin, if set.
-	if mostDistantPin != nil {
-		return mostDistantPin, nil
-	}
-	// If anything matched, we seem to be connected to the network.
-	if matchedAny {
-		// We are connected, but the network may be segregated.
-		return m.optimizeDesegregate(opts)
-	}
 
-	// If no pin matched at all, we don't seem connected to anyone.
-	// Find the nearest non-connected pin, to bootstrap to the network.
-
-	pins, err := m.findNearestPins(m.home.LocationV4, m.home.LocationV6, opts.Matcher(HomeHub), 10)
+	// Bootstrap to the network and desegregate map.
+	// If there is a result, return it immediately.
+	result, err = m.optimizeBootstrapAndDesegregate(opts, regardedPins)
 	if err != nil {
-		return nil, fmt.Errorf("failed to find nearest hubs for bootstrapping: %w", err)
+		return nil, err
 	}
-	switch pins.Len() {
-	case 0:
-		return nil, errors.New("failed to find nearest hubs for bootstrapping: no hubs nearby")
-	case 1:
-		return pins.pins[0].pin, nil
-	default:
-		// Return a pseudo random pin.
-		for _, nearby := range pins.pins {
-			return nearby.pin, nil
+	if result != nil {
+		return result, nil
+	}
+
+	// Check if we have the measurements we need.
+	if m.measuringEnabled &&
+		validMeasurements/float32(len(regardedPins)) < waitUntilMeasuredUpToPercent {
+		// Less than 80% of regarded Pins have valid measurements, let's wait until we have that.
+		return &OptimizationResult{
+			Purpose:  OptimizePurposeWait,
+			Approach: "Wait for measurements of 80% of regarded nodes for better optimization.",
+		}, nil
+	}
+
+	// Create a shared result to add everything together from now on.
+	result = &OptimizationResult{
+		Purpose:      OptimizePurposeTargetStructure,
+		Approach:     "Connect to 3 Hubs with lowest connect cost, then up to 3 Hubs to get everywhere with 3 client hops.",
+		MaxConnect:   3,
+		StopOthers:   true,
+		regardedPins: regardedPins,
+		matcher:      matcher,
+	}
+
+	// Connect by lowest cost.
+	err = m.optimizeConnectLowestCost(result, 3)
+	if err != nil {
+		return nil, err
+	}
+
+	// Connect to fulfill distance constraint.
+	err = m.optimizeDistanceConstraint(result, 3)
+	if err != nil {
+		return nil, err
+	}
+
+	// Clean and return.
+	result.regardedPins = nil
+	return result, nil
+}
+
+func (m *Map) optimizeBootstrapAndDesegregate(opts *Options, regardedPins []*Pin) (result *OptimizationResult, err error) {
+	// All regarded Pins are reachable.
+	reachable := len(regardedPins)
+
+	// Count Pins that may be connectable.
+	connectable := make([]*Pin, 0, len(m.all))
+	// Copy opts as we are going to make changes.
+	opts = opts.Copy()
+	opts.NoDefaults = true
+	opts.Regard = StateNone
+	opts.Disregard = StateSummaryDisregard
+	// Collect Pins with matcher.
+	matcher := opts.Matcher(TransitHub)
+	for _, pin := range m.all {
+		if matcher(pin) {
+			connectable = append(connectable, pin)
 		}
+	}
+
+	switch {
+	case reachable == 0:
+		// Sort by lowest cost.
+		sort.Sort(sortByLowestMeasuredCost(connectable))
+
+		// Return bootstrap optimization.
+		result = &OptimizationResult{
+			Purpose:              OptimizePurposeBootstrap,
+			Approach:             "Connect to a near Hub to connect to the network.",
+			SuggestedConnections: make([]*hub.Hub, 0, len(connectable)),
+			MaxConnect:           1,
+		}
+		result.addSuggestedBatch(connectable)
+		return result, nil
+
+	case reachable > len(connectable)/2:
+		// We are part of the majority network, continue with regular optimization.
+
+	case time.Now().Add(-desegrationAttemptBackoff).Before(m.lastDesegrationAttempt):
+		// We tried to desegregate recently, continue with regular optimization.
+
+	default:
+		// We are in a network comprised of less than half of the known nodes.
+		// Attempt to connect to an unconnected one to desegregate the network.
+
+		// Copy opts as we are going to make changes.
+		opts = opts.Copy()
+		opts.NoDefaults = true
+		opts.Regard = StateNone
+		opts.Disregard = StateSummaryDisregard | StateReachable
+
+		// Iterate over all Pins to find any matching Pin.
+		desegregateWith := make([]*Pin, 0, len(m.all)-reachable)
+		matcher := opts.Matcher(TransitHub)
+		for _, pin := range m.all {
+			if matcher(pin) {
+				desegregateWith = append(desegregateWith, pin)
+			}
+		}
+
+		// Sort by lowest connection cost.
+		sort.Sort(sortByLowestMeasuredCost(connectable))
+
+		// Build desegration optimization.
+		result = &OptimizationResult{
+			Purpose:              OptimizePurposeDesegregate,
+			Approach:             "Attempt to desegregate network by connection to an unreachable Hub.",
+			SuggestedConnections: make([]*hub.Hub, 0, len(desegregateWith)),
+			MaxConnect:           1,
+		}
+		result.addSuggestedBatch(desegregateWith)
+
+		// Record desegregation attempt.
+		m.lastDesegrationAttempt = time.Now()
+
+		return result, nil
 	}
 
 	return nil, nil
 }
 
-func (m *Map) optimizeDesegregate(opts *Options) (connectTo *Pin, err error) {
-	// Check if the network we belog to is less than 50% of the network.
-	var reachable int
-	for _, pin := range m.all {
-		if pin.State.has(StateReachable) {
-			reachable++
+func (m *Map) optimizeConnectLowestCost(result *OptimizationResult, max int) error {
+	// Sort by lowest cost.
+	sort.Sort(sortByLowestMeasuredCost(result.regardedPins))
+
+	// Connect to Pins with the lowest connection cost.
+	for i, pin := range result.regardedPins {
+		// Stop after looking at the first [max] Hubs.
+		if i >= max {
+			break
 		}
-	}
-	// If we are part of the bigger network, everything is good.
-	if reachable > len(m.all)/2 {
-		return nil, nil
+
+		result.addSuggested(pin)
+
+		// Mark as suggested for analysis.
+		pin.analysis.Suggested = true
 	}
 
-	// If we are part of the smaller network, try to connect to the bigger network.
+	return nil
+}
 
-	// Copy opts as we are going to make changes.
-	opts = opts.Copy()
-	if !opts.NoDefaults {
-		opts.NoDefaults = true
-		opts.Regard = opts.Regard.add(StateSummaryRegard)
-		opts.Disregard = opts.Disregard.add(StateSummaryDisregard)
-	}
-	// Move reachable from regard to disregard.
-	opts.Regard = opts.Regard.remove(StateReachable)
-	opts.Disregard = opts.Disregard.add(StateReachable)
+func (m *Map) optimizeDistanceConstraint(result *OptimizationResult, max int) error {
+	for i := 0; i < max; i++ {
+		// Sort by lowest cost.
+		sort.Sort(sortBySuggestedHopDistanceAndLowestMeasuredCost(result.regardedPins))
 
-	// Iterate over all Pins to find any matching Pin.
-	matcher := opts.Matcher(TransitHub)
-	for _, pin := range m.all {
-		if matcher(pin) {
-			log.Warningf("spn/navigator: recommending to connect to %s to desegregate map %s", pin.Hub, m.Name)
-			return pin, nil
+		// Return when all regarded Pins are within the distance constraint.
+		if result.regardedPins[0].analysis.SuggestedHopDistance <= optimizationHopDistanceTarget {
+			return nil
 		}
+
+		// If not, suggest a connection to the best match.
+		result.addSuggested(result.regardedPins[0])
 	}
 
-	return nil, nil
+	return nil
 }

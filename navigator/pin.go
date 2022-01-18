@@ -26,6 +26,7 @@ type Pin struct {
 	// HopDistance signifies the needed hops to reach this Hub.
 	// HopDistance is measured from the view of a client.
 	// A Hub itself will have itself at distance 1.
+	// Directly connected Hubs have a distance of 2.
 	HopDistance int
 	// Cost is the routing cost of this Hub.
 	Cost float32
@@ -45,6 +46,16 @@ type Pin struct {
 	// an update needs to be pushed by the database storage interface to whoever
 	// is listening.
 	pushChanges *abool.AtomicBool
+
+	// measurements holds Measurements regarding this Pin.
+	// It must always be set and the reference must not be changed when measuring
+	// is enabled.
+	// Access to fields within are coordinated by itself.
+	measurements *hub.Measurements
+
+	// analysis holds the analysis state.
+	// Should only be set during analysis and be reset at the start and removed at the end of an analysis.
+	analysis *AnalysisState
 }
 
 // PinConnection represents a connection to a terminal on the Hub.
@@ -54,9 +65,6 @@ type PinConnection struct {
 
 	// Route is the route built for this terminal.
 	Route *Route
-
-	// TODO: Next is the next alternative Router to the same Pin.
-	// Next *PinRoute
 }
 
 // Lane is a connection to another Hub.

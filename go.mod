@@ -6,6 +6,7 @@ require (
 	github.com/VictoriaMetrics/metrics v1.18.1 // indirect
 	github.com/awalterschulze/gographviz v2.0.3+incompatible
 	github.com/brianvoe/gofakeit v3.18.0+incompatible
+	github.com/ghodss/yaml v1.0.0
 	github.com/go-ole/go-ole v1.2.6 // indirect
 	github.com/godbus/dbus/v5 v5.0.6 // indirect
 	github.com/hairyhenderson/gomplate/v3 v3.10.0 // indirect

@@ -18,6 +18,8 @@ import (
 	"github.com/safing/spn/terminal"
 )
 
+const stopCraneAfterBeingUnsuggestedFor = 6 * time.Hour
+
 func homeHubManager(ctx context.Context) (err error) {
 	defer ready.UnSet()
 	defer netenv.ConnectedToSPN.UnSet()
@@ -174,7 +176,7 @@ func connectToHomeHub(ctx context.Context, dst *hub.Hub) error {
 	defer setExceptions(nil, nil)
 
 	// Connect to hub.
-	crane, err := EstablishCrane(dst)
+	crane, err := EstablishCrane(ctx, dst)
 	if err != nil {
 		return err
 	}
@@ -240,7 +242,7 @@ func optimizeNetwork(ctx context.Context, task *modules.Task) error {
 	}
 
 optimize:
-	newDst, err := navigator.Main.Optimize(nil)
+	result, err := navigator.Main.Optimize(nil)
 	if err != nil {
 		if errors.Is(err, navigator.ErrEmptyMap) {
 			// bootstrap to the network!
@@ -254,14 +256,72 @@ optimize:
 		return err
 	}
 
-	if newDst != nil {
-		log.Infof("spn/captain: network optimization suggests new connection to %s", newDst)
-		_, err := EstablishPublicLane(newDst)
-		if err != nil {
-			log.Warningf("spn/captain: failed to establish public lane to %s: %s", newDst, err)
+	// Create any new connections.
+	var createdConnections int
+	var attemptedConnections int
+	for _, connectTo := range result.SuggestedConnections {
+		// Check if connection already exists.
+		crane := docks.GetAssignedCrane(connectTo.ID)
+		if crane != nil {
+			// Update last suggested timestamp.
+			crane.NetState.UpdateLastSuggestedAt()
+			// Continue crane if stopping.
+			if crane.Stopping.SetToIf(true, false) {
+				log.Infof("spn/captain: optimization aborted retiring of %s, removed stopping mark", crane)
+				crane.NotifyUpdate()
+			}
+
+			// Create new connections if we have connects left.
+		} else if createdConnections < result.MaxConnect {
+			attemptedConnections++
+
+			crane, err := EstablishPublicLane(ctx, connectTo)
+			if err != nil {
+				log.Warningf("spn/captain: failed to establish lane to %s: %s", connectTo, err)
+			} else {
+				createdConnections++
+				crane.NetState.UpdateLastSuggestedAt()
+
+				log.Infof("spn/captain: established lane to %s", connectTo)
+			}
 		}
+	}
+
+	// Log optimization result.
+	if attemptedConnections > 0 {
+		log.Infof(
+			"spn/captain: created %d/%d new connections for %s optimization",
+			createdConnections,
+			attemptedConnections,
+			result.Purpose)
 	} else {
-		log.Info("spn/captain: network optimization suggests no further action")
+		log.Infof(
+			"spn/captain: checked %d connections for %s optimization",
+			len(result.SuggestedConnections),
+			result.Purpose,
+		)
+	}
+
+	// Retire cranes if unsuggested for a while.
+	if result.StopOthers {
+		for _, crane := range docks.GetAllAssignedCranes() {
+			switch {
+			case !crane.IsMine():
+				// Skip cranes built by others.
+			case crane.Stopped() || crane.Stopping.IsSet():
+				// Skip cranes that are stopped or stopping.
+			case crane.NetState.LastSuggestedAt().After(
+				time.Now().Add(-stopCraneAfterBeingUnsuggestedFor),
+			):
+				// Skip cranes that were recently suggested.
+			default:
+				// Mark crane as stopping.
+				if crane.Stopping.SetToIf(false, true) {
+					log.Infof("spn/captain: retiring %s, marked as stopping", crane)
+					crane.NotifyUpdate()
+				}
+			}
+		}
 	}
 
 	return nil

@@ -1,10 +1,7 @@
 package navigator
 
 import (
-	"net"
 	"testing"
-
-	"github.com/brianvoe/gofakeit"
 )
 
 func TestFindNearest(t *testing.T) {
@@ -15,16 +12,31 @@ func TestFindNearest(t *testing.T) {
 
 	for i := 0; i < 100; i++ {
 		// Create a random destination address
-		dstIP := createGoodIP(i%2 == 0)
+		ip4, loc4 := createGoodIP(true)
 
-		nbPins, err := m.findNearestPins(dstIP, m.DefaultOptions().Matcher(DestinationHub), 10)
+		nbPins, err := m.findNearestPins(loc4, nil, m.DefaultOptions().Matcher(DestinationHub), 10)
 		if err != nil {
 			t.Error(err)
 		} else {
-			t.Logf("Pins near %s: %s", dstIP, nbPins)
+			t.Logf("Pins near %s: %s", ip4, nbPins)
+		}
+	}
+
+	for i := 0; i < 100; i++ {
+		// Create a random destination address
+		ip6, loc6 := createGoodIP(true)
+
+		nbPins, err := m.findNearestPins(nil, loc6, m.DefaultOptions().Matcher(DestinationHub), 10)
+		if err != nil {
+			t.Error(err)
+		} else {
+			t.Logf("Pins near %s: %s", ip6, nbPins)
 		}
 	}
 }
+
+/*
+TODO: Find a way to quickly generate good geoip data on the fly, as we don't want to measure IP address generation, but only finding the nearest pins.
 
 func BenchmarkFindNearest(b *testing.B) {
 	// Create map and lock faking in order to guarantee reproducability of faked data.
@@ -48,21 +60,14 @@ func BenchmarkFindNearest(b *testing.B) {
 		}
 	}
 }
+*/
 
 func findFakeHomeHub(m *Map) {
 	// Create fake IP address.
-	var myIP net.IP
-	if gofakeit.Number(0, 1) == 0 {
-		myIP = net.ParseIP(gofakeit.IPv4Address())
-	} else {
-		myIP = net.ParseIP(gofakeit.IPv6Address())
-	}
-	if myIP == nil {
-		panic("failed to set IP")
-	}
+	_, loc4 := createGoodIP(true)
+	_, loc6 := createGoodIP(false)
 
-	// Get nearest Hubs.
-	nbPins, err := m.findNearestPins(myIP, m.defaultOptions().Matcher(HomeHub), 10)
+	nbPins, err := m.findNearestPins(loc4, loc6, m.defaultOptions().Matcher(HomeHub), 10)
 	if err != nil {
 		panic(err)
 	}
@@ -71,20 +76,20 @@ func findFakeHomeHub(m *Map) {
 	}
 
 	// Set Home.
-	m.Home = nbPins.pins[0].pin
+	m.home = nbPins.pins[0].pin
 
 	// Recalculate reachability.
 	m.recalculateReachableHubs()
 }
 
 func TestNearbyPinsCleaning(t *testing.T) {
-	testCleaning(t, []int{10, 20, 30, 40, 50, 60, 70, 80, 90, 100}, 5)
-	testCleaning(t, []int{10, 11, 12, 13, 14, 15, 70, 80, 90, 100}, 4)
-	testCleaning(t, []int{10, 11, 12, 13, 14, 15, 16, 80, 90, 100}, 3)
-	testCleaning(t, []int{10, 11, 12, 13, 14, 15, 16, 17, 90, 100}, 3)
+	testCleaning(t, []float32{10, 20, 30, 40, 50, 60, 70, 80, 90, 100}, 5)
+	testCleaning(t, []float32{10, 11, 12, 13, 14, 15, 70, 80, 90, 100}, 4)
+	testCleaning(t, []float32{10, 11, 12, 13, 14, 15, 16, 80, 90, 100}, 3)
+	testCleaning(t, []float32{10, 11, 12, 13, 14, 15, 16, 17, 90, 100}, 3)
 }
 
-func testCleaning(t *testing.T, proximities []int, expectedLeftOver int) {
+func testCleaning(t *testing.T, proximities []float32, expectedLeftOver int) {
 	t.Helper()
 
 	nb := &nearbyPins{

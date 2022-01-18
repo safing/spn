@@ -6,15 +6,12 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/safing/portbase/rng"
-
 	"github.com/safing/portbase/metrics"
 
 	"github.com/safing/spn/conf"
 	"github.com/safing/spn/docks"
 	"github.com/safing/spn/hub"
 	"github.com/safing/spn/navigator"
-	"github.com/safing/spn/terminal"
 
 	"github.com/safing/portbase/database"
 	"github.com/safing/portbase/log"
@@ -23,9 +20,8 @@ import (
 )
 
 const (
-	maintainStatusRegularInterval        = 15 * time.Minute
-	maintainStatusShortInterval          = 1 * time.Minute
-	maintainStatusShortIntervalAddRandom = 2 * time.Minute
+	maintainStatusInterval    = 15 * time.Minute
+	maintainStatusUpdateDelay = 5 * time.Second
 )
 
 var (
@@ -100,7 +96,7 @@ func prepPublicIdentityMgmt() error {
 	statusUpdateTask = module.NewTask(
 		"maintain public status",
 		maintainPublicStatus,
-	).Repeat(maintainStatusRegularInterval)
+	).Repeat(maintainStatusInterval)
 
 	return module.RegisterEventHook(
 		"config",
@@ -146,59 +142,25 @@ func maintainPublicIdentity(ctx context.Context, task *modules.Task) error {
 }
 
 func maintainPublicStatus(ctx context.Context, task *modules.Task) error {
-	// Schedule maintenance soon again if something failed.
-	var tryAgainSoon bool
-	defer func() {
-		if tryAgainSoon {
-			maintainStatusSoon(
-				maintainStatusShortInterval,
-				maintainStatusShortIntervalAddRandom,
-			)
-		}
-	}()
-
-	// Maintain cranes.
-	cranes := docks.GetAllAssignedCranes()
-	for _, crane := range cranes {
-		// Ignore private, stopped and stopping cranes.
-		if !crane.Public() || crane.Stopped() || crane.Stopping() {
-			continue
-		}
-
-		// Maintain crane.
-		tErr := maintainCrane(ctx, crane)
-		switch {
-		case tErr == nil:
-			// All good, continue.
-		case errors.Is(tErr, terminal.ErrStopping):
-			// Check if we should stop.
-			select {
-			case <-ctx.Done():
-				return nil
-			default:
-			}
-		case errors.Is(tErr, terminal.ErrTryAgainLater):
-			// Someone else is alredy running a test, try again later.
-			tryAgainSoon = true
-		case tErr.IsError():
-			// Some other error happened.
-			log.Errorf("captain: maintaining crane %s failed: %s", crane.ID, tErr)
-		}
-	}
-
 	// Get current lanes.
+	cranes := docks.GetAllAssignedCranes()
 	lanes := make([]*hub.Lane, 0, len(cranes))
 	for _, crane := range cranes {
-		// Ignore private or stopped cranes.
-		if !crane.Public() || crane.Stopped() {
+		// Ignore private, stopped or stopping cranes.
+		if !crane.Public() || crane.Stopped() || crane.Stopping.IsSet() {
 			continue
 		}
+
+		// Get measurements.
+		measurements := crane.ConnectedHub.GetMeasurements()
+		latency, _ := measurements.GetLatency()
+		capacity, _ := measurements.GetCapacity()
 
 		// Add crane lane.
 		lanes = append(lanes, &hub.Lane{
 			ID:       crane.ConnectedHub.ID,
-			Capacity: crane.GetLaneCapacity(),
-			Latency:  crane.GetLaneLatency(),
+			Latency:  latency,
+			Capacity: capacity,
 		})
 	}
 	// Sort Lanes for comparing.
@@ -224,7 +186,7 @@ func maintainPublicStatus(ctx context.Context, task *modules.Task) error {
 	}
 
 	// Run maintenance with the new data.
-	changed, err := publicIdentity.MaintainStatus(lanes, load, false)
+	changed, err := publicIdentity.MaintainStatus(lanes, &load, false)
 	if err != nil {
 		return fmt.Errorf("failed to maintain status: %w", err)
 	}
@@ -265,63 +227,8 @@ func publishShutdownStatus() {
 	// Forward to other connected Hubs.
 	gossipRelayMsg("", GossipHubStatusMsg, offlineStatusData)
 
+	// Leave some time for the message to broadcast.
+	time.Sleep(2 * time.Second)
+
 	log.Infof("spn/captain: broadcasted offline status")
-}
-
-func maintainCrane(ctx context.Context, crane *docks.Crane) *terminal.Error {
-	// Don't maintain private or stopped cranes.
-	if !crane.Public() || crane.Stopped() {
-		return nil
-	}
-
-	// Measure latency if needed.
-	if time.Now().After(crane.LaneLatencyExpiresAt()) {
-		// Start op.
-		latOp, tErr := docks.NewLatencyTestOp(crane.Controller)
-		if tErr != nil {
-			return tErr
-		}
-
-		// Wait for op to complete.
-		select {
-		case tErr = <-latOp.Result():
-			if tErr.IsError() {
-				return tErr
-			}
-		case <-ctx.Done():
-			return terminal.ErrStopping
-		}
-	}
-
-	// Measure capacity if needed.
-	if time.Now().After(crane.LaneCapacityExpiresAt()) {
-		// Start op.
-		capOp, tErr := docks.NewCapacityTestOp(crane.Controller)
-		if tErr != nil {
-			return tErr
-		}
-
-		// Wait for op to complete.
-		select {
-		case tErr = <-capOp.Result():
-			if tErr.IsError() {
-				return tErr
-			}
-		case <-ctx.Done():
-			return terminal.ErrStopping
-		}
-	}
-
-	return nil
-}
-
-func maintainStatusSoon(tryIn, addRandom time.Duration) {
-	n, err := rng.Number(uint64(addRandom) * 2)
-	if err != nil {
-		log.Warningf("captain: failed to get random number for scheduling status maintenance: %s", err)
-	} else {
-		tryIn += time.Duration(n)
-	}
-
-	statusUpdateTask.Schedule(time.Now().Add(tryIn))
 }

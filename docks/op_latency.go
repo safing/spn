@@ -182,7 +182,7 @@ func (op *LatencyTestClientOp) handleResponse(data *container.Container) *termin
 	}
 }
 
-func (op *LatencyTestClientOp) reportMeasuredLatencies() {
+func (op *LatencyTestClientOp) reportMeasuredLatencies() *terminal.Error {
 	// Find lowest value.
 	lowestLatency := time.Hour
 	for _, latency := range op.measuredLatencies {
@@ -194,10 +194,17 @@ func (op *LatencyTestClientOp) reportMeasuredLatencies() {
 
 	// Save the result to the crane.
 	if controller, ok := op.t.(*CraneControllerTerminal); ok {
-		controller.Crane.SetLaneLatency(op.testResult)
+		if controller.Crane.ConnectedHub != nil {
+			controller.Crane.ConnectedHub.GetMeasurements().SetLatency(op.testResult)
+			log.Infof("docks: measured latency to %s: %s", controller.Crane.ConnectedHub, op.testResult)
+			return nil
+		} else if controller.Crane.IsMine() {
+			return terminal.ErrInternalError.With("latency operation was run on %s without a connected hub set", controller.Crane)
+		}
 	} else if !runningTests {
-		log.Errorf("docks: latency operation was run on terminal that is not a crane controller, but %T", op.t)
+		return terminal.ErrInternalError.With("latency operation was run on terminal that is not a crane controller, but %T", op.t)
 	}
+	return nil
 }
 
 func (op *LatencyTestClientOp) Deliver(c *container.Container) *terminal.Error {

@@ -11,9 +11,17 @@ const (
 // Lane latency and capacity.
 func CalculateLaneCost(latency time.Duration, capacity int) (cost float32) {
 	// - One point for every ms in latency (linear)
-	cost += float32(latency) / float32(time.Millisecond)
+	if latency != 0 {
+		cost += float32(latency) / float32(time.Millisecond)
+	} else {
+		// Add cautious default cost if latency is not available.
+		cost += 100
+	}
 
 	switch {
+	case capacity == 0:
+		// Add cautious default cost if capacity is not available.
+		cost += 400
 	case capacity < cap1Mbit:
 		// - Between 1000 and 10000 points for ranges below 1Mbit/s
 		cost += 1000 + 9000*((cap1Mbit-float32(capacity))/cap1Mbit)
@@ -50,7 +58,7 @@ func CalculateHubCost(load int) (cost float32) {
 
 // CalculateDestinationCost calculates the cost of a destination hub to a
 // destination server based on the given proximity.
-func CalculateDestinationCost(proximity int) (cost float32) {
+func CalculateDestinationCost(proximity float32) (cost float32) {
 	// Invert from proximity (0-100) to get a distance value.
 	distance := 100 - proximity
 

@@ -98,6 +98,7 @@ func checkAndReturn(h *Hub) *Hub {
 	if h.Status == nil {
 		h.Status = &Status{}
 	}
+	h.Measurements = getSharedMeasurements(h.ID, h.Measurements)
 	return h
 }
 
@@ -110,9 +111,24 @@ func (hub *Hub) Save() error {
 	return db.Put(hub)
 }
 
-// RemoveHub deletes a Hub from the database.
-func RemoveHub(mapName string, hubID string) error {
-	return db.Delete(MakeHubDBKey(mapName, hubID))
+// RemoveHubAndMsgs deletes a Hub and it's saved messages from the database.
+func RemoveHubAndMsgs(mapName string, hubID string) (err error) {
+	err = db.Delete(MakeHubDBKey(mapName, hubID))
+	if err != nil {
+		return fmt.Errorf("failed to delete hub: %w", err)
+	}
+
+	err = db.Delete(MakeHubMsgDBKey(mapName, MsgTypeAnnouncement, hubID))
+	if err != nil {
+		return fmt.Errorf("failed to delete hub announcement: %w", err)
+	}
+
+	err = db.Delete(MakeHubMsgDBKey(mapName, MsgTypeStatus, hubID))
+	if err != nil {
+		return fmt.Errorf("failed to delete hub status: %w", err)
+	}
+
+	return nil
 }
 
 // HubMsg stores raw Hub messages.

@@ -27,6 +27,7 @@ func (m *Map) UpdateIntel(update *hub.Intel) error {
 	// go through map
 	for _, pin := range m.all {
 		m.updateIntelStatuses(pin)
+		m.updateInfoOverrides(pin)
 	}
 
 	log.Infof("spn/navigator: updated intel on map %s", m.Name)
@@ -94,5 +95,40 @@ func checkStatusList(pin *Pin, state PinState, requireTrusted bool, endpointList
 	result, _ = endpointList.Match(context.TODO(), pin.EntityV6)
 	if result == endpoints.Denied {
 		pin.addStates(state)
+	}
+}
+
+func (m *Map) updateInfoOverrides(pin *Pin) {
+	// Check if Intel data is loaded and if there are any overrides.
+	if m.intel == nil || m.intel.InfoOverrides == nil {
+		return
+	}
+
+	// Get overrides for this pin.
+	overrides, ok := m.intel.InfoOverrides[pin.Hub.ID]
+	if !ok {
+		return
+	}
+
+	// Apply overrides
+	if overrides.ContinentCode != "" {
+		pin.LocationV4.Continent.Code = overrides.ContinentCode
+		pin.LocationV6.Continent.Code = overrides.ContinentCode
+	}
+	if overrides.CountryCode != "" {
+		pin.LocationV4.Country.ISOCode = overrides.CountryCode
+		pin.LocationV6.Country.ISOCode = overrides.CountryCode
+	}
+	if overrides.Coordinates != nil {
+		pin.LocationV4.Coordinates = *overrides.Coordinates
+		pin.LocationV6.Coordinates = *overrides.Coordinates
+	}
+	if overrides.ASN != 0 {
+		pin.LocationV4.AutonomousSystemNumber = overrides.ASN
+		pin.LocationV6.AutonomousSystemNumber = overrides.ASN
+	}
+	if overrides.ASOrg != "" {
+		pin.LocationV4.AutonomousSystemOrganization = overrides.ASOrg
+		pin.LocationV6.AutonomousSystemOrganization = overrides.ASOrg
 	}
 }

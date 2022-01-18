@@ -33,7 +33,7 @@ func prep() error {
 }
 
 func start() error {
-	Main = NewMap(conf.MainMapName)
+	Main = NewMap(conf.MainMapName, true)
 	devMode = config.Concurrent.GetAsBool(config.CfgDevModeKey, false)
 
 	err := registerMapDatabase()
@@ -53,11 +53,24 @@ func start() error {
 		Repeat(1 * time.Hour).
 		Schedule(time.Now().Add(3 * time.Minute))
 
+	if conf.PublicHub() {
+		// Only measure Hubs on public Hubs.
+		module.NewTask("measure hubs", Main.measureHubs).
+			Repeat(5 * time.Minute).
+			Schedule(time.Now().Add(1 * time.Minute))
+
+		// Only register metrics on Hubs, as they only make sense there.
+		registerMetrics()
+	}
+
 	return nil
 }
 
 func stop() error {
 	withdrawMapDatabase()
+
+	Main.CancelHubUpdateHook()
+	Main.SaveMeasuredHubs()
 	Main.Close()
 
 	return nil

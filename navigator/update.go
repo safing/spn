@@ -17,7 +17,10 @@ import (
 )
 
 var (
-	db = database.NewInterface(nil)
+	db = database.NewInterface(&database.Options{
+		Local:    true,
+		Internal: true,
+	})
 )
 
 // InitializeFromDatabase loads all Hubs from the given database prefix and adds them to the Map.
@@ -87,13 +90,20 @@ func (hook *UpdateHook) PrePut(r record.Record) (record.Record, error) {
 
 // RegisterHubUpdateHook registers a database pre-put hook that updates all
 // Hubs saved at the given database prefix.
-func (m *Map) RegisterHubUpdateHook() error {
-	_, err := database.RegisterHook(
+func (m *Map) RegisterHubUpdateHook() (err error) {
+	m.hubUpdateHook, err = database.RegisterHook(
 		query.New(hub.MakeHubDBKey(m.Name, "")),
 		&UpdateHook{m: m},
 	)
-	// TODO: Save registered hook and cancel it when shutting down the module.
 	return err
+}
+
+func (m *Map) CancelHubUpdateHook() {
+	if m.hubUpdateHook != nil {
+		if err := m.hubUpdateHook.Cancel(); err != nil {
+			log.Warningf("navigator: failed to cancel update hook for map %s: %s", m.Name, err)
+		}
+	}
 }
 
 // RemoveHub removes a Hub from the Map.
@@ -108,10 +118,22 @@ func (m *Map) RemoveHub(id string) {
 	}
 	delete(m.all, id)
 
+	// Remove lanes from removed Pin.
+	for id, _ := range pin.ConnectedTo {
+		// Remove Lane from peer.
+		peer, ok := m.all[id]
+		if ok {
+			delete(peer.ConnectedTo, pin.Hub.ID)
+			peer.pushChanges.Set()
+		}
+	}
+
 	// Push update to subscriptions.
 	export := pin.Export()
 	export.Meta().Delete()
 	mapDBController.PushUpdate(export)
+	// Push lane changes.
+	m.PushPinChanges()
 }
 
 // UpdateHub updates a Hub on the Map.
@@ -148,11 +170,29 @@ func (m *Map) updateHub(h *hub.Hub, lockMap, lockHub bool) {
 	}
 	pin.pushChanges.Set()
 
+	// Ensure measurements are set when enabled.
+	if m.measuringEnabled && pin.measurements == nil {
+		// Get shared measurements.
+		pin.measurements = pin.Hub.GetMeasurementsWithLockedHub()
+
+		// Update cost calculation.
+		latency, _ := pin.measurements.GetLatency()
+		capacity, _ := pin.measurements.GetCapacity()
+		pin.measurements.SetCalculatedCost(CalculateLaneCost(latency, capacity))
+	}
+
 	// Update the invalid status of the Pin.
 	if pin.Hub.InvalidInfo || pin.Hub.InvalidStatus {
 		pin.addStates(StateInvalid)
 	} else {
 		pin.removeStates(StateInvalid)
+	}
+
+	// Update online status of the Pin.
+	if pin.Hub.Status.Version == hub.VersionOffline {
+		pin.addStates(StateOffline)
+	} else {
+		pin.removeStates(StateOffline)
 	}
 
 	// Add/Update location data from IP addresses.
@@ -163,8 +203,9 @@ func (m *Map) updateHub(h *hub.Hub, lockMap, lockHub bool) {
 	pin.updateStateHasRequiredInfo()
 	pin.updateStateActive(time.Now().Unix())
 
-	// Update Trust and Advisory Statuses.
+	// Update Trust and Advisory Statuses and Overrides.
 	m.updateIntelStatuses(pin)
+	m.updateInfoOverrides(pin)
 
 	// Update Hub cost.
 	pin.Cost = CalculateHubCost(pin.Hub.Status.Load)
@@ -308,34 +349,30 @@ func (m *Map) updateHubLane(pin *Pin, lane *hub.Lane, peer *Pin) {
 }
 
 func (m *Map) updateStates(ctx context.Context, task *modules.Task) error {
-	now := time.Now()
-	oneMonthAgo := now.Add(-33 * 24 * time.Hour).Unix()
+	m.RLock()
+	defer m.RUnlock()
 
+	now := time.Now()
 	for _, pin := range m.all {
-		// Update StateFailing
+		// Update StateFailing.
 		if pin.State.has(StateFailing) && now.After(pin.FailingUntil) {
 			pin.removeStates(StateFailing)
 		}
 
-		// Delete stale Hubs that haven't been updated in over a month.
-		if pin.Hub.Info.Timestamp > 0 &&
-			pin.Hub.Info.Timestamp < oneMonthAgo &&
-			pin.Hub.Status.Timestamp < oneMonthAgo {
-			if pin.Hub.KeyIsSet() {
-				err := db.Delete(pin.Hub.Key())
-				if err != nil {
-					log.Warningf("spn/navigator: failed to delete stale %s: %s", pin.Hub, err)
-				}
-			} else {
-				m.RemoveHub(pin.Hub.ID)
+		// Delete obsolete Hubs.
+		if pin.State.hasNoneOf(StateActive) && pin.Hub.Obsolete() {
+			err := hub.RemoveHubAndMsgs(m.Name, pin.Hub.ID)
+			if err != nil {
+				log.Warningf("navigator: failed to delete obsolete %s", pin.Hub)
 			}
+			m.RemoveHub(pin.Hub.ID)
 		}
 	}
 
-	// Update StateActive
+	// Update StateActive.
 	m.updateActiveHubs()
 
-	// Update StateReachable
+	// Update StateReachable.
 	return m.recalculateReachableHubs()
 }
 

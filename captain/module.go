@@ -42,8 +42,6 @@ func init() {
 }
 
 func prep() error {
-	initDockHooks()
-
 	// Check if we can parse the bootstrap hub flag.
 	if err := prepBootstrapHubFlag(); err != nil {
 		return err
@@ -87,6 +85,9 @@ func start() error {
 		if err := startPierMgmt(); err != nil {
 			return err
 		}
+
+		// Subscribe to updates of connections.
+		initDockHooks()
 
 		// Enable connect operation.
 		crew.EnableConnecting(publicIdentity.Hub)

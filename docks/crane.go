@@ -28,6 +28,8 @@ const (
 	// maxUnloadSize defines the maximum size of a message to unload.
 	maxUnloadSize    = 16384
 	maxSegmentLength = 16384
+
+	CraneMeasurementTTL = 1 * time.Hour
 )
 
 var (
@@ -56,7 +58,7 @@ type Crane struct {
 	cancelCtx context.CancelFunc
 	// stopping indicates if the Crane will be stopped soon. The Crane may still
 	// be used until stopped, but must not be advertised anymore.
-	stopping *abool.AtomicBool
+	Stopping *abool.AtomicBool
 	// stopped indicates if the Crane has been stopped. Whoever stopped the Crane
 	// already took care of notifying everyone, so a silent fail is normally the
 	// best response.
@@ -66,6 +68,10 @@ type Crane struct {
 
 	// ConnectedHub is the identity of the remote Hub.
 	ConnectedHub *hub.Hub
+	// NetState holds the network optimization state.
+	// It must always be set and the reference must not be changed.
+	// Access to fields within are coordinated by itself.
+	NetState *NetworkOptimizationState
 	// identity is identity of this instance and is usually only populated on a server.
 	identity *cabin.Identity
 
@@ -97,19 +103,6 @@ type Crane struct {
 
 	// targetLoadSize defines the optimal loading size.
 	targetLoadSize int
-
-	// metaLock locks the metadata fields below.
-	metaLock sync.Mutex
-	// laneLatency designates the latency. It is specified in nanoseconds.
-	laneLatency time.Duration
-	// laneLatencyExpires holds the time when the laneLatency expires and
-	// should be re-measured.
-	laneLatencyExpires time.Time
-	// laneCapacity designates the available bandwidth. It is specified in bit/s.
-	laneCapacity int
-	// laneCapacityExpires holds the time when the laneCapacity expires and
-	// should be re-measured.
-	laneCapacityExpires time.Time
 }
 
 func NewCrane(ctx context.Context, ship ships.Ship, connectedHub *hub.Hub, id *cabin.Identity) (*Crane, error) {
@@ -118,11 +111,12 @@ func NewCrane(ctx context.Context, ship ships.Ship, connectedHub *hub.Hub, id *c
 	new := &Crane{
 		ctx:           ctx,
 		cancelCtx:     cancelCtx,
-		stopping:      abool.NewBool(false),
+		Stopping:      abool.NewBool(false),
 		stopped:       abool.NewBool(false),
 		authenticated: abool.NewBool(false),
 
 		ConnectedHub: connectedHub,
+		NetState:     newNetworkOptimizationState(),
 		identity:     id,
 
 		ship:          ship,
@@ -158,6 +152,10 @@ func NewCrane(ctx context.Context, ship ships.Ship, connectedHub *hub.Hub, id *c
 	new.targetLoadSize -= varint.EncodedSize(uint64(new.targetLoadSize))
 
 	return new, nil
+}
+
+func (crane *Crane) IsMine() bool {
+	return crane.ship.IsMine()
 }
 
 func (crane *Crane) Public() bool {
@@ -219,6 +217,13 @@ func (crane *Crane) getNextTerminalID() uint32 {
 	}
 }
 
+func (crane *Crane) terminalCount() int {
+	crane.terminalsLock.Lock()
+	defer crane.terminalsLock.Unlock()
+
+	return len(crane.terminals)
+}
+
 func (crane *Crane) getTerminal(id uint32) (t terminal.TerminalInterface, ok bool) {
 	crane.terminalsLock.Lock()
 	defer crane.terminalsLock.Unlock()
@@ -267,6 +272,17 @@ func (crane *Crane) AbandonTerminal(id uint32, err *terminal.Error) {
 
 	// Call the terminal's abandon function.
 	t.Abandon(err)
+
+	// If the crane is stopping, check if we can stop.
+	// FYI: The crane controller will always take up one slot.
+	if crane.Stopping.IsSet() &&
+		crane.terminalCount() <= 1 {
+		// Stop the crane in worker, so the caller can do some work.
+		module.StartWorker("retire crane", func(_ context.Context) error {
+			crane.Stop(nil)
+			return nil
+		})
+	}
 }
 
 func (crane *Crane) submitImportantTerminalMsg(c *container.Container) {
@@ -744,10 +760,6 @@ func (crane *Crane) String() string {
 	default:
 		return fmt.Sprintf("crane %s from %s", crane.ID, crane.ship.MaskAddress(crane.ship.RemoteAddr()))
 	}
-}
-
-func (crane *Crane) Stopping() bool {
-	return crane.stopping.IsSet()
 }
 
 func (crane *Crane) Stopped() bool {

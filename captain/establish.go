@@ -13,7 +13,7 @@ import (
 	"github.com/safing/spn/terminal"
 )
 
-func EstablishCrane(dst *hub.Hub) (*docks.Crane, error) {
+func EstablishCrane(ctx context.Context, dst *hub.Hub) (*docks.Crane, error) {
 	if conf.PublicHub() && dst.ID == publicIdentity.ID {
 		return nil, errors.New("connecting to self")
 	}
@@ -21,7 +21,7 @@ func EstablishCrane(dst *hub.Hub) (*docks.Crane, error) {
 		return nil, fmt.Errorf("route to %s already exists", dst.ID)
 	}
 
-	ship, err := ships.Launch(context.Background(), dst, nil, nil)
+	ship, err := ships.Launch(ctx, dst, nil, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to launch ship: %w", err)
 	}
@@ -46,12 +46,13 @@ func EstablishCrane(dst *hub.Hub) (*docks.Crane, error) {
 	return crane, nil
 }
 
-func EstablishPublicLane(dst *hub.Hub) (*docks.Crane, error) {
-	crane, err := EstablishCrane(dst)
+func EstablishPublicLane(ctx context.Context, dst *hub.Hub) (*docks.Crane, error) {
+	crane, err := EstablishCrane(ctx, dst)
 	if err != nil {
 		return nil, err
 	}
 
+	// Publish as Lane.
 	publishOp, tErr := NewPublishOp(crane.Controller, publicIdentity)
 	if tErr != nil {
 		return nil, fmt.Errorf("failed to publish: %w", err)
@@ -69,6 +70,9 @@ func EstablishPublicLane(dst *hub.Hub) (*docks.Crane, error) {
 	case <-crane.Controller.Ctx().Done():
 		defer crane.Stop(nil)
 		return nil, terminal.ErrStopping
+
+	case <-ctx.Done():
+		return nil, context.Canceled
 	}
 
 	// Query all gossip msgs.
