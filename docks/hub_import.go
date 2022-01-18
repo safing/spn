@@ -78,6 +78,11 @@ func ImportAndVerifyHubInfo(ctx context.Context, hubID string, announcementData,
 		log.Infof("spn/docks: verified IPs of %s: IPv4=%s IPv6=%s", h, h.Info.IPv4, h.Info.IPv6)
 	}
 
+	// Only save if there is new data, ie. if we forward.
+	if !forward {
+		return h, forward, nil
+	}
+
 	// Save the Hub to the database.
 	err = h.Save()
 	if err != nil {

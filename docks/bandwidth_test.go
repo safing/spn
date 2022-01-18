@@ -7,13 +7,15 @@ import (
 	"github.com/safing/portbase/container"
 	"github.com/safing/portbase/formats/dsd"
 	"github.com/safing/spn/terminal"
+	"github.com/tevino/abool"
 )
 
 func TestEffectiveBandwidth(t *testing.T) {
 	var (
-		bwTestDelay            = 100 * time.Millisecond
+		bwTestDelay            = 50 * time.Millisecond
 		bwTestQueueSize uint16 = 1000
 		bwTestVolume           = 10000000 // 10MB
+		beTestTime             = 20 * time.Second
 	)
 
 	// Create test terminal pair.
@@ -35,16 +37,18 @@ func TestEffectiveBandwidth(t *testing.T) {
 		t: a,
 		opts: &CapacityTestOptions{
 			TestVolume: bwTestVolume,
+			MaxTime:    beTestTime,
+			testing:    true,
 		},
-		result:  make(chan *terminal.Error, 1),
-		started: true,
+		recvQueue:       make(chan *container.Container),
+		dataSent:        new(int64),
+		dataSentWasAckd: abool.New(),
+		result:          make(chan *terminal.Error, 1),
 	}
 	op.OpBase.Init()
-	// Fake starting of sender in order to only transfer data in one direction.
-	op.started = true
-	op.startTime = time.Now()
-	op.dataSent = bwTestVolume
-	op.dataSentAck = true
+	// Disable sender again.
+	op.senderStarted = true
+	op.dataSentWasAckd.Set()
 	// Make capacity test request.
 	request, err := dsd.Dump(op.opts, dsd.CBOR)
 	if err != nil {
@@ -55,10 +59,12 @@ func TestEffectiveBandwidth(t *testing.T) {
 	if tErr != nil {
 		t.Fatal(tErr)
 	}
+	// Start handler.
+	module.StartWorker("op capacity handler", op.handler)
 
 	// Wait for result and check error.
 	tErr = <-op.Result()
-	if tErr.IsError() {
+	if !tErr.IsOK() {
 		t.Fatalf("op failed: %s", tErr)
 	}
 	t.Logf("measured capacity: %d bit/s", op.testResult)

@@ -8,6 +8,29 @@ import (
 )
 
 func TestCapacityOp(t *testing.T) {
+	// Defaults.
+	testCapacityOp(t, &CapacityTestOptions{
+		TestVolume: defaultCapacityTestVolume,
+		MaxTime:    defaultCapacityTestMaxTime,
+		testing:    true,
+	})
+
+	// Hit max time first.
+	testCapacityOp(t, &CapacityTestOptions{
+		TestVolume: defaultCapacityTestVolume,
+		MaxTime:    100 * time.Millisecond,
+		testing:    true,
+	})
+
+	// Hit volume first.
+	testCapacityOp(t, &CapacityTestOptions{
+		TestVolume: 100000,
+		MaxTime:    defaultCapacityTestMaxTime,
+		testing:    true,
+	})
+}
+
+func testCapacityOp(t *testing.T, opts *CapacityTestOptions) {
 	var (
 		capTestDelay            = 1 * time.Millisecond
 		capTestQueueSize uint16 = 10
@@ -26,14 +49,14 @@ func TestCapacityOp(t *testing.T) {
 
 	// Grant permission for op on remote terminal and start op.
 	b.GrantPermission(terminal.IsCraneController)
-	op, tErr := NewCapacityTestOp(a)
+	op, tErr := NewCapacityTestOp(a, opts)
 	if tErr != nil {
 		t.Fatalf("failed to start op: %s", err)
 	}
 
 	// Wait for result and check error.
 	tErr = <-op.Result()
-	if tErr.IsError() {
+	if !tErr.IsOK() {
 		t.Fatalf("op failed: %s", tErr)
 	}
 	t.Logf("measured capacity: %d bit/s", op.testResult)
