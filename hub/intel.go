@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"net"
 
+	"github.com/ghodss/yaml"
 	"github.com/safing/jess/lhash"
-	"github.com/safing/portbase/formats/dsd"
 	"github.com/safing/portmaster/profile/endpoints"
 )
 
@@ -33,6 +33,9 @@ type Intel struct {
 	// DestinationHubAdvisory is only taken into account when selecting a Destination Hub.
 	DestinationHubAdvisory []string
 
+	// InfoOverrides is used to override certain Hub information.
+	InfoOverrides map[string]*InfoOverride
+
 	parsed *ParsedIntel
 }
 
@@ -57,7 +60,7 @@ func (i *Intel) Parsed() *ParsedIntel {
 func ParseIntel(data []byte) (*Intel, error) {
 	// Load data into struct.
 	intel := &Intel{}
-	_, err := dsd.Load(data, intel)
+	err := yaml.Unmarshal(data, intel)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse data: %w", err)
 	}

@@ -170,8 +170,9 @@ func (m *Map) updateHub(h *hub.Hub, lockMap, lockHub bool) {
 	pin.updateStateHasRequiredInfo()
 	pin.updateStateActive(time.Now().Unix())
 
-	// Update Trust and Advisory Statuses.
+	// Update Trust and Advisory Statuses and Overrides.
 	m.updateIntelStatuses(pin)
+	m.updateInfoOverrides(pin)
 
 	// Update Hub cost.
 	pin.Cost = CalculateHubCost(pin.Hub.Status.Load)
