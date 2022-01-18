@@ -224,7 +224,7 @@ func maintainPublicStatus(ctx context.Context, task *modules.Task) error {
 	}
 
 	// Run maintenance with the new data.
-	changed, err := publicIdentity.MaintainStatus(lanes, load, false)
+	changed, err := publicIdentity.MaintainStatus(lanes, &load, false)
 	if err != nil {
 		return fmt.Errorf("failed to maintain status: %w", err)
 	}
