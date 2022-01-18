@@ -19,15 +19,20 @@ type Map struct {
 
 	home         *Pin
 	homeTerminal *docks.CraneTerminal
+
+	measuringEnabled bool
+	hubUpdateHook    *database.RegisteredHook
 }
 
 // NewMap returns a new and empty Map.
-func NewMap(name string) *Map {
+func NewMap(name string, enableMeasuring bool) *Map {
 	m := &Map{
-		Name: name,
-		all:  make(map[string]*Pin),
+		Name:             name,
+		all:              make(map[string]*Pin),
+		measuringEnabled: enableMeasuring,
 	}
 	addMapToAPI(m)
+
 	return m
 }
 

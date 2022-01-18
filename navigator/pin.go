@@ -45,6 +45,12 @@ type Pin struct {
 	// an update needs to be pushed by the database storage interface to whoever
 	// is listening.
 	pushChanges *abool.AtomicBool
+
+	// measurements holds Measurements regarding this Pin.
+	// It must always be set and the reference must not be changed when measuring
+	// is enabled.
+	// Access to fields within are coordinated by itself.
+	measurements *hub.Measurements
 }
 
 // PinConnection represents a connection to a terminal on the Hub.
@@ -54,9 +60,6 @@ type PinConnection struct {
 
 	// Route is the route built for this terminal.
 	Route *Route
-
-	// TODO: Next is the next alternative Router to the same Pin.
-	// Next *PinRoute
 }
 
 // Lane is a connection to another Hub.

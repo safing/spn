@@ -17,7 +17,10 @@ import (
 )
 
 var (
-	db = database.NewInterface(nil)
+	db = database.NewInterface(&database.Options{
+		Local:    true,
+		Internal: true,
+	})
 )
 
 // InitializeFromDatabase loads all Hubs from the given database prefix and adds them to the Map.
@@ -87,13 +90,20 @@ func (hook *UpdateHook) PrePut(r record.Record) (record.Record, error) {
 
 // RegisterHubUpdateHook registers a database pre-put hook that updates all
 // Hubs saved at the given database prefix.
-func (m *Map) RegisterHubUpdateHook() error {
-	_, err := database.RegisterHook(
+func (m *Map) RegisterHubUpdateHook() (err error) {
+	m.hubUpdateHook, err = database.RegisterHook(
 		query.New(hub.MakeHubDBKey(m.Name, "")),
 		&UpdateHook{m: m},
 	)
-	// TODO: Save registered hook and cancel it when shutting down the module.
 	return err
+}
+
+func (m *Map) CancelHubUpdateHook() {
+	if m.hubUpdateHook != nil {
+		if err := m.hubUpdateHook.Cancel(); err != nil {
+			log.Warningf("navigator: failed to cancel update hook for map %s: %s", m.Name, err)
+		}
+	}
 }
 
 // RemoveHub removes a Hub from the Map.
@@ -147,6 +157,17 @@ func (m *Map) updateHub(h *hub.Hub, lockMap, lockHub bool) {
 		m.all[h.ID] = pin
 	}
 	pin.pushChanges.Set()
+
+	// Ensure measurements are set when enabled.
+	if m.measuringEnabled && pin.measurements == nil {
+		// Get shared measurements.
+		pin.measurements = pin.Hub.GetMeasurementsWithLockedHub()
+
+		// Update cost calculation.
+		latency, _ := pin.measurements.GetLatency()
+		capacity, _ := pin.measurements.GetCapacity()
+		pin.measurements.SetCalculatedCost(CalculateLaneCost(latency, capacity))
+	}
 
 	// Update the invalid status of the Pin.
 	if pin.Hub.InvalidInfo || pin.Hub.InvalidStatus {

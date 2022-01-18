@@ -6,6 +6,7 @@ import (
 
 	"github.com/safing/portbase/database"
 	"github.com/safing/portbase/database/record"
+	"github.com/safing/spn/hub"
 )
 
 var db = database.NewInterface(nil)
@@ -47,15 +48,21 @@ func LoadIdentity(key string) (id *Identity, changed bool, err error) {
 		return nil, false, errors.New("missing hub.Status.Timestamp")
 	}
 
-	// initial maintenance routine
+	// Run a initial maintenance routine.
 	infoChanged, err := id.MaintainAnnouncement(true)
 	if err != nil {
 		return nil, false, fmt.Errorf("failed to initialize announcement: %w", err)
 	}
-	statusChanged, err := id.MaintainStatus(nil, -1, true)
+	statusChanged, err := id.MaintainStatus(nil, nil, true)
 	if err != nil {
 		return nil, false, fmt.Errorf("failed to initialize status: %w", err)
 	}
+
+	// Ensure the Measurements reset the values.
+	measurements := id.Hub.GetMeasurements()
+	measurements.SetLatency(0)
+	measurements.SetCapacity(0)
+	measurements.SetCalculatedCost(hub.MaxCalculatedCost)
 
 	return id, infoChanged || statusChanged, nil
 }

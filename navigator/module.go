@@ -58,6 +58,9 @@ func start() error {
 
 func stop() error {
 	withdrawMapDatabase()
+
+	Main.CancelHubUpdateHook()
+	Main.SaveMeasuredHubs()
 	Main.Close()
 
 	return nil

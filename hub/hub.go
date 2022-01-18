@@ -46,6 +46,9 @@ type Hub struct {
 	Info   *Announcement
 	Status *Status
 
+	Measurements            *Measurements
+	measurementsInitialized bool
+
 	FirstSeen     time.Time
 	VerifiedIPs   bool
 	InvalidInfo   bool
@@ -125,6 +128,28 @@ func (h *Hub) GetStatus() *Status {
 	defer h.Unlock()
 
 	return h.Status
+}
+
+// GetMeasurements returns the hub measurements.
+// This method should always be used instead of direct access.
+func (h *Hub) GetMeasurements() *Measurements {
+	h.Lock()
+	defer h.Unlock()
+
+	return h.GetMeasurementsWithLockedHub()
+}
+
+// GetMeasurementsWithLockedHub returns the hub measurements.
+// The caller must hold the lock to Hub.
+// This method should always be used instead of direct access.
+func (h *Hub) GetMeasurementsWithLockedHub() *Measurements {
+	if !h.measurementsInitialized {
+		h.Measurements = getSharedMeasurements(h.ID, h.Measurements)
+		h.Measurements.check()
+		h.measurementsInitialized = true
+	}
+
+	return h.Measurements
 }
 
 // Verified return whether the Hub has been verified.

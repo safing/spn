@@ -188,8 +188,15 @@ func createFakeHub(group string, randomFailes bool, mapIntel *hub.Intel) *hub.Hu
 			},
 			Load: gofakeit.Number(10, 100),
 		},
-		FirstSeen: time.Now(),
+		Measurements: hub.NewMeasurements(),
+		FirstSeen:    time.Now(),
 	}
+	h.Measurements.Latency = createLatency()
+	h.Measurements.Capacity = createCapacity()
+	h.Measurements.CalculatedCost = CalculateLaneCost(
+		h.Measurements.Latency,
+		h.Measurements.Capacity,
+	)
 
 	// Return if not failures of any kind should be simulated.
 	if !randomFailes {
