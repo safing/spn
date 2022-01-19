@@ -201,8 +201,8 @@ func (h *Hub) getName() string {
 	switch {
 	case h.Info.Name == "":
 		return shortenedID
-	case len(h.Info.Name) > 30:
-		return h.Info.Name[:30] + " " + shortenedID
+	case len(h.Info.Name) > 16:
+		return h.Info.Name[:16] + " " + shortenedID
 	default:
 		return h.Info.Name + " " + shortenedID
 	}
@@ -277,10 +277,10 @@ func (a *Announcement) validateFormatting() (err error) {
 	if err = checkStringFormat("ID", a.ID, 255); err != nil {
 		return err
 	}
-	if err = checkStringFormat("Name", a.Name, 255); err != nil {
+	if err = checkStringFormat("Name", a.Name, 32); err != nil {
 		return err
 	}
-	if err = checkStringFormat("Group", a.Group, 255); err != nil {
+	if err = checkStringFormat("Group", a.Group, 32); err != nil {
 		return err
 	}
 	if err = checkStringFormat("ContactAddress", a.ContactAddress, 255); err != nil {
