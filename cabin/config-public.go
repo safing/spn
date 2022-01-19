@@ -69,8 +69,8 @@ var (
 	publicCfgOptionTransportsKey     = "spn/publicHub/transports"
 	publicCfgOptionTransports        config.StringArrayOption
 	publicCfgOptionTransportsDefault = []string{
-		"kcp:17",
 		"tcp:17",
+		"kcp:17",
 	}
 	publicCfgOptionTransportsOrder = 520
 
