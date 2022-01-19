@@ -15,6 +15,7 @@ import (
 	"github.com/awalterschulze/gographviz"
 	"github.com/safing/portbase/api"
 	"github.com/safing/portbase/log"
+	"github.com/safing/spn/docks"
 	"github.com/safing/spn/hub"
 )
 
@@ -177,10 +178,13 @@ func handleMapMeasurementsTableRequest(ar *api.Request) (data []byte, err error)
 	list := m.pinList(true)
 	sort.Sort(sortByLowestMeasuredCost(list))
 
+	// Get cranes for usage stats.
+	assignedCranes := docks.GetAllAssignedCranes()
+
 	// Build table and return.
 	buf := bytes.NewBuffer(nil)
 	tabWriter := tabwriter.NewWriter(buf, 8, 4, 3, ' ', 0)
-	fmt.Fprint(tabWriter, "Remote\tCountry\tLatency\tCapacity\tCost\n")
+	fmt.Fprint(tabWriter, "Hub Name\tCountry\tLatency\tCapacity\tCost\tHub ID\tLifetime Usage\tPeriod Usage\tProt\tMine\n")
 	for _, pin := range list {
 		// Only print regarded Hubs.
 		if !matcher(pin) {
@@ -190,13 +194,43 @@ func handleMapMeasurementsTableRequest(ar *api.Request) (data []byte, err error)
 		// Add row.
 		pin.measurements.Lock()
 		defer pin.measurements.Unlock()
-		fmt.Fprint(tabWriter, strings.Join([]string{
-			pin.Hub.Name(),
+		fmt.Fprintf(tabWriter,
+			"%s\t%s\t%s\t%.2fMbit/s\t%.2fc\t%s",
+			pin.Hub.Info.Name,
 			getPinCountry(pin),
-			pin.measurements.Latency.String(),
-			fmt.Sprintf("%.2fMbit/s", float64(pin.measurements.Capacity)/1000000),
-			fmt.Sprintf("%.2fc", pin.measurements.CalculatedCost),
-		}, "\t"))
+			pin.measurements.Latency,
+			float64(pin.measurements.Capacity)/1000000,
+			pin.measurements.CalculatedCost,
+			pin.Hub.ID,
+		)
+
+		// Add usage stats.
+		if crane, ok := assignedCranes[pin.Hub.ID]; ok {
+			ltIn, ltOut, ltStart, pIn, pOut, pStart := crane.NetState.GetTrafficStats()
+			ltDuration := time.Since(ltStart)
+			pDuration := time.Since(pStart)
+			var mine string
+			if crane.IsMine() {
+				mine = "yes"
+				if crane.Stopping.IsSet() {
+					mine += " (stopping)"
+				}
+			}
+
+			fmt.Fprintf(tabWriter,
+				"\t%.2fGB %.2fMbit/s %.2f%%out since %s\t%.2fGB %.2fMbit/s %.2f%%out since %s\t%s\t%s",
+				float64(ltIn+ltOut)/1000000000,
+				(float64(ltIn+ltOut)/1000000/ltDuration.Seconds())*8,
+				float64(ltOut)/float64(ltIn+ltOut)*100,
+				ltDuration.Truncate(time.Second),
+				float64(pIn+pOut)/1000000000,
+				(float64(pIn+pOut)/1000000/pDuration.Seconds())*8,
+				float64(pOut)/float64(pIn+pOut)*100,
+				pDuration.Truncate(time.Second),
+				crane.Transport().Protocol,
+				mine,
+			)
+		}
 
 		// Add linebreak.
 		fmt.Fprint(tabWriter, "\n")
@@ -372,12 +406,14 @@ func graphNodeTooltip(pin *Pin) string {
 	return fmt.Sprintf(
 		`"ID: %s
 States: %s
+Version: %s
 IPv4: %s
 IPv6: %s
 Load: %d
 Cost: %.2f"`,
 		pin.Hub.ID,
 		pin.State,
+		pin.Hub.Status.Version,
 		v4Info,
 		v6Info,
 		pin.Hub.Status.Load,

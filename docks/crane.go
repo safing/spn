@@ -413,6 +413,7 @@ func (crane *Crane) unloadUntilFull(buf []byte) error {
 		if bytesRead == len(buf) {
 			// Submit metrics.
 			crane.submitCraneTrafficStats(bytesRead)
+			crane.NetState.ReportTraffic(uint64(bytesRead), true)
 
 			return nil
 		}
@@ -688,6 +689,7 @@ func (crane *Crane) load(c *container.Container) error {
 
 	// Submit metrics.
 	crane.submitCraneTrafficStats(len(readyToSend))
+	crane.NetState.ReportTraffic(uint64(len(readyToSend)), false)
 
 	// Load onto ship.
 	err = crane.ship.Load(readyToSend)

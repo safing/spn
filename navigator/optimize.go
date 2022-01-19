@@ -4,6 +4,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/safing/spn/docks"
 	"github.com/safing/spn/hub"
 )
 
@@ -186,6 +187,11 @@ func (m *Map) optimize(opts *Options) (result *OptimizationResult, err error) {
 	err = m.optimizeDistanceConstraint(result, 3)
 	if err != nil {
 		return nil, err
+	}
+
+	// Lapse traffic stats after optimizing for good fresh data next time.
+	for _, crane := range docks.GetAllAssignedCranes() {
+		crane.NetState.LapsePeriod()
 	}
 
 	// Clean and return.
