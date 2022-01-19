@@ -10,7 +10,7 @@ import (
 
 const (
 	optimizationHopDistanceTarget = 3
-	waitUntilMeasuredUpToPercent  = 0 // FIXME: Change back to 0.8 after migration.
+	waitUntilMeasuredUpToPercent  = 0.5
 
 	desegrationAttemptBackoff = time.Hour
 
@@ -160,7 +160,7 @@ func (m *Map) optimize(opts *Options) (result *OptimizationResult, err error) {
 	// Check if we have the measurements we need.
 	if m.measuringEnabled &&
 		validMeasurements/float32(len(regardedPins)) < waitUntilMeasuredUpToPercent {
-		// Less than 80% of regarded Pins have valid measurements, let's wait until we have that.
+		// Less than the required amount of regarded Pins have valid measurements, let's wait until we have that.
 		return &OptimizationResult{
 			Purpose:  OptimizePurposeWait,
 			Approach: "Wait for measurements of 80% of regarded nodes for better optimization.",
