@@ -19,7 +19,7 @@ require (
 	github.com/mr-tron/base58 v1.2.0
 	github.com/rot256/pblind v0.0.0-20211117203330-22455f90b565
 	github.com/safing/jess v0.2.3
-	github.com/safing/portbase v0.13.2
+	github.com/safing/portbase v0.13.3
 	github.com/safing/portmaster v0.7.14
 	github.com/shirou/gopsutil v3.21.11+incompatible // indirect
 	github.com/stretchr/testify v1.7.0
