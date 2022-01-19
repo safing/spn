@@ -9,7 +9,7 @@ import (
 const NetStatePeriodInterval = 15 * time.Hour
 
 type NetworkOptimizationState struct {
-	sync.Mutex
+	lock sync.Mutex
 
 	// lastSuggestedAt holds the time when the connnection to the connected Hub was last suggested by the network optimization.
 	lastSuggestedAt time.Time
@@ -34,15 +34,15 @@ func newNetworkOptimizationState() *NetworkOptimizationState {
 }
 
 func (netState *NetworkOptimizationState) UpdateLastSuggestedAt() {
-	netState.Lock()
-	defer netState.Unlock()
+	netState.lock.Lock()
+	defer netState.lock.Unlock()
 
 	netState.lastSuggestedAt = time.Now()
 }
 
 func (netState *NetworkOptimizationState) LastSuggestedAt() time.Time {
-	netState.Lock()
-	defer netState.Unlock()
+	netState.lock.Lock()
+	defer netState.lock.Unlock()
 
 	return netState.lastSuggestedAt
 }
@@ -58,8 +58,8 @@ func (netState *NetworkOptimizationState) ReportTraffic(bytes uint64, in bool) {
 }
 
 func (netState *NetworkOptimizationState) LapsePeriod() {
-	netState.Lock()
-	defer netState.Unlock()
+	netState.lock.Lock()
+	defer netState.lock.Unlock()
 
 	// Reset period if interval elapsed.
 	if time.Now().Add(-NetStatePeriodInterval).After(netState.periodStarted) {
@@ -77,8 +77,8 @@ func (netState *NetworkOptimizationState) GetTrafficStats() (
 	periodBytesOut uint64,
 	periodStarted time.Time,
 ) {
-	netState.Lock()
-	defer netState.Unlock()
+	netState.lock.Lock()
+	defer netState.lock.Unlock()
 
 	return atomic.LoadUint64(netState.lifetimeBytesIn),
 		atomic.LoadUint64(netState.lifetimeBytesOut),
