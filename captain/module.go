@@ -2,12 +2,16 @@ package captain
 
 import (
 	"fmt"
+	"net"
+	"net/http"
 	"time"
 
+	"github.com/safing/portbase/api"
 	"github.com/safing/portbase/config"
 	"github.com/safing/portbase/modules"
 	"github.com/safing/portbase/modules/subsystems"
 	"github.com/safing/portbase/rng"
+	"github.com/safing/portmaster/network/netutils"
 	"github.com/safing/spn/conf"
 	"github.com/safing/spn/crew"
 	"github.com/safing/spn/ships"
@@ -50,6 +54,13 @@ func prep() error {
 	// Register SPN status provider.
 	if err := registerSPNStatusProvider(); err != nil {
 		return err
+	}
+
+	if conf.PublicHub() {
+		// Register API authenticator.
+		if err := api.SetAuthenticator(apiAuthenticator); err != nil {
+			return err
+		}
 	}
 
 	return prepConfig()
@@ -123,4 +134,26 @@ func stop() error {
 	}
 
 	return nil
+}
+
+// apiAuthenticator grants User permissions for local API requests.
+func apiAuthenticator(r *http.Request, s *http.Server) (*api.AuthToken, error) {
+	// Get remote IP.
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to split host/port: %w", err)
+	}
+	remoteIP := net.ParseIP(host)
+	if remoteIP == nil {
+		return nil, fmt.Errorf("failed to parse remote address %s", host)
+	}
+
+	if !netutils.GetIPScope(remoteIP).IsLocalhost() {
+		return nil, api.ErrAPIAccessDeniedMessage
+	}
+
+	return &api.AuthToken{
+		Read:  api.PermitUser,
+		Write: api.PermitUser,
+	}, nil
 }
