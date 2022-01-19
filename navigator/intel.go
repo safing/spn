@@ -112,23 +112,51 @@ func (m *Map) updateInfoOverrides(pin *Pin) {
 
 	// Apply overrides
 	if overrides.ContinentCode != "" {
-		pin.LocationV4.Continent.Code = overrides.ContinentCode
-		pin.LocationV6.Continent.Code = overrides.ContinentCode
+		if pin.LocationV4 != nil {
+			pin.LocationV4.Continent.Code = overrides.ContinentCode
+		}
+		if pin.LocationV6 != nil {
+			pin.LocationV6.Continent.Code = overrides.ContinentCode
+		}
 	}
 	if overrides.CountryCode != "" {
-		pin.LocationV4.Country.ISOCode = overrides.CountryCode
-		pin.LocationV6.Country.ISOCode = overrides.CountryCode
+		if pin.LocationV4 != nil {
+			pin.LocationV4.Country.ISOCode = overrides.CountryCode
+			pin.EntityV4.Country = overrides.CountryCode
+		}
+		if pin.LocationV6 != nil {
+			pin.LocationV6.Country.ISOCode = overrides.CountryCode
+			pin.EntityV6.Country = overrides.CountryCode
+		}
 	}
 	if overrides.Coordinates != nil {
-		pin.LocationV4.Coordinates = *overrides.Coordinates
-		pin.LocationV6.Coordinates = *overrides.Coordinates
+		if pin.LocationV4 != nil {
+			pin.LocationV4.Coordinates = *overrides.Coordinates
+			pin.EntityV4.Coordinates = overrides.Coordinates
+		}
+		if pin.LocationV6 != nil {
+			pin.LocationV6.Coordinates = *overrides.Coordinates
+			pin.EntityV6.Coordinates = overrides.Coordinates
+		}
 	}
 	if overrides.ASN != 0 {
-		pin.LocationV4.AutonomousSystemNumber = overrides.ASN
-		pin.LocationV6.AutonomousSystemNumber = overrides.ASN
+		if pin.LocationV4 != nil {
+			pin.LocationV4.AutonomousSystemNumber = overrides.ASN
+			pin.EntityV4.ASN = overrides.ASN
+		}
+		if pin.LocationV6 != nil {
+			pin.LocationV6.AutonomousSystemNumber = overrides.ASN
+			pin.EntityV6.ASN = overrides.ASN
+		}
 	}
 	if overrides.ASOrg != "" {
-		pin.LocationV4.AutonomousSystemOrganization = overrides.ASOrg
-		pin.LocationV6.AutonomousSystemOrganization = overrides.ASOrg
+		if pin.LocationV4 != nil {
+			pin.LocationV4.AutonomousSystemOrganization = overrides.ASOrg
+			pin.EntityV4.ASOrg = overrides.ASOrg
+		}
+		if pin.LocationV6 != nil {
+			pin.LocationV6.AutonomousSystemOrganization = overrides.ASOrg
+			pin.EntityV6.ASOrg = overrides.ASOrg
+		}
 	}
 }
