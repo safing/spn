@@ -10,7 +10,7 @@ import (
 	"github.com/safing/spn/terminal"
 )
 
-const NavigatorMeasurementTTL = 6 * time.Hour
+const NavigatorMeasurementTTL = 2 * time.Hour
 
 func (m *Map) measureHubs(ctx context.Context, _ *modules.Task) error {
 	if home, _ := m.GetHome(); home == nil {
