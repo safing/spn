@@ -61,6 +61,13 @@ func updateSPNIntel(ctx context.Context, _ interface{}) (err error) {
 	return navigator.Main.UpdateIntel(intel)
 }
 
+func resetSPNIntel() {
+	intelResourceUpdateLock.Lock()
+	defer intelResourceUpdateLock.Unlock()
+
+	intelResource = nil
+}
+
 var requiredResources = []string{
 	"intel/geoip/geoipv4.mmdb.gz",
 	"intel/geoip/geoipv6.mmdb.gz",
