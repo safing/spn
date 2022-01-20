@@ -29,7 +29,7 @@ const (
 	maxUnloadSize    = 16384
 	maxSegmentLength = 16384
 
-	CraneMeasurementTTL = 1 * time.Hour
+	CraneMeasurementTTL = 15 * time.Minute
 )
 
 var (

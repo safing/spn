@@ -12,6 +12,8 @@ import (
 	"github.com/safing/portbase/database/record"
 	"github.com/safing/portbase/log"
 	"github.com/safing/portbase/modules"
+	"github.com/safing/portmaster/intel/geoip"
+	"github.com/safing/portmaster/netenv"
 	"github.com/safing/spn/hub"
 	"github.com/tevino/abool"
 )
@@ -170,6 +172,9 @@ func (m *Map) updateHub(h *hub.Hub, lockMap, lockHub bool) {
 	}
 	pin.pushChanges.Set()
 
+	// Add/Update location data from IP addresses.
+	pin.updateLocationData()
+
 	// Ensure measurements are set when enabled.
 	if m.measuringEnabled && pin.measurements == nil {
 		// Get shared measurements.
@@ -179,6 +184,34 @@ func (m *Map) updateHub(h *hub.Hub, lockMap, lockHub bool) {
 		latency, _ := pin.measurements.GetLatency()
 		capacity, _ := pin.measurements.GetCapacity()
 		pin.measurements.SetCalculatedCost(CalculateLaneCost(latency, capacity))
+
+		// Update geo proximity.
+		// Get own location.
+		var myLocation *geoip.Location
+		switch {
+		case m.home != nil && m.home.LocationV4 != nil:
+			myLocation = m.home.LocationV4
+		case m.home != nil && m.home.LocationV6 != nil:
+			myLocation = m.home.LocationV6
+		default:
+			locations, ok := netenv.GetInternetLocation()
+			if ok {
+				myLocation = locations.Best().LocationOrNil()
+			}
+		}
+		// Calculate proximity with available location.
+		if myLocation != nil {
+			switch {
+			case pin.LocationV4 != nil:
+				pin.measurements.SetGeoProximity(
+					myLocation.EstimateNetworkProximity(pin.LocationV4),
+				)
+			case pin.LocationV6 != nil:
+				pin.measurements.SetGeoProximity(
+					myLocation.EstimateNetworkProximity(pin.LocationV6),
+				)
+			}
+		}
 	}
 
 	// Update the invalid status of the Pin.
@@ -194,9 +227,6 @@ func (m *Map) updateHub(h *hub.Hub, lockMap, lockHub bool) {
 	} else {
 		pin.removeStates(StateOffline)
 	}
-
-	// Add/Update location data from IP addresses.
-	pin.updateLocationData()
 
 	// Update Statuses derived from Hub.
 	m.updateStateSuperseded(pin)

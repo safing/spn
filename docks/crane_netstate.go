@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-const NetStatePeriodInterval = 15 * time.Hour
+const NetStatePeriodInterval = 15 * time.Minute
 
 type NetworkOptimizationState struct {
 	lock sync.Mutex

@@ -2,6 +2,7 @@ package navigator
 
 import (
 	"context"
+	"sort"
 	"time"
 
 	"github.com/safing/portbase/log"
@@ -10,7 +11,7 @@ import (
 	"github.com/safing/spn/terminal"
 )
 
-const NavigatorMeasurementTTL = 6 * time.Hour
+const NavigatorMeasurementTTL = 2 * time.Hour
 
 func (m *Map) measureHubs(ctx context.Context, _ *modules.Task) error {
 	if home, _ := m.GetHome(); home == nil {
@@ -21,8 +22,12 @@ func (m *Map) measureHubs(ctx context.Context, _ *modules.Task) error {
 	var unknownErrCnt int
 	matcher := m.DefaultOptions().Matcher(TransitHub)
 
+	// Get list and sort in order to check near/low-cost hubs earlier.
+	list := m.pinList(true)
+	sort.Sort(sortByLowestMeasuredCost(list))
+
 	// Find first pin where any measurement has expired.
-	for _, pin := range m.pinList(true) {
+	for _, pin := range list {
 		var checkWithTTL time.Duration
 
 		// Check if pin should be skipped.

@@ -128,6 +128,9 @@ func start() error {
 }
 
 func stop() error {
+	// Reset intel resource so that it is loaded again when starting.
+	resetSPNIntel()
+
 	// Send shutdown status message.
 	if conf.PublicHub() {
 		publishShutdownStatus()

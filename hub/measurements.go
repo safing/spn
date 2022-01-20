@@ -30,6 +30,10 @@ type Measurements struct {
 	// It is not set automatically, but needs to be set when needed.
 	CalculatedCost float32
 
+	// GeoProximity stores an approximation of the geolocation proximity.
+	// The value is between 0 (other side of the world) and 100 (same location).
+	GeoProximity float32
+
 	// persisted holds whether the Measurements have been persisted to the
 	// database.
 	persisted *abool.AtomicBool
@@ -187,6 +191,27 @@ func (m *Measurements) GetCalculatedCost() (cost float32) {
 	defer m.Unlock()
 
 	return m.CalculatedCost
+}
+
+// SetGeoProximity sets the geolocation proximity to the given value.
+func (m *Measurements) SetGeoProximity(geoProximity float32) {
+	m.Lock()
+	defer m.Unlock()
+
+	m.GeoProximity = geoProximity
+	m.persisted.UnSet()
+}
+
+// GetGeoProximity returns the geolocation proximity.
+func (m *Measurements) GetGeoProximity() (geoProximity float32) {
+	if m == nil {
+		return 0
+	}
+
+	m.Lock()
+	defer m.Unlock()
+
+	return m.GeoProximity
 }
 
 var (
