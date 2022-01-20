@@ -108,6 +108,7 @@ github.com/Azure/go-autorest/logger v0.2.1/go.mod h1:T9E3cAhj2VqvPOtCYAvby9aBXkZ
 github.com/Azure/go-autorest/tracing v0.6.0/go.mod h1:+vhtPC754Xsa23ID7GlGsrdKBpUA79WCAKPPZVC2DeU=
 github.com/BurntSushi/toml v0.3.1/go.mod h1:xHWCNGjB5oqiDr8zfno3MHue2Ht5sIBksp03qcyfWMU=
 github.com/BurntSushi/toml v0.4.1/go.mod h1:CxXYINrC8qIiEnFrOxCa7Jy5BFHlXnUU2pbicEuybxQ=
+github.com/BurntSushi/toml v1.0.0/go.mod h1:CxXYINrC8qIiEnFrOxCa7Jy5BFHlXnUU2pbicEuybxQ=
 github.com/BurntSushi/xgb v0.0.0-20160522181843-27f122750802/go.mod h1:IVnqGOEym/WlBOVXweHU+Q+/VP0lqqI8lqeDx9IjBqo=
 github.com/DataDog/datadog-go v3.2.0+incompatible/go.mod h1:LButxg5PwREeZtORoXG3tL4fMGNddJ+vMq1mwgfaqoQ=
 github.com/GoogleCloudPlatform/cloudsql-proxy v1.24.0/go.mod h1:3tx938GhY4FC+E1KT/jNjDw7Z5qxAEtIiERJ2sXjnII=
@@ -905,6 +906,8 @@ github.com/safing/portbase v0.13.2 h1:wlLyOnpavbNgCwOr56iH7rmkhgzC5vKE9zmdDVFEmo
 github.com/safing/portbase v0.13.2/go.mod h1:5vj5IK5WJoSGareDe6yCMZfnF7txVRx7jZyTZInISP0=
 github.com/safing/portbase v0.13.3 h1:dAv8JVrcFHBSXluVHYsMXr9UH2ZnhVZ86JwoDANBshU=
 github.com/safing/portbase v0.13.3/go.mod h1:5vj5IK5WJoSGareDe6yCMZfnF7txVRx7jZyTZInISP0=
+github.com/safing/portbase v0.13.4 h1:PsKcTdeYjdqKMFWoP40m3JZxzjqpsG8OmYBGvkAkF3o=
+github.com/safing/portbase v0.13.4/go.mod h1:5vj5IK5WJoSGareDe6yCMZfnF7txVRx7jZyTZInISP0=
 github.com/safing/portmaster v0.6.13 h1:022KE3nADJ/l8wVJcgJkp2g1T1/FkJgV4rzLL+iFiUY=
 github.com/safing/portmaster v0.6.13/go.mod h1:7Ux+qkINlWF3a1YKFWudA6uUrA+i4ik16JwYMmqTzGs=
 github.com/safing/portmaster v0.6.22 h1:PJ2LdwTEgziGNfd2369WZtxeHjD+MMxPJ3IzfFyKsUU=
@@ -926,6 +929,8 @@ github.com/safing/portmaster v0.7.12 h1:HN2Y8Y0LzwZmutyKgTioPNd55C+oJ61fB6N7IRMa
 github.com/safing/portmaster v0.7.12/go.mod h1:8JgTo444syvnmSHt8cpxzEQiOiPt6bcdjBYbq/qrBjM=
 github.com/safing/portmaster v0.7.14 h1:ZUg1Es/c2jMAbl/kGl1tEh3tFEgKFICwPhDe4oJIw6U=
 github.com/safing/portmaster v0.7.14/go.mod h1:C5DnRywf5ylGQiK4GoX6RHHZ4xEXl8IAESIwRibieIg=
+github.com/safing/portmaster v0.7.15 h1:xErOOEtlGdeEMR527QQpBa0bJzjgqIunLILh5SCWGDc=
+github.com/safing/portmaster v0.7.15/go.mod h1:4OaGATMgnbCLf0K2/gECdYPB4mau60AiEoAG+gmrvgE=
 github.com/safing/spn v0.2.4/go.mod h1:ZA6za4rEP46GiVKJGZsQyqoqMvPhtF913mg5JtJl3Sc=
 github.com/safing/spn v0.2.5/go.mod h1:/WNZAVoJB8C1Ut771dYyxyYCdPge2NXoU++dp4cAMDg=
 github.com/safing/spn v0.3.0/go.mod h1:bZsO2kHMvymxLxIh6Ij99W/S0wT4HFcNQy4kEa5O52Q=
@@ -936,6 +941,7 @@ github.com/safing/spn v0.3.6/go.mod h1:RSeFb/h5Wt3yDVezXj3lhXJ/Iwd7FbtsGf5E+p5J2
 github.com/safing/spn v0.3.7/go.mod h1:OTKkMXFudQyDHzGbtbRbYzc7aRsWvm3vFOSoEnoweiA=
 github.com/safing/spn v0.3.10/go.mod h1:5PXM7++zAatxlx4IGK1T1OxzAoQhEp9e9vYwY1mrczE=
 github.com/safing/spn v0.3.12/go.mod h1:hLzI8HZoh/jEUeVT4+lJrYtSuSqbLlqMPrZWf01m5vw=
+github.com/safing/spn v0.3.14/go.mod h1:K4cXCOYF3T4All5t6C6CFty0HBTJif25f1OdV2ejA7Y=
 github.com/sagikazarmark/crypt v0.3.0/go.mod h1:uD/D+6UF4SrIR1uGEv7bBNkNqLGqUr43MRiaGWX1Nig=
 github.com/satori/go.uuid v1.2.0 h1:0uYX9dsZ2yD7q2RtLRtPSdGDWzjeM3TbMJP9utgA0ww=
 github.com/satori/go.uuid v1.2.0/go.mod h1:dA0hQrYB0VpLJoorglMZABFdXlWrHn1NEOzdhQKdks0=
