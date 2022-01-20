@@ -184,7 +184,7 @@ func handleMapMeasurementsTableRequest(ar *api.Request) (data []byte, err error)
 	// Build table and return.
 	buf := bytes.NewBuffer(nil)
 	tabWriter := tabwriter.NewWriter(buf, 8, 4, 3, ' ', 0)
-	fmt.Fprint(tabWriter, "Hub Name\tCountry\tLatency\tCapacity\tCost\tHub ID\tLifetime Usage\tPeriod Usage\tProt\tMine\n")
+	fmt.Fprint(tabWriter, "Hub Name\tCountry\tLatency\tCapacity\tCost\tGeo Prox.\tHub ID\tLifetime Usage\tPeriod Usage\tProt\tMine\n")
 	for _, pin := range list {
 		// Only print regarded Hubs.
 		if !matcher(pin) {
@@ -195,12 +195,13 @@ func handleMapMeasurementsTableRequest(ar *api.Request) (data []byte, err error)
 		pin.measurements.Lock()
 		defer pin.measurements.Unlock()
 		fmt.Fprintf(tabWriter,
-			"%s\t%s\t%s\t%.2fMbit/s\t%.2fc\t%s",
+			"%s\t%s\t%s\t%.2fMbit/s\t%.2fc\t%.2f%%\t%s",
 			pin.Hub.Info.Name,
 			getPinCountry(pin),
 			pin.measurements.Latency,
 			float64(pin.measurements.Capacity)/1000000,
 			pin.measurements.CalculatedCost,
+			pin.measurements.GeoProximity,
 			pin.Hub.ID,
 		)
 
