@@ -259,7 +259,7 @@ func (m *Map) optimizeBootstrapAndDesegregate(opts *Options, regardedPins []*Pin
 		}
 
 		// Sort by lowest connection cost.
-		sort.Sort(sortByLowestMeasuredCost(connectable))
+		sort.Sort(sortByLowestMeasuredCost(desegregateWith))
 
 		// Build desegration optimization.
 		result = &OptimizationResult{
