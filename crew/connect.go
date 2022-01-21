@@ -109,7 +109,11 @@ func (t *Tunnel) handle(ctx context.Context) (err error) {
 		return tErr
 	}
 
+	t.connInfo.Lock()
+	defer t.connInfo.Unlock()
 	addTunnelContextToConnection(t.connInfo, route)
+	t.connInfo.Save()
+
 	log.Infof("spn/crew: connected to %s via %s", request, dstPin.Hub)
 	return nil
 }
