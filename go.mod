@@ -20,7 +20,7 @@ require (
 	github.com/rot256/pblind v0.0.0-20211117203330-22455f90b565
 	github.com/safing/jess v0.2.3
 	github.com/safing/portbase v0.13.4
-	github.com/safing/portmaster v0.7.15
+	github.com/safing/portmaster v0.7.16
 	github.com/shirou/gopsutil v3.21.11+incompatible // indirect
 	github.com/stretchr/testify v1.7.0
 	github.com/templexxx/cpu v0.0.9 // indirect
