@@ -379,23 +379,46 @@ func (m *Map) updateHubLane(pin *Pin, lane *hub.Lane, peer *Pin) {
 }
 
 func (m *Map) updateStates(ctx context.Context, task *modules.Task) error {
-	m.RLock()
-	defer m.RUnlock()
-
+	var toDelete []string
 	now := time.Now()
+
+	m.Lock()
+	defer m.Unlock()
+
+pinLoop:
 	for _, pin := range m.all {
 		// Update StateFailing.
 		if pin.State.has(StateFailing) && now.After(pin.FailingUntil) {
 			pin.removeStates(StateFailing)
 		}
 
-		// Delete obsolete Hubs.
-		if pin.State.hasNoneOf(StateActive) && pin.Hub.Obsolete() {
-			err := hub.RemoveHubAndMsgs(m.Name, pin.Hub.ID)
-			if err != nil {
-				log.Warningf("navigator: failed to delete obsolete %s", pin.Hub)
+		// Check for discontinued Hubs.
+		if m.intel != nil {
+			for _, hubID := range m.intel.DiscontinuedHubs {
+				if pin.Hub.ID == hubID {
+					toDelete = append(toDelete, pin.Hub.ID)
+					log.Infof("navigator: deleting discontinued %s", pin.Hub)
+					continue pinLoop
+				}
 			}
-			m.RemoveHub(pin.Hub.ID)
+		}
+		// Check for obsoleted Hubs.
+		if pin.State.hasNoneOf(StateActive) && pin.Hub.Obsolete() {
+			toDelete = append(toDelete, pin.Hub.ID)
+			log.Infof("navigator: deleting obsolete %s", pin.Hub)
+		}
+
+		// Delete hubs async, as deleting triggers a couple hooks that lock the map.
+		if len(toDelete) > 0 {
+			module.StartWorker("delete hubs", func(_ context.Context) error {
+				for _, idToDelete := range toDelete {
+					err := hub.RemoveHubAndMsgs(m.Name, idToDelete)
+					if err != nil {
+						log.Warningf("navigator: failed to delete Hub %s: %s", idToDelete, err)
+					}
+				}
+				return nil
+			})
 		}
 	}
 

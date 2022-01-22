@@ -48,6 +48,15 @@ func (m *Map) updateIntelStatuses(pin *Pin) {
 		return
 	}
 
+	// Check if Hub is discontinued.
+	for _, hubID := range m.intel.DiscontinuedHubs {
+		if pin.Hub.ID == hubID {
+			pin.State = StateNone
+			pin.addStates(StateOffline)
+			return
+		}
+	}
+
 	// Check if Hub is trusted.
 	for _, hubID := range m.intel.TrustedHubs {
 		if pin.Hub.ID == hubID {
