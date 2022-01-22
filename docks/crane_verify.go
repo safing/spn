@@ -41,7 +41,10 @@ func (crane *Crane) VerifyConnectedHub() error {
 	var reply *container.Container
 	select {
 	case reply = <-crane.unloading:
-	case <-time.After(5 * time.Second):
+	case <-time.After(2 * time.Minute):
+		// Use a big timeout here, as this might keep servers from joining the
+		// network at all, as every servers needs to verify every server, no
+		// matter how far away.
 		return terminal.ErrTimeout.With("waiting for verification reply")
 	case <-crane.ctx.Done():
 		return terminal.ErrShipSunk.With("waiting for verification reply")
