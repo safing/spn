@@ -172,8 +172,16 @@ func (m *Map) updateHub(h *hub.Hub, lockMap, lockHub bool) {
 	}
 	pin.pushChanges.Set()
 
+	// 1. Update Pin Data.
+
 	// Add/Update location data from IP addresses.
 	pin.updateLocationData()
+
+	// Override Pin Data.
+	m.updateInfoOverrides(pin)
+
+	// Update Hub cost.
+	pin.Cost = CalculateHubCost(pin.Hub.Status.Load)
 
 	// Ensure measurements are set when enabled.
 	if m.measuringEnabled && pin.measurements == nil {
@@ -214,6 +222,8 @@ func (m *Map) updateHub(h *hub.Hub, lockMap, lockHub bool) {
 		}
 	}
 
+	// 2. Update Pin States.
+
 	// Update the invalid status of the Pin.
 	if pin.Hub.InvalidInfo || pin.Hub.InvalidStatus {
 		pin.addStates(StateInvalid)
@@ -228,17 +238,15 @@ func (m *Map) updateHub(h *hub.Hub, lockMap, lockHub bool) {
 		pin.removeStates(StateOffline)
 	}
 
+	// Update Trust and Advisory Statuses.
+	m.updateIntelStatuses(pin)
+
 	// Update Statuses derived from Hub.
 	m.updateStateSuperseded(pin)
 	pin.updateStateHasRequiredInfo()
 	pin.updateStateActive(time.Now().Unix())
 
-	// Update Trust and Advisory Statuses and Overrides.
-	m.updateIntelStatuses(pin)
-	m.updateInfoOverrides(pin)
-
-	// Update Hub cost.
-	pin.Cost = CalculateHubCost(pin.Hub.Status.Load)
+	// 3. Update Lanes.
 
 	// Mark all existing Lanes as inactive.
 	for _, lane := range pin.ConnectedTo {
