@@ -16,7 +16,7 @@ import (
 const (
 	CapacityTestOpType = "capacity"
 
-	defaultCapacityTestVolume = 50000000  // 50MB
+	defaultCapacityTestVolume = 25000000  // 25MB
 	maxCapacityTestVolume     = 100000000 // 100MB
 
 	defaultCapacityTestMaxTime = 5 * time.Second
