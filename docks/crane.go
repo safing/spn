@@ -56,7 +56,7 @@ type Crane struct {
 	cancelCtx context.CancelFunc
 	// stopping indicates if the Crane will be stopped soon. The Crane may still
 	// be used until stopped, but must not be advertised anymore.
-	Stopping *abool.AtomicBool
+	stopping *abool.AtomicBool
 	// stopped indicates if the Crane has been stopped. Whoever stopped the Crane
 	// already took care of notifying everyone, so a silent fail is normally the
 	// best response.
@@ -109,7 +109,7 @@ func NewCrane(ctx context.Context, ship ships.Ship, connectedHub *hub.Hub, id *c
 	new := &Crane{
 		ctx:           ctx,
 		cancelCtx:     cancelCtx,
-		Stopping:      abool.NewBool(false),
+		stopping:      abool.NewBool(false),
 		stopped:       abool.NewBool(false),
 		authenticated: abool.NewBool(false),
 
@@ -158,6 +158,42 @@ func (crane *Crane) IsMine() bool {
 
 func (crane *Crane) Public() bool {
 	return crane.ship.Public()
+}
+
+func (crane *Crane) IsStopping() bool {
+	return crane.stopping.IsSet()
+}
+
+func (crane *Crane) MarkStopping() (stopping bool) {
+	// Can only stop owned public cranes.
+	if !crane.Public() || !crane.IsMine() {
+		return false
+	}
+
+	if !crane.stopping.SetToIf(false, true) {
+		return false
+	}
+
+	module.StartWorker("sync crane state", func(ctx context.Context) error {
+		return crane.Controller.SyncState(ctx)
+	})
+	return true
+}
+
+func (crane *Crane) AbortStopping() (aborted bool) {
+	// Can only stop owned public cranes.
+	if !crane.Public() || !crane.IsMine() {
+		return false
+	}
+
+	if !crane.stopping.SetToIf(true, false) {
+		return false
+	}
+
+	module.StartWorker("sync crane state", func(ctx context.Context) error {
+		return crane.Controller.SyncState(ctx)
+	})
+	return true
 }
 
 func (crane *Crane) Authenticated() bool {
@@ -273,7 +309,7 @@ func (crane *Crane) AbandonTerminal(id uint32, err *terminal.Error) {
 
 	// If the crane is stopping, check if we can stop.
 	// FYI: The crane controller will always take up one slot.
-	if crane.Stopping.IsSet() &&
+	if crane.stopping.IsSet() &&
 		crane.terminalCount() <= 1 {
 		// Stop the crane in worker, so the caller can do some work.
 		module.StartWorker("retire crane", func(_ context.Context) error {

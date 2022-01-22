@@ -266,7 +266,7 @@ optimize:
 			// Update last suggested timestamp.
 			crane.NetState.UpdateLastSuggestedAt()
 			// Continue crane if stopping.
-			if crane.Stopping.SetToIf(true, false) {
+			if crane.AbortStopping() {
 				log.Infof("spn/captain: optimization aborted retiring of %s, removed stopping mark", crane)
 				crane.NotifyUpdate()
 			}
@@ -308,7 +308,7 @@ optimize:
 			switch {
 			case !crane.IsMine():
 				// Skip cranes built by others.
-			case crane.Stopped() || crane.Stopping.IsSet():
+			case crane.Stopped() || crane.IsStopping():
 				// Skip cranes that are stopped or stopping.
 			case crane.NetState.LastSuggestedAt().After(
 				time.Now().Add(-stopCraneAfterBeingUnsuggestedFor),
@@ -316,7 +316,7 @@ optimize:
 				// Skip cranes that were recently suggested.
 			default:
 				// Mark crane as stopping.
-				if crane.Stopping.SetToIf(false, true) {
+				if crane.MarkStopping() {
 					log.Infof("spn/captain: retiring %s, marked as stopping", crane)
 					crane.NotifyUpdate()
 				}

@@ -213,7 +213,7 @@ func handleMapMeasurementsTableRequest(ar *api.Request) (data []byte, err error)
 			var mine string
 			if crane.IsMine() {
 				mine = "yes"
-				if crane.Stopping.IsSet() {
+				if crane.IsStopping() {
 					mine += " (stopping)"
 				}
 			}

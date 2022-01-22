@@ -332,7 +332,7 @@ func getCraneStats() *craneGauges {
 		switch {
 		case crane.Stopped():
 			continue
-		case crane.Stopping.IsSet():
+		case crane.IsStopping():
 			craneStats.stoppingActive++
 			continue
 		case crane.Public():
