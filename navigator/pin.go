@@ -168,9 +168,6 @@ func (pin *Pin) hasActiveTerminal() bool {
 }
 
 func (pin *Pin) NotifyTerminalChange() {
-	if !pin.HasActiveTerminal() {
-		pin.pushChanges.Set()
-	}
-
+	pin.pushChanges.Set()
 	pin.pushChange()
 }
