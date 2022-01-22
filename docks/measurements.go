@@ -10,6 +10,19 @@ import (
 	"github.com/safing/spn/terminal"
 )
 
+const (
+	CraneMeasurementTTLDefault    = 30 * time.Minute
+	CraneMeasurementTTLByCostBase = 1 * time.Minute
+	CraneMeasurementTTLByCostMin  = 30 * time.Minute
+	CraneMeasurementTTLByCostMax  = 3 * time.Hour
+
+	// With a base TTL of 1m, this leads to:
+	// 20c     -> 20m -> raised to 30m
+	// 50c     -> 50m
+	// 100c    -> 1h40m
+	// 1000c   -> 16h40m -> capped to 3h.
+)
+
 // MeasureHub measures the connection to this Hub and saves the results to the
 // Hub.
 func MeasureHub(ctx context.Context, h *hub.Hub, checkExpiryWith time.Duration) *terminal.Error {

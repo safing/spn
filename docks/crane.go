@@ -28,8 +28,6 @@ const (
 	// maxUnloadSize defines the maximum size of a message to unload.
 	maxUnloadSize    = 16384
 	maxSegmentLength = 16384
-
-	CraneMeasurementTTL = 15 * time.Minute
 )
 
 var (

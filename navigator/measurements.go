@@ -11,7 +11,18 @@ import (
 	"github.com/safing/spn/terminal"
 )
 
-const NavigatorMeasurementTTL = 2 * time.Hour
+const (
+	NavigatorMeasurementTTLDefault    = 2 * time.Hour
+	NavigatorMeasurementTTLByCostBase = 3 * time.Minute
+	NavigatorMeasurementTTLByCostMin  = 2 * time.Hour
+	NavigatorMeasurementTTLByCostMax  = 30 * time.Hour
+
+	// With a base TTL of 3m, this leads to:
+	// 20c     -> 1h -> raised to 2h.
+	// 50c     -> 2h30m
+	// 100c    -> 5h
+	// 1000c   -> 50h -> capped to 30h.
+)
 
 func (m *Map) measureHubs(ctx context.Context, _ *modules.Task) error {
 	if home, _ := m.GetHome(); home == nil {
@@ -28,23 +39,37 @@ func (m *Map) measureHubs(ctx context.Context, _ *modules.Task) error {
 
 	// Find first pin where any measurement has expired.
 	for _, pin := range list {
-		var checkWithTTL time.Duration
+		// Check if measuring is enabled.
+		if pin.measurements == nil {
+			continue
+		}
 
-		// Check if pin should be skipped.
-		switch {
-		case !matcher(pin):
-			// Pin is disregarded.
+		// Check if Pin is regarded.
+		if !matcher(pin) {
 			continue
-		case pin.measurements == nil:
-			// Measurements are not enabled for this Pin.
+		}
+
+		// Calculate dynamic TTL.
+		var checkWithTTL time.Duration
+		if pin.HopDistance == 2 { // Hub is directly connected.
+			checkWithTTL = calculateMeasurementTTLByCost(
+				pin.measurements.GetCalculatedCost(),
+				docks.CraneMeasurementTTLByCostBase,
+				docks.CraneMeasurementTTLByCostMin,
+				docks.CraneMeasurementTTLByCostMax,
+			)
+		} else {
+			checkWithTTL = calculateMeasurementTTLByCost(
+				pin.measurements.GetCalculatedCost(),
+				NavigatorMeasurementTTLByCostBase,
+				NavigatorMeasurementTTLByCostMin,
+				NavigatorMeasurementTTLByCostMax,
+			)
+		}
+
+		// Check if we have measured the pin within the TTL.
+		if !pin.measurements.Expired(checkWithTTL) {
 			continue
-		case pin.measurements.Expired(NavigatorMeasurementTTL):
-			// Measure.
-			checkWithTTL = NavigatorMeasurementTTL
-		case pin.HopDistance == 2 &&
-			pin.measurements.Expired(docks.CraneMeasurementTTL):
-			// Measure directly connected Hubs earlier.
-			checkWithTTL = docks.CraneMeasurementTTL
 		}
 
 		// Measure connection.
@@ -101,5 +126,17 @@ func (m *Map) SaveMeasuredHubs() {
 				log.Warningf("navigator: failed to save Hub %s to persist measurements: %s", pin.Hub, err)
 			}
 		}
+	}
+}
+
+func calculateMeasurementTTLByCost(cost float32, base, min, max time.Duration) time.Duration {
+	calculated := time.Duration(cost) * base
+	switch {
+	case calculated < min:
+		return min
+	case calculated > max:
+		return max
+	default:
+		return calculated
 	}
 }
