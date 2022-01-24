@@ -56,7 +56,7 @@ type ConnectRequest struct {
 	IP        net.IP
 	Protocol  packet.IPProtocol
 	Port      uint16
-	QueueSize uint16
+	QueueSize uint32
 }
 
 func (r *ConnectRequest) Address() string {
