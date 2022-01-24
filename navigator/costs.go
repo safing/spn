@@ -46,13 +46,13 @@ func CalculateLaneCost(latency time.Duration, capacity int) (cost float32) {
 func CalculateHubCost(load int) (cost float32) {
 	switch {
 	case load >= 100:
-		return 1000
+		return 10000
 	case load >= 95:
-		return 100
+		return 1000
 	case load >= 80:
-		return 50
+		return 500
 	default:
-		return 10
+		return 100
 	}
 }
 
