@@ -11,11 +11,6 @@ import (
 
 const (
 	SyncStateOpType = "sync/state"
-
-	SyncStateNonceSize     = 16
-	SyncStateRuns          = 10
-	SyncStatePauseDuration = 1 * time.Second
-	SyncStateOpTimeout     = SyncStateRuns * SyncStatePauseDuration * 3
 )
 
 type SyncStateOp struct {
