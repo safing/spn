@@ -11,8 +11,11 @@ const NetStatePeriodInterval = 15 * time.Minute
 type NetworkOptimizationState struct {
 	lock sync.Mutex
 
-	// lastSuggestedAt holds the time when the connnection to the connected Hub was last suggested by the network optimization.
+	// lastSuggestedAt holds the time when the connection to the connected Hub was last suggested by the network optimization.
 	lastSuggestedAt time.Time
+
+	// markedStoppingAt holds the time when the crane was last marked as stopping.
+	markedStoppingAt time.Time
 
 	lifetimeBytesIn  *uint64
 	lifetimeBytesOut *uint64
@@ -45,6 +48,20 @@ func (netState *NetworkOptimizationState) LastSuggestedAt() time.Time {
 	defer netState.lock.Unlock()
 
 	return netState.lastSuggestedAt
+}
+
+func (netState *NetworkOptimizationState) UpdateMarkedStoppingAt() {
+	netState.lock.Lock()
+	defer netState.lock.Unlock()
+
+	netState.markedStoppingAt = time.Now()
+}
+
+func (netState *NetworkOptimizationState) MarkedStoppingAt() time.Time {
+	netState.lock.Lock()
+	defer netState.lock.Unlock()
+
+	return netState.markedStoppingAt
 }
 
 func (netState *NetworkOptimizationState) ReportTraffic(bytes uint64, in bool) {

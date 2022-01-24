@@ -26,8 +26,9 @@ const (
 	QOTD = "Privacy is not an option, and it shouldn't be the price we accept for just getting on the Internet.\nGary Kovacs\n"
 
 	// maxUnloadSize defines the maximum size of a message to unload.
-	maxUnloadSize    = 16384
-	maxSegmentLength = 16384
+	maxUnloadSize        = 16384
+	maxSegmentLength     = 16384
+	maxCraneStoppingTime = 6 * time.Hour
 )
 
 var (
@@ -170,12 +171,22 @@ func (crane *Crane) MarkStopping() (stopping bool) {
 		return false
 	}
 
+	// Update stopping timestamp before the flag to avoid a race condition.
+	if !crane.IsStopping() {
+		crane.NetState.UpdateMarkedStoppingAt()
+	}
+
 	if !crane.stopping.SetToIf(false, true) {
 		return false
 	}
 
 	module.StartWorker("sync crane state", func(ctx context.Context) error {
-		return crane.Controller.SyncState(ctx)
+		tErr := crane.Controller.SyncState(ctx)
+		if !tErr.IsOK() {
+			return tErr
+		}
+
+		return nil
 	})
 	return true
 }
@@ -308,9 +319,11 @@ func (crane *Crane) AbandonTerminal(id uint32, err *terminal.Error) {
 	t.Abandon(err)
 
 	// If the crane is stopping, check if we can stop.
+	// We can stop when all terminals are abandoned or after a timeout.
 	// FYI: The crane controller will always take up one slot.
 	if crane.stopping.IsSet() &&
-		crane.terminalCount() <= 1 {
+		(crane.terminalCount() <= 1 ||
+			time.Now().Add(-maxCraneStoppingTime).After(crane.NetState.MarkedStoppingAt())) {
 		// Stop the crane in worker, so the caller can do some work.
 		module.StartWorker("retire crane", func(_ context.Context) error {
 			crane.Stop(nil)
