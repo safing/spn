@@ -56,6 +56,9 @@ type Pin struct {
 	// analysis holds the analysis state.
 	// Should only be set during analysis and be reset at the start and removed at the end of an analysis.
 	analysis *AnalysisState
+
+	// region is the region this Pin belongs to.
+	region *Region
 }
 
 // PinConnection represents a connection to a terminal on the Hub.

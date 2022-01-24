@@ -38,7 +38,46 @@ type Intel struct {
 	// InfoOverrides is used to override certain Hub information.
 	InfoOverrides map[string]*InfoOverride
 
+	// Regions defines regions to assist network optimization.
+	Regions []*RegionConfig
+
 	parsed *ParsedIntel
+}
+
+// RegionConfig holds the configuration of a region.
+type RegionConfig struct {
+	// ID is the internal identifier of the region.
+	ID string
+	// Name is a human readable name of the region.
+	Name string
+	// MemberPolicy specifies a list for including members.
+	MemberPolicy []string
+
+	// RegionalMinLanes specifies how many lanes other regions should build
+	// to this region.
+	RegionalMinLanes int
+	// RegionalMinLanesPerHub specifies how many lanes other regions should
+	// build to this region, per Hub in this region.
+	// This value will usually be below one.
+	RegionalMinLanesPerHub float64
+	// RegionalMaxLanesOnHub specifies how many lanes from or to another region may be
+	// built on one Hub per region.
+	RegionalMaxLanesOnHub int
+
+	// SatelliteMinLanes specifies how many lanes satellites (Hubs without
+	// region) should build to this region.
+	SatelliteMinLanes int
+	// SatelliteMinLanesPerHub specifies how many lanes satellites (Hubs without
+	// region) should build to this region, per Hub in this region.
+	// This value will usually be below one.
+	SatelliteMinLanesPerHub float64
+
+	// InternalMinLanesOnHub specifies how many lanes every Hub should create
+	// within the region at minimum.
+	InternalMinLanesOnHub int
+	// InternalMaxHops specifies the max hop constraint for internally optimizing
+	// the region.
+	InternalMaxHops int
 }
 
 // ParsedIntel holds a collection of parsed intel data.

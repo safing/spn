@@ -56,6 +56,36 @@ func (a sortBySuggestedHopDistanceAndLowestMeasuredCost) Less(i, j int) bool {
 	return a[i].Hub.ID < a[j].Hub.ID
 }
 
+type sortBySuggestedHopDistanceInRegionAndLowestMeasuredCost []*Pin
+
+func (a sortBySuggestedHopDistanceInRegionAndLowestMeasuredCost) Len() int { return len(a) }
+func (a sortBySuggestedHopDistanceInRegionAndLowestMeasuredCost) Swap(i, j int) {
+	a[i], a[j] = a[j], a[i]
+}
+func (a sortBySuggestedHopDistanceInRegionAndLowestMeasuredCost) Less(i, j int) bool {
+	// First sort by suggested hop distance.
+	if a[i].analysis.SuggestedHopDistanceInRegion != a[j].analysis.SuggestedHopDistanceInRegion {
+		return a[i].analysis.SuggestedHopDistanceInRegion > a[j].analysis.SuggestedHopDistanceInRegion
+	}
+
+	// Then by cost.
+	x := a[i].measurements.GetCalculatedCost()
+	y := a[j].measurements.GetCalculatedCost()
+	if x != y {
+		return x < y
+	}
+
+	// Fall back to geo proximity.
+	gx := a[i].measurements.GetGeoProximity()
+	gy := a[j].measurements.GetGeoProximity()
+	if gx != gy {
+		return gx > gy
+	}
+
+	// Fall back to Hub ID.
+	return a[i].Hub.ID < a[j].Hub.ID
+}
+
 type sortByLowestMeasuredLatency []*Pin
 
 func (a sortByLowestMeasuredLatency) Len() int      { return len(a) }

@@ -70,6 +70,17 @@ func registerAPIEndpoints() error {
 	}
 
 	if err := api.RegisterEndpoint(api.Endpoint{
+		Path:        `spn/map/{map:[A-Za-z0-9]{1,255}}/optimization/table`,
+		Read:        api.PermitUser,
+		BelongsTo:   module,
+		DataFunc:    handleMapOptimizationTableRequest,
+		Name:        "Get SPN map optimization as a table",
+		Description: "Returns the calculated optimization for the map as a table.",
+	}); err != nil {
+		return err
+	}
+
+	if err := api.RegisterEndpoint(api.Endpoint{
 		Path:        `spn/map/{map:[A-Za-z0-9]{1,255}}/measurements`,
 		Read:        api.PermitUser,
 		BelongsTo:   module,
@@ -147,6 +158,110 @@ func handleMapOptimizationRequest(ar *api.Request) (i interface{}, err error) {
 	return m.Optimize(nil)
 }
 
+func handleMapOptimizationTableRequest(ar *api.Request) (data []byte, err error) {
+	// Get map.
+	m, ok := getMapForAPI(ar.URLVars["map"])
+	if !ok {
+		return nil, errors.New("map not found")
+	}
+
+	// Get optimization result.
+	result, err := m.Optimize(nil)
+	if err != nil {
+		return nil, err
+	}
+
+	// Read lock map, as we access pins.
+	m.RLock()
+	defer m.RUnlock()
+
+	// Get cranes for additional metadata.
+	assignedCranes := docks.GetAllAssignedCranes()
+
+	// Write metadata.
+	buf := bytes.NewBuffer(nil)
+	buf.WriteString("Optimization:\n")
+	fmt.Fprintf(buf, "Purpose: %s\n", result.Purpose)
+	if len(result.Approach) == 1 {
+		fmt.Fprintf(buf, "Approach: %s\n", result.Approach[0])
+	} else if len(result.Approach) > 1 {
+		buf.WriteString("Approach:\n")
+		for _, approach := range result.Approach {
+			fmt.Fprintf(buf, "  - %s\n", approach)
+		}
+	}
+	fmt.Fprintf(buf, "MaxConnect: %d\n", result.MaxConnect)
+	fmt.Fprintf(buf, "StopOthers: %v\n", result.StopOthers)
+
+	// Build table of suggested connections.
+	buf.WriteString("\nSuggested Connections:\n")
+	tabWriter := tabwriter.NewWriter(buf, 8, 4, 3, ' ', 0)
+	fmt.Fprint(tabWriter, "Hub Name\tReason\tDuplicate\tCountry\tRegion\tLatency\tCapacity\tCost\tGeo Prox.\tHub ID\tLifetime Usage\tPeriod Usage\tProt\tMine\n")
+	for _, suggested := range result.SuggestedConnections {
+		var dupe string
+		if suggested.Duplicate {
+			dupe = "yes"
+		} else {
+			// Only lock dupes once.
+			suggested.pin.measurements.Lock()
+			defer suggested.pin.measurements.Unlock()
+		}
+
+		// Add row.
+		fmt.Fprintf(tabWriter,
+			"%s\t%s\t%s\t%s\t%s\t%s\t%.2fMbit/s\t%.2fc\t%.2f%%\t%s",
+			suggested.Hub.Info.Name,
+			suggested.Reason,
+			dupe,
+			getPinCountry(suggested.pin),
+			suggested.pin.region.getName(),
+			suggested.pin.measurements.Latency,
+			float64(suggested.pin.measurements.Capacity)/1000000,
+			suggested.pin.measurements.CalculatedCost,
+			suggested.pin.measurements.GeoProximity,
+			suggested.Hub.ID,
+		)
+
+		// Add usage stats.
+		if crane, ok := assignedCranes[suggested.Hub.ID]; ok {
+			ltIn, ltOut, ltStart, pIn, pOut, pStart := crane.NetState.GetTrafficStats()
+			ltDuration := time.Since(ltStart)
+			pDuration := time.Since(pStart)
+			var mine string
+			switch {
+			case crane.IsMine() && crane.IsStopping():
+				mine = "yes (stopping)"
+			case crane.IsMine():
+				mine = "yes"
+			case !crane.IsMine() && crane.IsStopping():
+				mine = "(stopping)"
+			case !crane.IsMine():
+				mine = ""
+			}
+
+			fmt.Fprintf(tabWriter,
+				"\t%.2fGB %.2fMbit/s %.2f%%out since %s\t%.2fGB %.2fMbit/s %.2f%%out since %s\t%s\t%s",
+				float64(ltIn+ltOut)/1000000000,
+				(float64(ltIn+ltOut)/1000000/ltDuration.Seconds())*8,
+				float64(ltOut)/float64(ltIn+ltOut)*100,
+				ltDuration.Truncate(time.Second),
+				float64(pIn+pOut)/1000000000,
+				(float64(pIn+pOut)/1000000/pDuration.Seconds())*8,
+				float64(pOut)/float64(pIn+pOut)*100,
+				pDuration.Truncate(time.Second),
+				crane.Transport().Protocol,
+				mine,
+			)
+		}
+
+		// Add linebreak.
+		fmt.Fprint(tabWriter, "\n")
+	}
+	tabWriter.Flush()
+
+	return buf.Bytes(), nil
+}
+
 func handleMapMeasurementsRequest(ar *api.Request) (i interface{}, err error) {
 	// Get map.
 	m, ok := getMapForAPI(ar.URLVars["map"])
@@ -184,7 +299,7 @@ func handleMapMeasurementsTableRequest(ar *api.Request) (data []byte, err error)
 	// Build table and return.
 	buf := bytes.NewBuffer(nil)
 	tabWriter := tabwriter.NewWriter(buf, 8, 4, 3, ' ', 0)
-	fmt.Fprint(tabWriter, "Hub Name\tCountry\tLatency\tCapacity\tCost\tGeo Prox.\tHub ID\tLifetime Usage\tPeriod Usage\tProt\tMine\n")
+	fmt.Fprint(tabWriter, "Hub Name\tCountry\tRegion\tLatency\tCapacity\tCost\tGeo Prox.\tHub ID\tLifetime Usage\tPeriod Usage\tProt\tMine\n")
 	for _, pin := range list {
 		// Only print regarded Hubs.
 		if !matcher(pin) {
@@ -195,9 +310,10 @@ func handleMapMeasurementsTableRequest(ar *api.Request) (data []byte, err error)
 		pin.measurements.Lock()
 		defer pin.measurements.Unlock()
 		fmt.Fprintf(tabWriter,
-			"%s\t%s\t%s\t%.2fMbit/s\t%.2fc\t%.2f%%\t%s",
+			"%s\t%s\t%s\t%s\t%.2fMbit/s\t%.2fc\t%.2f%%\t%s",
 			pin.Hub.Info.Name,
 			getPinCountry(pin),
+			pin.region.getName(),
 			pin.measurements.Latency,
 			float64(pin.measurements.Capacity)/1000000,
 			pin.measurements.CalculatedCost,
@@ -211,11 +327,15 @@ func handleMapMeasurementsTableRequest(ar *api.Request) (data []byte, err error)
 			ltDuration := time.Since(ltStart)
 			pDuration := time.Since(pStart)
 			var mine string
-			if crane.IsMine() {
+			switch {
+			case crane.IsMine() && crane.IsStopping():
+				mine = "yes (stopping)"
+			case crane.IsMine():
 				mine = "yes"
-				if crane.IsStopping() {
-					mine += " (stopping)"
-				}
+			case !crane.IsMine() && crane.IsStopping():
+				mine = "(stopping)"
+			case !crane.IsMine():
+				mine = ""
 			}
 
 			fmt.Fprintf(tabWriter,

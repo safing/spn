@@ -260,8 +260,13 @@ optimize:
 	var createdConnections int
 	var attemptedConnections int
 	for _, connectTo := range result.SuggestedConnections {
+		// Skip duplicates.
+		if connectTo.Duplicate {
+			continue
+		}
+
 		// Check if connection already exists.
-		crane := docks.GetAssignedCrane(connectTo.ID)
+		crane := docks.GetAssignedCrane(connectTo.Hub.ID)
 		if crane != nil {
 			// Update last suggested timestamp.
 			crane.NetState.UpdateLastSuggestedAt()
@@ -275,7 +280,7 @@ optimize:
 		} else if createdConnections < result.MaxConnect {
 			attemptedConnections++
 
-			crane, err := EstablishPublicLane(ctx, connectTo)
+			crane, err := EstablishPublicLane(ctx, connectTo.Hub)
 			if err != nil {
 				log.Warningf("spn/captain: failed to establish lane to %s: %s", connectTo, err)
 			} else {

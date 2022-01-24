@@ -16,8 +16,9 @@ type Map struct {
 	sync.RWMutex
 	Name string
 
-	all   map[string]*Pin
-	intel *hub.Intel
+	all     map[string]*Pin
+	intel   *hub.Intel
+	regions []*Region
 
 	home         *Pin
 	homeTerminal *docks.CraneTerminal
@@ -25,9 +26,10 @@ type Map struct {
 	measuringEnabled bool
 	hubUpdateHook    *database.RegisteredHook
 
-	// analysisLock guards access to all of this map's Pin.analysis and the
-	// lastDesegrationAttempt fields.
+	// analysisLock guards access to all of this map's Pin.analysis,
+	// regardedPins and the lastDesegrationAttempt fields.
 	analysisLock           sync.Mutex
+	regardedPins           []*Pin
 	lastDesegrationAttempt time.Time
 }
 

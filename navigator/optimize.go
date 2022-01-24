@@ -1,6 +1,7 @@
 package navigator
 
 import (
+	"fmt"
 	"sort"
 	"time"
 
@@ -9,8 +10,9 @@ import (
 )
 
 const (
-	optimizationHopDistanceTarget = 3
-	waitUntilMeasuredUpToPercent  = 0.5
+	optimizationLowestCostConnections = 3
+	optimizationHopDistanceTarget     = 3
+	waitUntilMeasuredUpToPercent      = 0.5
 
 	desegrationAttemptBackoff = time.Hour
 
@@ -21,16 +23,52 @@ const (
 )
 
 type AnalysisState struct {
-	// Suggested signifies that a direct connection to this Hub is suggested by the optimization algorithm.
+	// Suggested signifies that a direct connection to this Hub is suggested by
+	// the optimization algorithm.
 	Suggested bool
 
-	// SuggestedHopDistance holds the hop distance to this Hub when only considering the suggested Hubs as connected.
+	// SuggestedHopDistance holds the hop distance to this Hub when only
+	// considering the suggested Hubs as connected.
 	SuggestedHopDistance int
+
+	// SuggestedHopDistanceInRegion holds the hop distance to this Hub in the
+	// same region when only considering the suggested Hubs as connected.
+	SuggestedHopDistanceInRegion int
+
+	// CrossRegionalConnections holds the amount of connections a Pin has from
+	// the current region.
+	CrossRegionalConnections int
+	// CrossRegionalLowestCostLane holds the lowest cost of the counted
+	// connections from the current region.
+	CrossRegionalLowestCostLane float32
+	// CrossRegionalLaneCosts holds all the cross regional lane costs.
+	CrossRegionalLaneCosts []float32
+	// CrossRegionalHighestCostInHubLimit holds to highest cost of the lowest
+	// cost connections within the maximum allowed lanes on a Hub from the
+	// current region.
+	CrossRegionalHighestCostInHubLimit float32
 }
 
 // initAnalysis creates all Pin.analysis fields.
 // The caller needs to hold the map and analysis lock..
-func (m *Map) initAnalysis() {
+func (m *Map) initAnalysis(result *OptimizationResult) {
+	// Compile lists of regarded pins.
+	m.regardedPins = make([]*Pin, 0, len(m.all))
+	for _, region := range m.regions {
+		region.regardedPins = make([]*Pin, 0, len(m.all))
+	}
+	// Find all regarded pins.
+	for _, pin := range m.all {
+		if result.matcher(pin) {
+			m.regardedPins = append(m.regardedPins, pin)
+			// Add to region.
+			if pin.region != nil {
+				pin.region.regardedPins = append(pin.region.regardedPins, pin)
+			}
+		}
+	}
+
+	// Initialize analysis state.
 	for _, pin := range m.all {
 		pin.analysis = &AnalysisState{}
 	}
@@ -39,6 +77,10 @@ func (m *Map) initAnalysis() {
 // clearAnalysis reset all Pin.analysis fields.
 // The caller needs to hold the map and analysis lock.
 func (m *Map) clearAnalysis() {
+	m.regardedPins = nil
+	for _, region := range m.regions {
+		region.regardedPins = nil
+	}
 	for _, pin := range m.all {
 		pin.analysis = nil
 	}
@@ -49,12 +91,12 @@ type OptimizationResult struct {
 	// Purpose holds a semi-human readable constant of the optimization purpose.
 	Purpose string
 
-	// Approach holds a human readable description of how the stated purpose
+	// Approach holds human readable descriptions of how the stated purpose
 	// should be achieved.
-	Approach string
+	Approach []string
 
 	// SuggestedConnections holds the Hubs to which connections are suggested.
-	SuggestedConnections []*hub.Hub
+	SuggestedConnections []*SuggestedConnection
 
 	// MaxConnect specifies how many connections should be created at maximum
 	// based on this optimization.
@@ -64,26 +106,57 @@ type OptimizationResult struct {
 	// be stopped.
 	StopOthers bool
 
-	// regardedPins holds a list of Pins regarded for this optimization.
-	regardedPins []*Pin
+	// opts holds the options for matching Hubs in this optimization.
+	opts *Options
 
 	// matcher is the matcher used to create the regarded Pins.
 	// Required for updating suggested hop distance.
 	matcher PinMatcher
 }
 
-func (or *OptimizationResult) addSuggested(pin *Pin) {
-	or.SuggestedConnections = append(or.SuggestedConnections, pin.Hub)
-
-	// Update hop distances if we have a matcher.
-	if or.matcher != nil {
-		or.markSuggestedReachable(pin, 2)
-	}
+type SuggestedConnection struct {
+	// Hub holds the Hub to which a connection is suggested.
+	Hub *hub.Hub
+	// pin holds the Pin of the Hub.
+	pin *Pin
+	// Reason holds a reason why this connection is suggested.
+	Reason string
+	// Duplicate marks duplicate entries. These should be ignored when
+	// connecting, but are helpful for understand the optimization result.
+	Duplicate bool
 }
 
-func (or *OptimizationResult) addSuggestedBatch(pins []*Pin) {
+func (or *OptimizationResult) addApproach(description string) {
+	or.Approach = append(or.Approach, description)
+}
+
+func (or *OptimizationResult) addSuggested(reason string, pins ...*Pin) {
 	for _, pin := range pins {
-		or.addSuggested(pin)
+		// Mark as suggested.
+		pin.analysis.Suggested = true
+
+		// Check if this is a duplicate.
+		var duplicate bool
+		for _, sc := range or.SuggestedConnections {
+			if pin.Hub.ID == sc.Hub.ID {
+				duplicate = true
+				break
+			}
+		}
+
+		// Add to suggested connections.
+		or.SuggestedConnections = append(or.SuggestedConnections, &SuggestedConnection{
+			Hub:       pin.Hub,
+			pin:       pin,
+			Reason:    reason,
+			Duplicate: duplicate,
+		})
+
+		// Update hop distances if we have a matcher.
+		if or.matcher != nil {
+			or.markSuggestedReachable(pin, 2)
+			or.markSuggestedReachableInRegion(pin, 2)
+		}
 	}
 }
 
@@ -128,63 +201,79 @@ func (m *Map) optimize(opts *Options) (result *OptimizationResult, err error) {
 		return nil, ErrHomeHubUnset
 	}
 
+	// Create result.
+	result = &OptimizationResult{
+		opts:    opts,
+		matcher: opts.Matcher(TransitHub),
+	}
+
 	// Setup analyis.
 	m.analysisLock.Lock()
 	defer m.analysisLock.Unlock()
-	m.initAnalysis()
+	m.initAnalysis(result)
 	defer m.clearAnalysis()
-
-	// Compile list of regarded pins.
-	var validMeasurements float32
-	regardedPins := make([]*Pin, 0, len(m.all))
-	matcher := opts.Matcher(TransitHub)
-	for _, pin := range m.all {
-		if matcher(pin) {
-			regardedPins = append(regardedPins, pin)
-			if pin.measurements.Valid() {
-				validMeasurements++
-			}
-		}
-	}
 
 	// Bootstrap to the network and desegregate map.
 	// If there is a result, return it immediately.
-	result, err = m.optimizeBootstrapAndDesegregate(opts, regardedPins)
+	returnImmediately, err := m.optimizeForBootstrappingAndDesegregation(result)
 	if err != nil {
 		return nil, err
 	}
-	if result != nil {
+	if returnImmediately {
 		return result, nil
 	}
 
 	// Check if we have the measurements we need.
-	if m.measuringEnabled &&
-		validMeasurements/float32(len(regardedPins)) < waitUntilMeasuredUpToPercent {
-		// Less than the required amount of regarded Pins have valid measurements, let's wait until we have that.
-		return &OptimizationResult{
-			Purpose:  OptimizePurposeWait,
-			Approach: "Wait for measurements of 80% of regarded nodes for better optimization.",
-		}, nil
+	if m.measuringEnabled {
+		// Cound pins with valid measurements.
+		var validMeasurements float32
+		for _, pin := range m.regardedPins {
+			if pin.measurements.Valid() {
+				validMeasurements++
+			}
+		}
+
+		// If less than the required amount of regarded Pins have valid
+		// measurements, let's wait until we have that.
+		if validMeasurements/float32(len(m.regardedPins)) < waitUntilMeasuredUpToPercent {
+			return &OptimizationResult{
+				Purpose:  OptimizePurposeWait,
+				Approach: []string{"Wait for measurements of 80% of regarded nodes for better optimization."},
+			}, nil
+		}
 	}
 
-	// Create a shared result to add everything together from now on.
-	result = &OptimizationResult{
-		Purpose:      OptimizePurposeTargetStructure,
-		Approach:     "Connect to 3 Hubs with lowest connect cost, then up to 3 Hubs to get everywhere with 3 client hops.",
-		MaxConnect:   3,
-		StopOthers:   true,
-		regardedPins: regardedPins,
-		matcher:      matcher,
-	}
+	// Set default values for target structure optimization.
+	result.Purpose = OptimizePurposeTargetStructure
+	result.MaxConnect = 3
+	result.StopOthers = true
 
-	// Connect by lowest cost.
-	err = m.optimizeConnectLowestCost(result, 3)
+	// Optimize for lowest cost.
+	err = m.optimizeForLowestCost(result, optimizationLowestCostConnections)
 	if err != nil {
 		return nil, err
 	}
 
-	// Connect to fulfill distance constraint.
-	err = m.optimizeDistanceConstraint(result, 3)
+	// Optimize for lowest cost in region.
+	err = m.optimizeForLowestCostInRegion(result)
+	if err != nil {
+		return nil, err
+	}
+
+	// Optimize for distance constraint in region.
+	err = m.optimizeForDistanceConstraintInRegion(result, 3)
+	if err != nil {
+		return nil, err
+	}
+
+	// Optimize for region-to-region connectivity.
+	err = m.optimizeForRegionConnectivity(result)
+	if err != nil {
+		return nil, err
+	}
+
+	// Optimize for satellite-to-region connectivity.
+	err = m.optimizeForSatelliteConnectivity(result)
 	if err != nil {
 		return nil, err
 	}
@@ -195,18 +284,17 @@ func (m *Map) optimize(opts *Options) (result *OptimizationResult, err error) {
 	}
 
 	// Clean and return.
-	result.regardedPins = nil
 	return result, nil
 }
 
-func (m *Map) optimizeBootstrapAndDesegregate(opts *Options, regardedPins []*Pin) (result *OptimizationResult, err error) {
+func (m *Map) optimizeForBootstrappingAndDesegregation(result *OptimizationResult) (returnImmediately bool, err error) {
 	// All regarded Pins are reachable.
-	reachable := len(regardedPins)
+	reachable := len(m.regardedPins)
 
 	// Count Pins that may be connectable.
 	connectable := make([]*Pin, 0, len(m.all))
 	// Copy opts as we are going to make changes.
-	opts = opts.Copy()
+	opts := result.opts.Copy()
 	opts.NoDefaults = true
 	opts.Regard = StateNone
 	opts.Disregard = StateSummaryDisregard
@@ -220,18 +308,16 @@ func (m *Map) optimizeBootstrapAndDesegregate(opts *Options, regardedPins []*Pin
 
 	switch {
 	case reachable == 0:
+
 		// Sort by lowest cost.
 		sort.Sort(sortByLowestMeasuredCost(connectable))
 
 		// Return bootstrap optimization.
-		result = &OptimizationResult{
-			Purpose:              OptimizePurposeBootstrap,
-			Approach:             "Connect to a near Hub to connect to the network.",
-			SuggestedConnections: make([]*hub.Hub, 0, len(connectable)),
-			MaxConnect:           1,
-		}
-		result.addSuggestedBatch(connectable)
-		return result, nil
+		result.Purpose = OptimizePurposeBootstrap
+		result.Approach = []string{"Connect to a near Hub to connect to the network."}
+		result.MaxConnect = 1
+		result.addSuggested("bootstrap", connectable...)
+		return true, nil
 
 	case reachable > len(connectable)/2:
 		// We are part of the majority network, continue with regular optimization.
@@ -262,55 +348,52 @@ func (m *Map) optimizeBootstrapAndDesegregate(opts *Options, regardedPins []*Pin
 		sort.Sort(sortByLowestMeasuredCost(desegregateWith))
 
 		// Build desegration optimization.
-		result = &OptimizationResult{
-			Purpose:              OptimizePurposeDesegregate,
-			Approach:             "Attempt to desegregate network by connection to an unreachable Hub.",
-			SuggestedConnections: make([]*hub.Hub, 0, len(desegregateWith)),
-			MaxConnect:           1,
-		}
-		result.addSuggestedBatch(desegregateWith)
+		result.Purpose = OptimizePurposeDesegregate
+		result.Approach = []string{"Attempt to desegregate network by connection to an unreachable Hub."}
+		result.MaxConnect = 1
+		result.addSuggested("desegregate", desegregateWith...)
 
 		// Record desegregation attempt.
 		m.lastDesegrationAttempt = time.Now()
 
-		return result, nil
+		return true, nil
 	}
 
-	return nil, nil
+	return false, nil
 }
 
-func (m *Map) optimizeConnectLowestCost(result *OptimizationResult, max int) error {
+func (m *Map) optimizeForLowestCost(result *OptimizationResult, max int) error {
+	// Add approach.
+	result.addApproach(fmt.Sprintf("Connect to best (lowest cost) %d Hubs globally.", max))
+
 	// Sort by lowest cost.
-	sort.Sort(sortByLowestMeasuredCost(result.regardedPins))
+	sort.Sort(sortByLowestMeasuredCost(m.regardedPins))
 
-	// Connect to Pins with the lowest connection cost.
-	for i, pin := range result.regardedPins {
-		// Stop after looking at the first [max] Hubs.
-		if i >= max {
-			break
-		}
-
-		result.addSuggested(pin)
-
-		// Mark as suggested for analysis.
-		pin.analysis.Suggested = true
+	// Add to suggested pins.
+	if len(m.regardedPins) <= max {
+		result.addSuggested("best globally", m.regardedPins...)
+	} else {
+		result.addSuggested("best globally", m.regardedPins[:max]...)
 	}
 
 	return nil
 }
 
-func (m *Map) optimizeDistanceConstraint(result *OptimizationResult, max int) error {
+func (m *Map) optimizeForDistanceConstraint(result *OptimizationResult, max int) error {
+	// Add approach.
+	result.addApproach(fmt.Sprintf("Satisfy max hop constraint of %d globally.", optimizationHopDistanceTarget))
+
 	for i := 0; i < max; i++ {
 		// Sort by lowest cost.
-		sort.Sort(sortBySuggestedHopDistanceAndLowestMeasuredCost(result.regardedPins))
+		sort.Sort(sortBySuggestedHopDistanceAndLowestMeasuredCost(m.regardedPins))
 
 		// Return when all regarded Pins are within the distance constraint.
-		if result.regardedPins[0].analysis.SuggestedHopDistance <= optimizationHopDistanceTarget {
+		if m.regardedPins[0].analysis.SuggestedHopDistance <= optimizationHopDistanceTarget {
 			return nil
 		}
 
 		// If not, suggest a connection to the best match.
-		result.addSuggested(result.regardedPins[0])
+		result.addSuggested("satisfy global hop constraint", m.regardedPins[0])
 	}
 
 	return nil
