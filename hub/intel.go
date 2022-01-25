@@ -16,6 +16,8 @@ type Intel struct {
 	BootstrapHubs []string
 	// TrustedHubs is a list of Hub IDs that are specially designated for more sensitive tasls, such as handling unencrypted traffic.
 	TrustedHubs []string
+	// DiscontinuedHubs is a list of Hub IDs that have been discontinued and should be marked as offline and removed.
+	DiscontinuedHubs []string
 
 	// AdviseOnlyTrustedHubs advises to only use trusted Hubs regardless of intended purpose.
 	AdviseOnlyTrustedHubs bool

@@ -1,6 +1,7 @@
 package hub
 
 import (
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -114,18 +115,18 @@ func (hub *Hub) Save() error {
 // RemoveHubAndMsgs deletes a Hub and it's saved messages from the database.
 func RemoveHubAndMsgs(mapName string, hubID string) (err error) {
 	err = db.Delete(MakeHubDBKey(mapName, hubID))
-	if err != nil {
-		return fmt.Errorf("failed to delete hub: %w", err)
+	if err != nil && !errors.Is(err, database.ErrNotFound) {
+		return fmt.Errorf("failed to delete main hub entry: %w", err)
 	}
 
 	err = db.Delete(MakeHubMsgDBKey(mapName, MsgTypeAnnouncement, hubID))
-	if err != nil {
-		return fmt.Errorf("failed to delete hub announcement: %w", err)
+	if err != nil && !errors.Is(err, database.ErrNotFound) {
+		return fmt.Errorf("failed to delete hub announcement data: %w", err)
 	}
 
 	err = db.Delete(MakeHubMsgDBKey(mapName, MsgTypeStatus, hubID))
-	if err != nil {
-		return fmt.Errorf("failed to delete hub status: %w", err)
+	if err != nil && !errors.Is(err, database.ErrNotFound) {
+		return fmt.Errorf("failed to delete hub status data: %w", err)
 	}
 
 	return nil
