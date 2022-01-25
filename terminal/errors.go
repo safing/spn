@@ -171,17 +171,7 @@ func registerError(id uint8, err error) *Error {
 // }
 
 func (e *Error) IsOK() bool {
-	if e == nil || e.err == nil {
-		return true
-	}
-	switch e.id {
-	case 2: // ErrStopping
-		return true
-	case 3: // ErrExplicitAck
-		return true
-	default:
-		return false
-	}
+	return !e.IsError()
 }
 
 func (e *Error) IsError() bool {
@@ -199,11 +189,10 @@ var (
 	// ErrUnknownError is the default error.
 	ErrUnknownError = registerError(0, errors.New("unknown error"))
 
-	// Error IDs 1-7 are reserved for special values.
+	// Error IDs 1-7 are reserved for special "OK" values.
 
-	ErrStopping      = registerError(2, errors.New("stopping"))
-	ErrExplicitAck   = registerError(3, errors.New("explicit ack"))
-	ErrTryAgainLater = registerError(4, errors.New("try again later"))
+	ErrStopping    = registerError(2, errors.New("stopping"))
+	ErrExplicitAck = registerError(3, errors.New("explicit ack"))
 
 	// Errors IDs 8 and up are for regular errors.
 
@@ -222,6 +211,7 @@ var (
 	ErrHubUnavailable         = registerError(101, errors.New("hub unavailable"))
 	ErrShipSunk               = registerError(108, errors.New("ship sunk"))
 	ErrDestinationUnavailable = registerError(113, errors.New("destination unavailable"))
+	ErrTryAgainLater          = registerError(114, errors.New("try again later"))
 	ErrConnectionError        = registerError(121, errors.New("connection error"))
 	ErrQueueOverflow          = registerError(122, errors.New("queue overflowed"))
 	ErrCanceled               = registerError(125, context.Canceled)
