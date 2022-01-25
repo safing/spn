@@ -230,11 +230,13 @@ func handleMapOptimizationTableRequest(ar *api.Request) (data []byte, err error)
 			var mine string
 			switch {
 			case crane.IsMine() && crane.IsStopping():
-				mine = "yes (stopping)"
+				mine = fmt.Sprintf("yes (stopping since %s)",
+					time.Since(crane.NetState.MarkedStoppingAt().Truncate(time.Minute)))
 			case crane.IsMine():
 				mine = "yes"
 			case !crane.IsMine() && crane.IsStopping():
-				mine = "(stopping)"
+				mine = fmt.Sprintf("(stopping since %s)",
+					time.Since(crane.NetState.MarkedStoppingAt().Truncate(time.Minute)))
 			case !crane.IsMine():
 				mine = ""
 			}
@@ -329,11 +331,13 @@ func handleMapMeasurementsTableRequest(ar *api.Request) (data []byte, err error)
 			var mine string
 			switch {
 			case crane.IsMine() && crane.IsStopping():
-				mine = "yes (stopping)"
+				mine = fmt.Sprintf("yes (stopping since %s)",
+					time.Since(crane.NetState.MarkedStoppingAt().Truncate(time.Minute)))
 			case crane.IsMine():
 				mine = "yes"
 			case !crane.IsMine() && crane.IsStopping():
-				mine = "(stopping)"
+				mine = fmt.Sprintf("(stopping since %s)",
+					time.Since(crane.NetState.MarkedStoppingAt().Truncate(time.Minute)))
 			case !crane.IsMine():
 				mine = ""
 			}
