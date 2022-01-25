@@ -23,7 +23,7 @@ func Launch(ctx context.Context, h *hub.Hub, transport *hub.Transport, ip net.IP
 		for _, definition := range h.Info.Transports {
 			t, err := hub.ParseTransport(definition)
 			if err != nil {
-				log.Warningf("failed to parse transport definition %s of %s: %s", definition, h, err)
+				log.Warningf("spn/ships: failed to parse transport definition %s of %s: %s", definition, h, err)
 			} else {
 				transports = append(transports, t)
 			}
@@ -40,12 +40,33 @@ func Launch(ctx context.Context, h *hub.Hub, transport *hub.Transport, ip net.IP
 		if h.Info == nil {
 			return nil, hub.ErrMissingInfo
 		}
-		// prioritize IPv4
-		if h.Info.IPv4 != nil {
-			ips = append(ips, h.Info.IPv4)
+		ips = make([]net.IP, 0, 3)
+		// If IPs have been verified, check if we can use a virtual network address.
+		var vnetForced bool
+		if h.VerifiedIPs {
+			vnet := GetVirtualNetworkConfig()
+			if vnet != nil {
+				virtIP := vnet.Mapping[h.ID]
+				if virtIP != nil {
+					ips = append(ips, virtIP)
+					if vnet.Force {
+						vnetForced = true
+						log.Infof("spn/ships: forcing virtual network address %s for %s", virtIP, h)
+					} else {
+						log.Infof("spn/ships: using virtual network address %s for %s", virtIP, h)
+					}
+				}
+			}
 		}
-		if h.Info.IPv6 != nil {
-			ips = append(ips, h.Info.IPv6)
+		// Add Hub's IPs if no virtual address was forced.
+		if !vnetForced {
+			// prioritize IPv4
+			if h.Info.IPv4 != nil {
+				ips = append(ips, h.Info.IPv4)
+			}
+			if h.Info.IPv6 != nil {
+				ips = append(ips, h.Info.IPv6)
+			}
 		}
 		if len(ips) == 0 {
 			return nil, hub.ErrMissingIPs

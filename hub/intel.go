@@ -41,6 +41,9 @@ type Intel struct {
 	// Regions defines regions to assist network optimization.
 	Regions []*RegionConfig
 
+	// VirtualNetworks holds network configurations for virtual cloud networks.
+	VirtualNetworks []*VirtualNetworkConfig
+
 	parsed *ParsedIntel
 }
 
@@ -78,6 +81,16 @@ type RegionConfig struct {
 	// InternalMaxHops specifies the max hop constraint for internally optimizing
 	// the region.
 	InternalMaxHops int
+}
+
+// VirtualNetworkConfig holds configuration of a virtual network that binds multiple Hubs together.
+type VirtualNetworkConfig struct {
+	// Name is a human readable name of the virtual network.
+	Name string
+	// Force forces the use of the mapped IP addresses after the Hub's IPs have been verified.
+	Force bool
+	// Mapping maps Hub IDs to internal IP addresses.
+	Mapping map[string]net.IP
 }
 
 // ParsedIntel holds a collection of parsed intel data.

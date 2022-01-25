@@ -11,6 +11,7 @@ import (
 	"github.com/safing/spn/conf"
 	"github.com/safing/spn/hub"
 	"github.com/safing/spn/navigator"
+	"github.com/safing/spn/ships"
 )
 
 var (
@@ -58,6 +59,8 @@ func updateSPNIntel(ctx context.Context, _ interface{}) (err error) {
 	if err != nil {
 		return fmt.Errorf("failed to parse SPN intel update: %w", err)
 	}
+
+	setVirtualNetworkConfig(intel.VirtualNetworks)
 	return navigator.Main.UpdateIntel(intel)
 }
 
@@ -81,4 +84,26 @@ func loadRequiredResources() error {
 		}
 	}
 	return nil
+}
+
+func setVirtualNetworkConfig(configs []*hub.VirtualNetworkConfig) {
+	// Do nothing if not public Hub.
+	if !conf.PublicHub() {
+		return
+	}
+	// Reset if there are no virtual networks configured.
+	if len(configs) == 0 {
+		ships.SetVirtualNetworkConfig(nil)
+	}
+
+	// Check if we are in a virtual network.
+	for _, config := range configs {
+		if _, ok := config.Mapping[publicIdentity.Hub.ID]; ok {
+			ships.SetVirtualNetworkConfig(config)
+			return
+		}
+	}
+
+	// If not, reset - we might have been in one before.
+	ships.SetVirtualNetworkConfig(nil)
 }
