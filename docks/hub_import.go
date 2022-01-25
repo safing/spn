@@ -33,7 +33,6 @@ func ImportAndVerifyHubInfo(ctx context.Context, hubID string, announcementData,
 	if announcementData != nil {
 		hubFromMsg, known, changed, err := hub.ApplyAnnouncement(nil, announcementData, mapName, scope, false)
 		if err != nil && firstErr == nil {
-			log.Errorf("failed to apply announcement: %w", err)
 			firstErr = terminal.ErrInternalError.With("failed to apply announcement: %w", err)
 		}
 		if known {
@@ -51,7 +50,6 @@ func ImportAndVerifyHubInfo(ctx context.Context, hubID string, announcementData,
 	if statusData != nil {
 		hubFromMsg, known, changed, err := hub.ApplyStatus(h, statusData, mapName, scope, false)
 		if err != nil && firstErr == nil {
-			log.Errorf("failed to apply status: %w", err)
 			firstErr = terminal.ErrInternalError.With("failed to apply status: %w", err)
 		}
 		if known && announcementData == nil {
