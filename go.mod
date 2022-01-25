@@ -20,7 +20,7 @@ require (
 	github.com/rot256/pblind v0.0.0-20211117203330-22455f90b565
 	github.com/safing/jess v0.2.3
 	github.com/safing/portbase v0.13.4
-	github.com/safing/portmaster v0.7.16
+	github.com/safing/portmaster v0.7.17
 	github.com/shirou/gopsutil v3.21.11+incompatible // indirect
 	github.com/stretchr/testify v1.7.0
 	github.com/templexxx/cpu v0.0.9 // indirect
@@ -30,7 +30,7 @@ require (
 	github.com/xtaci/kcp-go/v5 v5.6.1
 	github.com/yusufpapurcu/wmi v1.2.2 // indirect
 	golang.org/x/crypto v0.0.0-20220112180741-5e0467b6c7ce // indirect
-	golang.org/x/net v0.0.0-20220114011407-0dd24b26b47d // indirect
+	golang.org/x/net v0.0.0-20220121210141-e204ce36a2ba // indirect
 	golang.org/x/sys v0.0.0-20220114195835-da31bd327af9 // indirect
 	golang.org/x/tools v0.1.8 // indirect
 )
