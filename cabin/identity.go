@@ -120,9 +120,9 @@ func (id *Identity) MaintainAnnouncement(selfcheck bool) (changed bool, err erro
 		}
 
 		// Apply the status as all other Hubs would in order to check if it's valid.
-		_, _, err = hub.ApplyAnnouncement(id.Hub, newInfoData, conf.MainMapName, conf.MainMapScope, true)
+		_, _, _, err = hub.ApplyAnnouncement(id.Hub, newInfoData, conf.MainMapName, conf.MainMapScope, true)
 		if err != nil {
-			return false, fmt.Errorf("failed to apply new status: %s", err)
+			return false, fmt.Errorf("failed to apply new announcement: %s", err)
 		}
 		id.infoExportCache = newInfoData
 
@@ -192,7 +192,7 @@ func (id *Identity) MaintainStatus(lanes []*hub.Lane, load *int, selfcheck bool)
 		}
 
 		// Apply the status as all other Hubs would in order to check if it's valid.
-		_, _, err = hub.ApplyStatus(id.Hub, newStatusData, conf.MainMapName, conf.MainMapScope, true)
+		_, _, _, err = hub.ApplyStatus(id.Hub, newStatusData, conf.MainMapName, conf.MainMapScope, true)
 		if err != nil {
 			return false, fmt.Errorf("failed to apply new status: %s", err)
 		}

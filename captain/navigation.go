@@ -280,14 +280,14 @@ optimize:
 		} else if createdConnections < result.MaxConnect {
 			attemptedConnections++
 
-			crane, err := EstablishPublicLane(ctx, connectTo.Hub)
-			if err != nil {
-				log.Warningf("spn/captain: failed to establish lane to %s: %s", connectTo, err)
+			crane, tErr := EstablishPublicLane(ctx, connectTo.Hub)
+			if !tErr.IsOK() {
+				log.Warningf("spn/captain: failed to establish lane to %s: %s", connectTo.Hub, tErr)
 			} else {
 				createdConnections++
 				crane.NetState.UpdateLastSuggestedAt()
 
-				log.Infof("spn/captain: established lane to %s", connectTo)
+				log.Infof("spn/captain: established lane to %s", connectTo.Hub)
 			}
 		}
 	}

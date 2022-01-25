@@ -46,16 +46,16 @@ func EstablishCrane(ctx context.Context, dst *hub.Hub) (*docks.Crane, error) {
 	return crane, nil
 }
 
-func EstablishPublicLane(ctx context.Context, dst *hub.Hub) (*docks.Crane, error) {
+func EstablishPublicLane(ctx context.Context, dst *hub.Hub) (*docks.Crane, *terminal.Error) {
 	crane, err := EstablishCrane(ctx, dst)
 	if err != nil {
-		return nil, err
+		return nil, terminal.ErrInternalError.With("failed to establish crane: %w", err)
 	}
 
 	// Publish as Lane.
 	publishOp, tErr := NewPublishOp(crane.Controller, publicIdentity)
 	if tErr != nil {
-		return nil, fmt.Errorf("failed to publish: %w", err)
+		return nil, terminal.ErrInternalError.With("failed to publish: %w", err)
 	}
 
 	// Wait for publishing to complete.
@@ -72,7 +72,7 @@ func EstablishPublicLane(ctx context.Context, dst *hub.Hub) (*docks.Crane, error
 		return nil, terminal.ErrStopping
 
 	case <-ctx.Done():
-		return nil, context.Canceled
+		return nil, terminal.ErrCanceled
 	}
 
 	// Query all gossip msgs.

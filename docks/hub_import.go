@@ -16,6 +16,8 @@ import (
 var hubImportLock sync.Mutex
 
 func ImportAndVerifyHubInfo(ctx context.Context, hubID string, announcementData, statusData []byte, mapName string, scope hub.Scope) (h *hub.Hub, forward bool, tErr *terminal.Error) {
+	var firstErr *terminal.Error
+
 	// Synchronize import, as we might easily learn of a new hub from different
 	// gossip channels simultaneously.
 	hubImportLock.Lock()
@@ -27,83 +29,133 @@ func ImportAndVerifyHubInfo(ctx context.Context, hubID string, announcementData,
 	}
 
 	// Import Announcement, if given.
-	var err error
-	var forwardPart bool
+	var hubKnown, hubChanged bool
 	if announcementData != nil {
-		h, forwardPart, err = hub.ApplyAnnouncement(nil, announcementData, mapName, scope, false)
-		if err != nil {
-			return h, false, terminal.ErrInternalError.With("failed to apply announcement: %w", err)
+		hubFromMsg, known, changed, err := hub.ApplyAnnouncement(nil, announcementData, mapName, scope, false)
+		if err != nil && firstErr == nil {
+			log.Errorf("failed to apply announcement: %w", err)
+			firstErr = terminal.ErrInternalError.With("failed to apply announcement: %w", err)
 		}
-		if forwardPart {
-			forward = true
+		if known {
+			hubKnown = true
+		}
+		if changed {
+			hubChanged = true
+		}
+		if hubFromMsg != nil {
+			h = hubFromMsg
 		}
 	}
 
 	// Import Status, if given.
 	if statusData != nil {
-		h, forwardPart, err = hub.ApplyStatus(h, statusData, mapName, scope, false)
-		if err != nil {
-			return h, false, terminal.ErrInternalError.With("failed to apply status: %w", err)
+		hubFromMsg, known, changed, err := hub.ApplyStatus(h, statusData, mapName, scope, false)
+		if err != nil && firstErr == nil {
+			log.Errorf("failed to apply status: %w", err)
+			firstErr = terminal.ErrInternalError.With("failed to apply status: %w", err)
 		}
-		if forwardPart {
-			forward = true
+		if known && announcementData == nil {
+			// If we parsed an announcement before, "known" will always be true here,
+			// as we supply hub.ApplyStatus with a hub.
+			hubKnown = true
+		}
+		if changed {
+			hubChanged = true
+		}
+		if hubFromMsg != nil {
+			h = hubFromMsg
+		}
+	}
+
+	// Only continue if we now have a Hub.
+	if h == nil {
+		if firstErr != nil {
+			return nil, false, firstErr
+		} else {
+			return nil, false, terminal.ErrInternalError.With("got not hub after data import")
 		}
 	}
 
 	// Check if the given hub ID matches.
-	if hubID != "" && h.ID != hubID {
-		return nil, false, terminal.ErrInternalError.With("hub mismatch")
+	if hubID != "" && h.ID != hubID && firstErr == nil {
+		firstErr = terminal.ErrInternalError.With("hub mismatch")
 	}
 
-	// Verify hub if not yet verified.
-	if !h.Verified() && conf.PublicHub() {
+	// Verify hub if:
+	// - There is no error up until here.
+	// - There has been any change.
+	// - The hub is not verified yet.
+	// - We're a public Hub.
+	if firstErr == nil && hubChanged && !h.Verified() && conf.PublicHub() {
 		if !conf.HubHasIPv4() && !conf.HubHasIPv6() {
-			return nil, false, terminal.ErrInternalError.With("no hub networks set")
+			firstErr = terminal.ErrInternalError.With("no hub networks set")
 		}
 		if h.Info.IPv4 != nil && conf.HubHasIPv4() {
-			err = verifyHubIP(ctx, h, h.Info.IPv4)
+			err := verifyHubIP(ctx, h, h.Info.IPv4)
 			if err != nil {
-				return nil, forward, terminal.ErrIntegrity.With("failed to verify IPv4 address %s of %s: %w", h.Info.IPv4, h, err)
+				firstErr = terminal.ErrIntegrity.With("failed to verify IPv4 address %s of %s: %w", h.Info.IPv4, h, err)
 			}
 		}
 		if h.Info.IPv6 != nil && conf.HubHasIPv6() {
-			err = verifyHubIP(ctx, h, h.Info.IPv6)
+			err := verifyHubIP(ctx, h, h.Info.IPv6)
 			if err != nil {
-				return nil, forward, terminal.ErrIntegrity.With("failed to verify IPv6 address %s of %s: %w", h.Info.IPv6, h, err)
+				firstErr = terminal.ErrIntegrity.With("failed to verify IPv6 address %s of %s: %w", h.Info.IPv6, h, err)
 			}
 		}
-		h.Lock()
-		h.VerifiedIPs = true
-		h.Unlock()
-		log.Infof("spn/docks: verified IPs of %s: IPv4=%s IPv6=%s", h, h.Info.IPv4, h.Info.IPv6)
+
+		if firstErr != nil {
+			func() {
+				h.Lock()
+				defer h.Unlock()
+				h.InvalidInfo = true
+			}()
+			log.Warningf("spn/docks: failed to verify IPs of %s: %s", h, firstErr)
+		} else {
+			func() {
+				h.Lock()
+				defer h.Unlock()
+				h.VerifiedIPs = true
+			}()
+			log.Infof("spn/docks: verified IPs of %s: IPv4=%s IPv6=%s", h, h.Info.IPv4, h.Info.IPv6)
+		}
 	}
 
-	// Only save if there is new data, ie. if we forward.
-	if !forward {
-		return h, forward, nil
+	// Dismiss initial imports with errors.
+	if !hubKnown && firstErr != nil {
+		return nil, false, firstErr
 	}
+
+	// Don't do anything if nothing changed.
+	if !hubChanged {
+		return h, false, firstErr
+	}
+
+	// We now have one of:
+	// - A unknown Hub without error.
+	// - A known Hub without error.
+	// - A known Hub with error, which we want to save and propagate.
 
 	// Save the Hub to the database.
-	err = h.Save()
+	err := h.Save()
 	if err != nil {
-		return nil, forward, terminal.ErrInternalError.With("failed to persist %s: %w", h, err)
+		log.Errorf("spn/docks: failed to persist %s: %s", h, err)
 	}
 
 	// Save the raw messages to the database.
 	if announcementData != nil {
 		err = hub.SaveHubMsg(h.ID, h.Map, hub.MsgTypeAnnouncement, announcementData)
 		if err != nil {
-			log.Warningf("spn/docks: failed to save raw announcement msg of %s: %s", h, err)
+			log.Errorf("spn/docks: failed to save raw announcement msg of %s: %s", h, err)
 		}
 	}
 	if statusData != nil {
 		err = hub.SaveHubMsg(h.ID, h.Map, hub.MsgTypeStatus, statusData)
 		if err != nil {
-			log.Warningf("spn/docks: failed to save raw status msg of %s: %s", h, err)
+			log.Errorf("spn/docks: failed to save raw status msg of %s: %s", h, err)
 		}
 	}
 
-	return h, forward, nil
+	return h, true, firstErr
 }
 
 func verifyHubIP(ctx context.Context, h *hub.Hub, ip net.IP) error {
