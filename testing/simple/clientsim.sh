@@ -14,11 +14,11 @@ if [[ ! -f "../../client" ]]; then
 fi
 
 bin_path="$(realpath ../../client)"
-data_path="$(realpath ./data)"
+data_path="$(realpath ./testdata)"
 if [[ ! -d "$data_path" ]]; then
   mkdir "$data_path"
 fi
-shared_path="$(realpath ./data/shared)"
+shared_path="$(realpath ./testdata/shared)"
 if [[ ! -d "$shared_path" ]]; then
   mkdir "$shared_path"
 fi

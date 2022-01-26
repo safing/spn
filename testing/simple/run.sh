@@ -21,11 +21,11 @@ fi
 
 # Create variables.
 SPN_TEST_BIN="$(realpath ../../cmds/hub/hub)"
-SPN_TEST_DATA_DIR="$(realpath ./data)"
+SPN_TEST_DATA_DIR="$(realpath ./testdata)"
 if [[ ! -d "$SPN_TEST_DATA_DIR" ]]; then
   mkdir "$SPN_TEST_DATA_DIR"
 fi
-SPN_TEST_SHARED_DATA_DIR="$(realpath ./data/shared)"
+SPN_TEST_SHARED_DATA_DIR="$(realpath ./testdata/shared)"
 if [[ ! -d "$SPN_TEST_SHARED_DATA_DIR" ]]; then
   mkdir "$SPN_TEST_SHARED_DATA_DIR"
 fi
