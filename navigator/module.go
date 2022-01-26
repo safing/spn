@@ -61,6 +61,7 @@ func start() error {
 
 		// Only register metrics on Hubs, as they only make sense there.
 		registerMetrics()
+
 	}
 
 	return nil

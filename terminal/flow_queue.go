@@ -13,7 +13,7 @@ import (
 
 const (
 	DefaultQueueSize        = 1000
-	MaxQueueSize            = 10000
+	MaxQueueSize            = 60000
 	forceReportBelowPercent = 0.75
 )
 
@@ -51,7 +51,7 @@ type DuplexFlowQueue struct {
 
 func NewDuplexFlowQueue(
 	ti TerminalInterface,
-	queueSize uint16,
+	queueSize uint32,
 	submitUpstream func(*container.Container),
 ) *DuplexFlowQueue {
 	dfq := &DuplexFlowQueue{

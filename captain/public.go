@@ -147,7 +147,7 @@ func maintainPublicStatus(ctx context.Context, task *modules.Task) error {
 	lanes := make([]*hub.Lane, 0, len(cranes))
 	for _, crane := range cranes {
 		// Ignore private, stopped or stopping cranes.
-		if !crane.Public() || crane.Stopped() || crane.Stopping.IsSet() {
+		if !crane.Public() || crane.Stopped() || crane.IsStopping() {
 			continue
 		}
 

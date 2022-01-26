@@ -24,11 +24,14 @@ func (m *Map) UpdateIntel(update *hub.Intel) error {
 	// Update the map's reference to the intel data.
 	m.intel = update
 
-	// go through map
+	// Update pins with new intel data.
 	for _, pin := range m.all {
 		m.updateIntelStatuses(pin)
 		m.updateInfoOverrides(pin)
 	}
+
+	// Configure the map's regions.
+	m.updateRegions(m.intel.Regions)
 
 	log.Infof("spn/navigator: updated intel on map %s", m.Name)
 

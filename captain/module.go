@@ -8,6 +8,7 @@ import (
 
 	"github.com/safing/portbase/api"
 	"github.com/safing/portbase/config"
+	"github.com/safing/portbase/log"
 	"github.com/safing/portbase/modules"
 	"github.com/safing/portbase/modules/subsystems"
 	"github.com/safing/portbase/rng"
@@ -81,7 +82,7 @@ func start() error {
 		return err
 	}
 	if err := updateSPNIntel(module.Ctx, nil); err != nil {
-		return err
+		log.Errorf("spn/captain: failed to update SPN intel: %s", err)
 	}
 
 	// identity and piers

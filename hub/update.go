@@ -73,26 +73,26 @@ func SignHubMsg(msg []byte, env *jess.Envelope, enableTofu bool) ([]byte, error)
 // OpenHubMsg opens a signed hub msg and verifies the signature using the
 // provided hub or the local database. If TOFU is enabled, the signature is
 // always accepted, if valid.
-func OpenHubMsg(hub *Hub, data []byte, mapName string, tofu bool) (msg []byte, sendingHub *Hub, err error) {
+func OpenHubMsg(hub *Hub, data []byte, mapName string, tofu bool) (msg []byte, sendingHub *Hub, known bool, err error) {
 	letter, err := jess.LetterFromDSD(data)
 	if err != nil {
-		return nil, nil, fmt.Errorf("malformed letter: %s", err)
+		return nil, nil, false, fmt.Errorf("malformed letter: %s", err)
 	}
 
 	// check signatures
 	var seal *jess.Seal
 	switch len(letter.Signatures) {
 	case 0:
-		return nil, nil, errors.New("missing signature")
+		return nil, nil, false, errors.New("missing signature")
 	case 1:
 		seal = letter.Signatures[0]
 	default:
-		return nil, nil, fmt.Errorf("too many signatures (%d)", len(letter.Signatures))
+		return nil, nil, false, fmt.Errorf("too many signatures (%d)", len(letter.Signatures))
 	}
 
 	// check signature signer ID
 	if seal.ID == "" {
-		return nil, nil, errors.New("signature is missing signer ID")
+		return nil, nil, false, errors.New("signature is missing signer ID")
 	}
 
 	// get hub for public key
@@ -100,24 +100,28 @@ func OpenHubMsg(hub *Hub, data []byte, mapName string, tofu bool) (msg []byte, s
 		hub, err = GetHub(mapName, seal.ID)
 		if err != nil {
 			if err != database.ErrNotFound {
-				return nil, nil, fmt.Errorf("failed to get existing hub %s: %s", seal.ID, err)
+				return nil, nil, false, fmt.Errorf("failed to get existing hub %s: %s", seal.ID, err)
 			}
 			hub = nil
+		} else {
+			known = true
 		}
+	} else {
+		known = true
 	}
 
 	var truststore jess.TrustStore
 	if hub != nil && hub.PublicKey != nil { // bootstrap entries will not have a public key
 		// check ID integrity
 		if hub.ID != seal.ID {
-			return nil, nil, fmt.Errorf("ID mismatch with hub msg ID %s and hub ID %s", seal.ID, hub.ID)
+			return nil, hub, known, fmt.Errorf("ID mismatch with hub msg ID %s and hub ID %s", seal.ID, hub.ID)
 		}
 		if !verifyHubID(seal.ID, hub.PublicKey.Scheme, hub.PublicKey.Key) {
-			return nil, nil, fmt.Errorf("ID integrity of %s violated with existing key", seal.ID)
+			return nil, hub, known, fmt.Errorf("ID integrity of %s violated with existing key", seal.ID)
 		}
 	} else {
 		if !tofu {
-			return nil, nil, fmt.Errorf("hub msg ID %s unknown (missing announcement)", seal.ID)
+			return nil, nil, false, fmt.Errorf("hub msg ID %s unknown (missing announcement)", seal.ID)
 		}
 
 		// trust on first use, extract key from keys
@@ -127,16 +131,16 @@ func OpenHubMsg(hub *Hub, data []byte, mapName string, tofu bool) (msg []byte, s
 		var pubkey *jess.Seal
 		switch len(letter.Keys) {
 		case 0:
-			return nil, nil, fmt.Errorf("missing key for TOFU of %s", seal.ID)
+			return nil, nil, false, fmt.Errorf("missing key for TOFU of %s", seal.ID)
 		case 1:
 			pubkey = letter.Keys[0]
 		default:
-			return nil, nil, fmt.Errorf("too many keys (%d) for TOFU of %s", len(letter.Keys), seal.ID)
+			return nil, nil, false, fmt.Errorf("too many keys (%d) for TOFU of %s", len(letter.Keys), seal.ID)
 		}
 
 		// check ID integrity
 		if !verifyHubID(seal.ID, seal.Scheme, pubkey.Value) {
-			return nil, nil, fmt.Errorf("ID integrity of %s violated with new key", seal.ID)
+			return nil, nil, false, fmt.Errorf("ID integrity of %s violated with new key", seal.ID)
 		}
 
 		hub = &Hub{
@@ -151,7 +155,7 @@ func OpenHubMsg(hub *Hub, data []byte, mapName string, tofu bool) (msg []byte, s
 		}
 		err = hub.PublicKey.LoadKey()
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, false, err
 		}
 	}
 
@@ -164,10 +168,10 @@ func OpenHubMsg(hub *Hub, data []byte, mapName string, tofu bool) (msg []byte, s
 	// check signature
 	err = letter.Verify(hubMsgRequirements, truststore)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, false, err
 	}
 
-	return letter.Data, hub, nil
+	return letter.Data, hub, known, nil
 }
 
 // Export exports the announcement with the given signature configuration.
@@ -183,18 +187,39 @@ func (ha *Announcement) Export(env *jess.Envelope) ([]byte, error) {
 
 // ApplyAnnouncement applies the announcement to the Hub if it passes all the
 // checks. If no Hub is provided, it is loaded from the database or created.
-func ApplyAnnouncement(hub *Hub, data []byte, mapName string, scope Scope, selfcheck bool) (_ *Hub, forward bool, err error) {
+func ApplyAnnouncement(existingHub *Hub, data []byte, mapName string, scope Scope, selfcheck bool) (hub *Hub, known, changed bool, err error) {
+	// Set valid/invalid status based on the return error.
+	var announcement *Announcement
+	defer func() {
+		if hub != nil {
+			if err != nil && !errors.Is(err, ErrOldData) {
+				hub.InvalidInfo = true
+			} else {
+				hub.InvalidInfo = false
+			}
+		}
+	}()
+
 	// open and verify
-	msg, hub, err := OpenHubMsg(hub, data, mapName, true)
+	var msg []byte
+	msg, hub, known, err = OpenHubMsg(existingHub, data, mapName, true)
+
+	// Lock hub if we have one.
+	if hub != nil && !selfcheck {
+		hub.Lock()
+		defer hub.Unlock()
+	}
+
+	// Check if there was an error with the Hub msg.
 	if err != nil {
-		return nil, false, err
+		return
 	}
 
 	// parse
-	announcement := &Announcement{}
+	announcement = &Announcement{}
 	_, err = dsd.Load(msg, announcement)
 	if err != nil {
-		return nil, false, err
+		return
 	}
 
 	// integrity check
@@ -204,7 +229,8 @@ func ApplyAnnouncement(hub *Hub, data []byte, mapName string, scope Scope, selfc
 	// a signed version of the ID to mitigate fake IDs.
 	// Fake IDs are possible because the hash algorithm of the ID is dynamic.
 	if hub.ID != announcement.ID {
-		return nil, false, fmt.Errorf("announcement ID %q mismatches hub ID %q", announcement.ID, hub.ID)
+		err = fmt.Errorf("announcement ID %q mismatches hub ID %q", announcement.ID, hub.ID)
+		return
 	}
 
 	// version check
@@ -214,24 +240,34 @@ func ApplyAnnouncement(hub *Hub, data []byte, mapName string, scope Scope, selfc
 		case announcement.Timestamp == hub.Info.Timestamp && !selfcheck:
 			// The new copy is not saved, as we expect the versions to be identical.
 			// Also, the new version has not been validated at this point.
-			return hub, false, nil
+			return
 		case announcement.Timestamp < hub.Info.Timestamp:
 			// Received an old version, do not update.
-			return hub, false, fmt.Errorf(
-				"announcement from %s @ %s is older than current status @ %s",
-				hub, time.Unix(announcement.Timestamp, 0), time.Unix(hub.Info.Timestamp, 0),
+			err = fmt.Errorf(
+				"%wannouncement from %s @ %s is older than current status @ %s",
+				ErrOldData, hub.StringWithoutLocking(), time.Unix(announcement.Timestamp, 0), time.Unix(hub.Info.Timestamp, 0),
 			)
+			return
 		}
+	}
+
+	// We received a new version.
+	changed = true
+
+	// Update timestamp here already in case validation fails.
+	if hub.Info != nil {
+		hub.Info.Timestamp = announcement.Timestamp
 	}
 
 	// Validate the announcement.
 	err = hub.validateAnnouncement(announcement, scope)
 	if err != nil {
 		if selfcheck || hub.FirstSeen.IsZero() {
-			return nil, false, fmt.Errorf("failed to validate announcement of %s: %w", hub, err)
+			err = fmt.Errorf("failed to validate announcement of %s: %w", hub.StringWithoutLocking(), err)
+			return
 		}
 
-		log.Warningf("received an invalid announcement of %s: %s", hub, err)
+		log.Warningf("received an invalid announcement of %s: %s", hub.StringWithoutLocking(), err)
 		// If a previously fully validated Hub publishes an update that breaks it, a
 		// soft-fail will accept the faulty changes, but mark is as invalid and
 		// forward it to neighbors. This way the invalid update is propagated through
@@ -239,28 +275,24 @@ func ApplyAnnouncement(hub *Hub, data []byte, mapName string, scope Scope, selfc
 		// until the issue is fixed.
 	}
 
-	// Apply the result to the Hub.
-	if !selfcheck {
-		hub.Lock()
-		defer hub.Unlock()
-	}
-
-	// Only save announcement if it is valid, else mark it as invalid.
+	// Only save announcement if it is valid.
 	if err == nil {
 		hub.Info = announcement
-		hub.InvalidInfo = false
-	} else {
-		hub.InvalidInfo = true
 	}
 	// Set FirstSeen timestamp when we see this Hub for the first time.
 	if hub.FirstSeen.IsZero() {
 		hub.FirstSeen = time.Now().UTC()
 	}
 
-	return hub, true, nil
+	return
 }
 
 func (hub *Hub) validateAnnouncement(announcement *Announcement, scope Scope) error {
+	// value formatting
+	if err := announcement.validateFormatting(); err != nil {
+		return err
+	}
+
 	// check timestamp
 	if announcement.Timestamp > time.Now().Add(clockSkewTolerance).Unix() {
 		return fmt.Errorf(
@@ -268,11 +300,6 @@ func (hub *Hub) validateAnnouncement(announcement *Announcement, scope Scope) er
 			announcement.ID,
 			time.Unix(announcement.Timestamp, 0),
 		)
-	}
-
-	// value formatting
-	if err := announcement.validateFormatting(); err != nil {
-		return err
 	}
 
 	// check for illegal IP address changes
@@ -349,18 +376,38 @@ func (hs *Status) Export(env *jess.Envelope) ([]byte, error) {
 }
 
 // ApplyStatus applies a status update if it passes all the checks.
-func ApplyStatus(hub *Hub, data []byte, mapName string, scope Scope, selfcheck bool) (_ *Hub, forward bool, err error) {
+func ApplyStatus(existingHub *Hub, data []byte, mapName string, scope Scope, selfcheck bool) (hub *Hub, known, changed bool, err error) {
+	// Set valid/invalid status based on the return error.
+	defer func() {
+		if hub != nil {
+			if err != nil && !errors.Is(err, ErrOldData) {
+				hub.InvalidStatus = true
+			} else {
+				hub.InvalidStatus = false
+			}
+		}
+	}()
+
 	// open and verify
-	msg, hub, err := OpenHubMsg(hub, data, mapName, false)
+	var msg []byte
+	msg, hub, known, err = OpenHubMsg(existingHub, data, mapName, false)
+
+	// Lock hub if we have one.
+	if hub != nil && !selfcheck {
+		hub.Lock()
+		defer hub.Unlock()
+	}
+
+	// Check if there was an error with the Hub msg.
 	if err != nil {
-		return nil, false, err
+		return
 	}
 
 	// parse
 	status := &Status{}
 	_, err = dsd.Load(msg, status)
 	if err != nil {
-		return nil, false, err
+		return
 	}
 
 	// version check
@@ -370,24 +417,34 @@ func ApplyStatus(hub *Hub, data []byte, mapName string, scope Scope, selfcheck b
 		case status.Timestamp == hub.Status.Timestamp && !selfcheck:
 			// The new copy is not saved, as we expect the versions to be identical.
 			// Also, the new version has not been validated at this point.
-			return hub, false, nil
+			return
 		case status.Timestamp < hub.Status.Timestamp:
 			// Received an old version, do not update.
-			return hub, false, fmt.Errorf(
-				"status from %s @ %s is older than current status @ %s",
-				hub, time.Unix(status.Timestamp, 0), time.Unix(hub.Status.Timestamp, 0),
+			err = fmt.Errorf(
+				"%wstatus from %s @ %s is older than current status @ %s",
+				ErrOldData, hub.StringWithoutLocking(), time.Unix(status.Timestamp, 0), time.Unix(hub.Status.Timestamp, 0),
 			)
+			return
 		}
+	}
+
+	// We received a new version.
+	changed = true
+
+	// Update timestamp here already in case validation fails.
+	if hub.Status != nil {
+		hub.Status.Timestamp = status.Timestamp
 	}
 
 	// Validate the status.
 	err = hub.validateStatus(status)
 	if err != nil {
 		if selfcheck {
-			return nil, false, fmt.Errorf("failed to validate status of %s: %w", hub, err)
+			err = fmt.Errorf("failed to validate status of %s: %w", hub.StringWithoutLocking(), err)
+			return
 		}
 
-		log.Warningf("spn/hub: received an invalid status of %s: %s", hub, err)
+		log.Warningf("spn/hub: received an invalid status of %s: %s", hub.StringWithoutLocking(), err)
 		// If a previously fully validated Hub publishes an update that breaks it, a
 		// soft-fail will accept the faulty changes, but mark is as invalid and
 		// forward it to neighbors. This way the invalid update is propagated through
@@ -395,24 +452,20 @@ func ApplyStatus(hub *Hub, data []byte, mapName string, scope Scope, selfcheck b
 		// until the issue is fixed.
 	}
 
-	// Apply the result to the Hub.
-	if !selfcheck {
-		hub.Lock()
-		defer hub.Unlock()
-	}
-
 	// Only save status if it is valid, else mark it as invalid.
 	if err == nil {
 		hub.Status = status
-		hub.InvalidStatus = false
-	} else {
-		hub.InvalidStatus = true
 	}
 
-	return hub, true, nil
+	return
 }
 
 func (hub *Hub) validateStatus(status *Status) error {
+	// value formatting
+	if err := status.validateFormatting(); err != nil {
+		return err
+	}
+
 	// check timestamp
 	if status.Timestamp > time.Now().Add(clockSkewTolerance).Unix() {
 		return fmt.Errorf(
@@ -420,11 +473,6 @@ func (hub *Hub) validateStatus(status *Status) error {
 			hub.ID,
 			time.Unix(status.Timestamp, 0),
 		)
-	}
-
-	// value formatting
-	if err := status.validateFormatting(); err != nil {
-		return err
 	}
 
 	// TODO: validate status.Keys

@@ -15,13 +15,13 @@ func CalculateLaneCost(latency time.Duration, capacity int) (cost float32) {
 		cost += float32(latency) / float32(time.Millisecond)
 	} else {
 		// Add cautious default cost if latency is not available.
-		cost += 100
+		cost += 1000
 	}
 
 	switch {
 	case capacity == 0:
 		// Add cautious default cost if capacity is not available.
-		cost += 400
+		cost += 4000
 	case capacity < cap1Mbit:
 		// - Between 1000 and 10000 points for ranges below 1Mbit/s
 		cost += 1000 + 9000*((cap1Mbit-float32(capacity))/cap1Mbit)
@@ -46,13 +46,13 @@ func CalculateLaneCost(latency time.Duration, capacity int) (cost float32) {
 func CalculateHubCost(load int) (cost float32) {
 	switch {
 	case load >= 100:
-		return 1000
+		return 10000
 	case load >= 95:
-		return 100
+		return 1000
 	case load >= 80:
-		return 50
+		return 500
 	default:
-		return 10
+		return 100
 	}
 }
 

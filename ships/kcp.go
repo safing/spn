@@ -18,12 +18,15 @@ type KCPPier struct {
 	PierBase
 }
 
+// TODO: Find a replacement for kcp, which turned out to not fit our use case.
+/*
 func init() {
 	Register("kcp", &Builder{
 		LaunchShip:    launchKCPShip,
 		EstablishPier: establishKCPPier,
 	})
 }
+*/
 
 func launchKCPShip(ctx context.Context, transport *hub.Transport, ip net.IP) (Ship, error) {
 	conn, err := kcp.Dial(net.JoinHostPort(ip.String(), portToA(transport.Port)))

@@ -33,7 +33,7 @@ const (
 // TerminalOpts holds configuration for the terminal.
 type TerminalOpts struct {
 	Version   uint8  `json:"-"`
-	QueueSize uint16 `json:"qs,omitempty"`
+	QueueSize uint32 `json:"qs,omitempty"`
 	Padding   uint16 `json:"p,omitempty"`
 	Encrypt   bool   `json:"e,omitempty"`
 }

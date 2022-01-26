@@ -149,7 +149,7 @@ func TestTerminals(t *testing.T) {
 }
 
 func TestTerminalsWithEncryption(t *testing.T) {
-	var testQueueSize uint16 = DefaultQueueSize
+	var testQueueSize uint32 = DefaultQueueSize
 	countToQueueSize := uint64(testQueueSize)
 
 	initMsg := &TerminalOpts{

@@ -14,4 +14,7 @@ var (
 
 	// ErrTemporaryValidationError is returned when a validation error might be temporary.
 	ErrTemporaryValidationError = errors.New("temporary validation error")
+
+	// ErrOldData is returned when received data is outdated.
+	ErrOldData = errors.New("")
 )

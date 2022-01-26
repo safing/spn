@@ -260,13 +260,18 @@ optimize:
 	var createdConnections int
 	var attemptedConnections int
 	for _, connectTo := range result.SuggestedConnections {
+		// Skip duplicates.
+		if connectTo.Duplicate {
+			continue
+		}
+
 		// Check if connection already exists.
-		crane := docks.GetAssignedCrane(connectTo.ID)
+		crane := docks.GetAssignedCrane(connectTo.Hub.ID)
 		if crane != nil {
 			// Update last suggested timestamp.
 			crane.NetState.UpdateLastSuggestedAt()
 			// Continue crane if stopping.
-			if crane.Stopping.SetToIf(true, false) {
+			if crane.AbortStopping() {
 				log.Infof("spn/captain: optimization aborted retiring of %s, removed stopping mark", crane)
 				crane.NotifyUpdate()
 			}
@@ -275,14 +280,14 @@ optimize:
 		} else if createdConnections < result.MaxConnect {
 			attemptedConnections++
 
-			crane, err := EstablishPublicLane(ctx, connectTo)
-			if err != nil {
-				log.Warningf("spn/captain: failed to establish lane to %s: %s", connectTo, err)
+			crane, tErr := EstablishPublicLane(ctx, connectTo.Hub)
+			if !tErr.IsOK() {
+				log.Warningf("spn/captain: failed to establish lane to %s: %s", connectTo.Hub, tErr)
 			} else {
 				createdConnections++
 				crane.NetState.UpdateLastSuggestedAt()
 
-				log.Infof("spn/captain: established lane to %s", connectTo)
+				log.Infof("spn/captain: established lane to %s", connectTo.Hub)
 			}
 		}
 	}
@@ -308,7 +313,7 @@ optimize:
 			switch {
 			case !crane.IsMine():
 				// Skip cranes built by others.
-			case crane.Stopped() || crane.Stopping.IsSet():
+			case crane.Stopped() || crane.IsStopping():
 				// Skip cranes that are stopped or stopping.
 			case crane.NetState.LastSuggestedAt().After(
 				time.Now().Add(-stopCraneAfterBeingUnsuggestedFor),
@@ -316,7 +321,7 @@ optimize:
 				// Skip cranes that were recently suggested.
 			default:
 				// Mark crane as stopping.
-				if crane.Stopping.SetToIf(false, true) {
+				if crane.MarkStopping() {
 					log.Infof("spn/captain: retiring %s, marked as stopping", crane)
 					crane.NotifyUpdate()
 				}

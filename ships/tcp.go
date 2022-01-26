@@ -27,7 +27,7 @@ func init() {
 
 func launchTCPShip(ctx context.Context, transport *hub.Transport, ip net.IP) (Ship, error) {
 	dialer := &net.Dialer{
-		Timeout: 3 * time.Second,
+		Timeout: 30 * time.Second,
 	}
 	conn, err := dialer.DialContext(ctx, "tcp", net.JoinHostPort(ip.String(), portToA(transport.Port)))
 	if err != nil {

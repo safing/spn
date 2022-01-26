@@ -70,7 +70,6 @@ var (
 	publicCfgOptionTransports        config.StringArrayOption
 	publicCfgOptionTransportsDefault = []string{
 		"tcp:17",
-		"kcp:17",
 	}
 	publicCfgOptionTransportsOrder = 520
 
