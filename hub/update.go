@@ -245,7 +245,7 @@ func ApplyAnnouncement(existingHub *Hub, data []byte, mapName string, scope Scop
 			// Received an old version, do not update.
 			err = fmt.Errorf(
 				"%wannouncement from %s @ %s is older than current status @ %s",
-				ErrOldData, hub, time.Unix(announcement.Timestamp, 0), time.Unix(hub.Info.Timestamp, 0),
+				ErrOldData, hub.StringWithoutLocking(), time.Unix(announcement.Timestamp, 0), time.Unix(hub.Info.Timestamp, 0),
 			)
 			return
 		}
@@ -263,11 +263,11 @@ func ApplyAnnouncement(existingHub *Hub, data []byte, mapName string, scope Scop
 	err = hub.validateAnnouncement(announcement, scope)
 	if err != nil {
 		if selfcheck || hub.FirstSeen.IsZero() {
-			err = fmt.Errorf("failed to validate announcement of %s: %w", hub, err)
+			err = fmt.Errorf("failed to validate announcement of %s: %w", hub.StringWithoutLocking(), err)
 			return
 		}
 
-		log.Warningf("received an invalid announcement of %s: %s", hub, err)
+		log.Warningf("received an invalid announcement of %s: %s", hub.StringWithoutLocking(), err)
 		// If a previously fully validated Hub publishes an update that breaks it, a
 		// soft-fail will accept the faulty changes, but mark is as invalid and
 		// forward it to neighbors. This way the invalid update is propagated through
@@ -288,6 +288,11 @@ func ApplyAnnouncement(existingHub *Hub, data []byte, mapName string, scope Scop
 }
 
 func (hub *Hub) validateAnnouncement(announcement *Announcement, scope Scope) error {
+	// value formatting
+	if err := announcement.validateFormatting(); err != nil {
+		return err
+	}
+
 	// check timestamp
 	if announcement.Timestamp > time.Now().Add(clockSkewTolerance).Unix() {
 		return fmt.Errorf(
@@ -295,11 +300,6 @@ func (hub *Hub) validateAnnouncement(announcement *Announcement, scope Scope) er
 			announcement.ID,
 			time.Unix(announcement.Timestamp, 0),
 		)
-	}
-
-	// value formatting
-	if err := announcement.validateFormatting(); err != nil {
-		return err
 	}
 
 	// check for illegal IP address changes
@@ -422,7 +422,7 @@ func ApplyStatus(existingHub *Hub, data []byte, mapName string, scope Scope, sel
 			// Received an old version, do not update.
 			err = fmt.Errorf(
 				"%wstatus from %s @ %s is older than current status @ %s",
-				ErrOldData, hub, time.Unix(status.Timestamp, 0), time.Unix(hub.Status.Timestamp, 0),
+				ErrOldData, hub.StringWithoutLocking(), time.Unix(status.Timestamp, 0), time.Unix(hub.Status.Timestamp, 0),
 			)
 			return
 		}
@@ -440,11 +440,11 @@ func ApplyStatus(existingHub *Hub, data []byte, mapName string, scope Scope, sel
 	err = hub.validateStatus(status)
 	if err != nil {
 		if selfcheck {
-			err = fmt.Errorf("failed to validate status of %s: %w", hub, err)
+			err = fmt.Errorf("failed to validate status of %s: %w", hub.StringWithoutLocking(), err)
 			return
 		}
 
-		log.Warningf("spn/hub: received an invalid status of %s: %s", hub, err)
+		log.Warningf("spn/hub: received an invalid status of %s: %s", hub.StringWithoutLocking(), err)
 		// If a previously fully validated Hub publishes an update that breaks it, a
 		// soft-fail will accept the faulty changes, but mark is as invalid and
 		// forward it to neighbors. This way the invalid update is propagated through
@@ -461,6 +461,11 @@ func ApplyStatus(existingHub *Hub, data []byte, mapName string, scope Scope, sel
 }
 
 func (hub *Hub) validateStatus(status *Status) error {
+	// value formatting
+	if err := status.validateFormatting(); err != nil {
+		return err
+	}
+
 	// check timestamp
 	if status.Timestamp > time.Now().Add(clockSkewTolerance).Unix() {
 		return fmt.Errorf(
@@ -468,11 +473,6 @@ func (hub *Hub) validateStatus(status *Status) error {
 			hub.ID,
 			time.Unix(status.Timestamp, 0),
 		)
-	}
-
-	// value formatting
-	if err := status.validateFormatting(); err != nil {
-		return err
 	}
 
 	// TODO: validate status.Keys
