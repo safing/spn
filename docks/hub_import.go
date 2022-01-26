@@ -74,9 +74,10 @@ func ImportAndVerifyHubInfo(ctx context.Context, hubID string, announcementData,
 		}
 	}
 
-	// Check if the given hub ID matches.
-	if hubID != "" && h.ID != hubID && firstErr == nil {
-		firstErr = terminal.ErrInternalError.With("hub mismatch")
+	// Abort if the given hub ID does not match.
+	// We may have just connected to the wrong IP address.
+	if hubID != "" && h.ID != hubID {
+		return nil, false, terminal.ErrInternalError.With("hub mismatch")
 	}
 
 	// Verify hub if:
