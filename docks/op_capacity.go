@@ -24,7 +24,7 @@ const (
 	capacityTestTimeout        = 30 * time.Second
 
 	capacityTestMsgSize     = 1000
-	capacityTestSendTimeout = 100 * time.Millisecond
+	capacityTestSendTimeout = 1000 * time.Millisecond
 )
 
 var (

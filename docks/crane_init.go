@@ -139,7 +139,7 @@ func (crane *Crane) startLocal() *terminal.Error {
 
 	// Create crane controller.
 	_, initData, tErr := NewLocalCraneControllerTerminal(crane, &terminal.TerminalOpts{
-		QueueSize: 10000,
+		QueueSize: terminal.DefaultQueueSize,
 		Padding:   8,
 	})
 	if tErr != nil {
