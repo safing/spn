@@ -28,7 +28,7 @@ func ExpandTo(t terminal.OpTerminal, routeTo string, encryptFor *hub.Hub) (*Expa
 	// Create expansion terminal.
 	opts := &terminal.TerminalOpts{
 		Version:   1,
-		QueueSize: 100,
+		QueueSize: terminal.DefaultQueueSize,
 	}
 	tBase, initData, tErr := terminal.NewLocalBaseTerminal(context.Background(), 0, t.FmtID(), encryptFor, opts)
 	if tErr != nil {

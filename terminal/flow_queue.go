@@ -12,8 +12,8 @@ import (
 )
 
 const (
-	DefaultQueueSize        = 1000
-	MaxQueueSize            = 60000
+	DefaultQueueSize        = 50000
+	MaxQueueSize            = 1000000
 	forceReportBelowPercent = 0.75
 )
 
