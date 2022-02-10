@@ -56,11 +56,10 @@ func TestConnections(t *testing.T) {
 				t.Fatal(err)
 			}
 			wg.Add(1)
-			go func() { //nolint:staticcheck // we wait for the goroutine
+			var dockingErr error
+			go func() {
 				err := pier.Docking(ctx)
-				if err != nil {
-					t.Fatal(err) //nolint:staticcheck,govet // TODO: Fix.
-				}
+				dockingErr = err
 				wg.Done()
 			}()
 
@@ -130,10 +129,20 @@ func TestConnections(t *testing.T) {
 				fmt.Print(".")
 			}
 
+			// Check for docking error.
+			if dockingErr != nil {
+				t.Fatal(err)
+			}
+
 			ship.Sink()
 			srvShip.Sink()
 			pier.Abolish()
 			wg.Wait() // wait for docking procedure to end
+
+			// Check for docking error again.
+			if dockingErr != nil {
+				t.Fatal(err)
+			}
 		})
 	}
 }
