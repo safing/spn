@@ -10,31 +10,37 @@ import (
 
 const sessionIDSize = 32
 
+// RequestHandlingState is a request handling state.
 type RequestHandlingState struct {
 	SessionID string
 	PBlind    map[string]*PBlindSignerState
 }
 
+// SetupRequest is a setup request.
 type SetupRequest struct {
 	PBlind map[string]struct{} `json:"PB,omitempty"`
 }
 
+// SetupResponse is a setup response.
 type SetupResponse struct {
 	SessionID string                          `json:"ID,omitempty"`
 	PBlind    map[string]*PBlindSetupResponse `json:"PB,omitempty"`
 }
 
-type TokenRequest struct {
+// TokenRequest is a token request.
+type TokenRequest struct { //nolint:golint // Be explicit.
 	SessionID string                           `json:"ID,omitempty"`
 	PBlind    map[string]*PBlindTokenRequest   `json:"PB,omitempty"`
 	Scramble  map[string]*ScrambleTokenRequest `json:"S,omitempty"`
 }
 
+// IssuedTokens are issued tokens.
 type IssuedTokens struct {
 	PBlind   map[string]*IssuedPBlindTokens   `json:"PB,omitempty"`
 	Scramble map[string]*IssuedScrambleTokens `json:"SC,omitempty"`
 }
 
+// CreateSetupRequest creates a combined setup request for all registered tokens, if needed.
 func CreateSetupRequest() (request *SetupRequest, setupRequired bool) {
 	registryLock.RLock()
 	defer registryLock.RUnlock()
@@ -55,6 +61,7 @@ func CreateSetupRequest() (request *SetupRequest, setupRequired bool) {
 	return
 }
 
+// HandleSetupRequest handles a setup request for all registered tokens.
 func HandleSetupRequest(request *SetupRequest) (*RequestHandlingState, *SetupResponse, error) {
 	registryLock.RLock()
 	defer registryLock.RUnlock()
@@ -100,6 +107,7 @@ func HandleSetupRequest(request *SetupRequest) (*RequestHandlingState, *SetupRes
 	return state, setup, nil
 }
 
+// CreateTokenRequest creates a token request for all registered tokens.
 func CreateTokenRequest(setup *SetupResponse) (request *TokenRequest, requestRequired bool, err error) {
 	registryLock.RLock()
 	defer registryLock.RUnlock()
@@ -146,9 +154,10 @@ func CreateTokenRequest(setup *SetupResponse) (request *TokenRequest, requestReq
 		}
 	}
 
-	return
+	return request, requestRequired, nil
 }
 
+// IssueTokens issues tokens for all registered tokens.
 func IssueTokens(state *RequestHandlingState, request *TokenRequest) (response *IssuedTokens, err error) {
 	registryLock.RLock()
 	defer registryLock.RUnlock()
@@ -195,9 +204,10 @@ func IssueTokens(state *RequestHandlingState, request *TokenRequest) (response *
 		response.Scramble[scrambleHandler.Zone()] = scrambleTokens
 	}
 
-	return
+	return response, nil
 }
 
+// ProcessIssuedTokens processes issued tokens for all registered tokens.
 func ProcessIssuedTokens(response *IssuedTokens) error {
 	registryLock.RLock()
 	defer registryLock.RUnlock()

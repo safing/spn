@@ -7,6 +7,8 @@ import (
 )
 
 func TestToken(t *testing.T) {
+	t.Parallel()
+
 	randomData, err := rng.Bytes(32)
 	if err != nil {
 		t.Fatal(err)

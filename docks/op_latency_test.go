@@ -8,10 +8,15 @@ import (
 )
 
 func TestLatencyOp(t *testing.T) {
+	t.Parallel()
+
 	var (
 		latTestDelay            = 10 * time.Millisecond
-		latTestQueueSize uint16 = 10
+		latTestQueueSize uint32 = 10
 	)
+
+	// Reduce waiting time.
+	latencyTestPauseDuration = 100 * time.Millisecond
 
 	// Create test terminal pair.
 	a, b, err := terminal.NewSimpleTestTerminalPair(

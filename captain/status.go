@@ -8,6 +8,7 @@ import (
 	"github.com/safing/portbase/runtime"
 )
 
+// SPNStatus holds SPN status information.
 type SPNStatus struct {
 	record.Base
 	sync.Mutex
@@ -19,8 +20,10 @@ type SPNStatus struct {
 	ConnectedSince     *time.Time
 }
 
+// SPNStatusName is a SPN status.
 type SPNStatusName string
 
+// SPN Stati.
 const (
 	StatusFailed     SPNStatusName = "failed"
 	StatusDisabled   SPNStatusName = "disabled"

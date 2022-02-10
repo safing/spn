@@ -903,6 +903,7 @@ github.com/safing/portmaster v0.7.17 h1:q+qlEveDIvaaWnMIrD2Oa9x9eMbR2g1bFwTQx75W
 github.com/safing/portmaster v0.7.17/go.mod h1:TCWK75oZtkWv9bPyYIAILOma5G6VSK5FD3ovlZ1Ws2Q=
 github.com/safing/portmaster v0.7.18 h1:eL98p1DMOx7QDWsA2Ms+9x4VvNLTb0amVp1xCAl5Hac=
 github.com/safing/portmaster v0.7.18/go.mod h1:NXd1l1z0oKy0WfXMhv/gpAXz+pUHnlNuYPBSaMZe7uw=
+github.com/safing/portmaster v0.7.21 h1:bbKI6QuLBS1LGe1FL5oLLtgtIvTX5l8VrtsG6gdicVE=
 github.com/safing/spn v0.3.4/go.mod h1:TfzNsZCbnlWv0UFDILFOUSudVKJZlnBVoR1fDXrjOK0=
 github.com/safing/spn v0.3.5/go.mod h1:jHkFF2Yu1fnjFu4KXjVA+iagMr/z4eB4p3jiwikvKj8=
 github.com/safing/spn v0.3.6/go.mod h1:RSeFb/h5Wt3yDVezXj3lhXJ/Iwd7FbtsGf5E+p5J2YQ=

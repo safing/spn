@@ -12,10 +12,13 @@ import (
 	"github.com/safing/spn/terminal"
 )
 
+// GossipOpType is the type ID of the gossip operation.
 const GossipOpType string = "gossip"
 
+// GossipMsgType is the gossip message type.
 type GossipMsgType uint8
 
+// Gossip Message Types.
 const (
 	GossipHubAnnouncementMsg GossipMsgType = 1
 	GossipHubStatusMsg       GossipMsgType = 2
@@ -32,12 +35,14 @@ func (msgType GossipMsgType) String() string {
 	}
 }
 
+// GossipOp is used to gossip Hub messages.
 type GossipOp struct {
 	terminal.OpBase
 
 	controller *docks.CraneControllerTerminal
 }
 
+// Type returns the type ID.
 func (op *GossipOp) Type() string {
 	return GossipOpType
 }
@@ -50,6 +55,7 @@ func init() {
 	})
 }
 
+// NewGossipOp start a new gossip operation.
 func NewGossipOp(controller *docks.CraneControllerTerminal) (*GossipOp, *terminal.Error) {
 	// Create and init.
 	op := &GossipOp{
@@ -90,10 +96,11 @@ func (op *GossipOp) sendMsg(msgType GossipMsgType, data []byte) {
 	)
 	err := op.controller.OpSendWithTimeout(op, c, time.Second)
 	if err != nil {
-		log.Debugf("spn/captain: failed to forward %s via %s: %w", msgType, op.controller.Crane.ID, err)
+		log.Debugf("spn/captain: failed to forward %s via %s: %s", msgType, op.controller.Crane.ID, err)
 	}
 }
 
+// Deliver delivers a message to the operation.
 func (op *GossipOp) Deliver(c *container.Container) *terminal.Error {
 	gossipMsgTypeN, err := c.GetNextN8()
 	if err != nil {
@@ -134,6 +141,7 @@ func (op *GossipOp) Deliver(c *container.Container) *terminal.Error {
 	return nil
 }
 
+// End ends the operation.
 func (op *GossipOp) End(err *terminal.Error) {
 	deleteGossipOp(op.controller.Crane.ID)
 }

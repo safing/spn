@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"net"
 
-	"github.com/safing/spn/hub"
 	"github.com/tevino/abool"
+
+	"github.com/safing/spn/hub"
 )
 
 // Pier represents a network connection listener.

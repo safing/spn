@@ -1,28 +1,48 @@
 package access
 
 import (
+	"errors"
 	"fmt"
+	"os"
+	"strings"
 
-	"github.com/safing/spn/conf"
+	"github.com/tevino/abool"
 
 	"github.com/safing/jess/lhash"
 	"github.com/safing/portbase/log"
 	"github.com/safing/spn/access/token"
+	"github.com/safing/spn/conf"
 	"github.com/safing/spn/terminal"
 )
 
 var (
+	// ExpandAndConnectZones are the zones that grant access to the expand and
+	// connect operations.
 	ExpandAndConnectZones = []string{"pblind1", "alpha2", "fallback1"}
-	persistentZones       = ExpandAndConnectZones
 
 	zonePermissions = map[string]terminal.Permission{
 		"pblind1":   terminal.AddPermissions(terminal.MayExpand, terminal.MayConnect),
 		"alpha2":    terminal.AddPermissions(terminal.MayExpand, terminal.MayConnect),
 		"fallback1": terminal.AddPermissions(terminal.MayExpand, terminal.MayConnect),
 	}
+	persistentZones = ExpandAndConnectZones
+
+	enableTestMode = abool.New()
 )
 
+// EnableTestMode enables the test mode, leading the access module to only
+// register a test zone.
+// This should not be used to test the access module itself.
+func EnableTestMode() {
+	enableTestMode.Set()
+}
+
 func initializeZones() error {
+	// Check if we are testing.
+	if enableTestMode.IsSet() {
+		return initializeTestZone()
+	}
+
 	// Special client zone config.
 	var requestSignalHandler func(token.Handler)
 	if conf.Client() {
@@ -79,8 +99,40 @@ func initializeZones() error {
 	return nil
 }
 
-func resetZones() {
+func initializeTestZone() error {
+	// Safeguard checks if we should really enable the test zone.
+	if !strings.HasSuffix(os.Args[0], ".test") {
+		return errors.New("tried to enable test mode, but no test binary was detected")
+	}
+	if token.RegistrySize() > 0 {
+		return fmt.Errorf("tried to enable test zone, but %d handlers are already registered", token.RegistrySize())
+	}
+
+	// Reset zones.
 	token.ResetRegistry()
+
+	// Set eligible zones.
+	ExpandAndConnectZones = []string{"unittest"}
+	zonePermissions = map[string]terminal.Permission{
+		"unittest": terminal.AddPermissions(terminal.MayExpand, terminal.MayConnect),
+	}
+
+	// Register unittest zone as for testing.
+	sh, err := token.NewScrambleHandler(token.ScrambleOptions{
+		Zone:             "unittest",
+		Algorithm:        lhash.BLAKE2b_256,
+		InitialTokens:    []string{"6jFqLA93uSLL52utGKrvctG3ZfopSQ8WFqjsRK1c2Svt"},
+		InitialVerifiers: []string{"ZwoEoL59sr81s7WnF2vydGzjeejE3u8CqVafig1NTQzUr7"},
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create unittest token handler: %w", err)
+	}
+	err = token.RegisterScrambleHandler(sh)
+	if err != nil {
+		return fmt.Errorf("failed to register unittest token handler: %w", err)
+	}
+
+	return nil
 }
 
 func shouldRequestTokensHandler(_ token.Handler) {
@@ -94,6 +146,7 @@ func shouldRequestTokensHandler(_ token.Handler) {
 	accountUpdateTask.StartASAP()
 }
 
+// GetTokenAmount returns the amount of tokens for the given zone.
 func GetTokenAmount(zones []string) (regular, fallback int) {
 handlerLoop:
 	for _, zone := range zones {
@@ -114,6 +167,7 @@ handlerLoop:
 	return
 }
 
+// GetToken returns a token of one of the given zones.
 func GetToken(zones []string) (t *token.Token, err error) {
 handlerSelection:
 	for _, zone := range zones {
@@ -142,6 +196,7 @@ handlerSelection:
 	return nil, token.ErrEmpty
 }
 
+// VerifyRawToken verifies a raw token.
 func VerifyRawToken(data []byte) (granted terminal.Permission, err error) {
 	t, err := token.ParseRawToken(data)
 	if err != nil {
@@ -151,6 +206,7 @@ func VerifyRawToken(data []byte) (granted terminal.Permission, err error) {
 	return VerifyToken(t)
 }
 
+// VerifyToken verifies a token.
 func VerifyToken(t *token.Token) (granted terminal.Permission, err error) {
 	handler, ok := token.GetHandler(t.Zone)
 	if !ok {

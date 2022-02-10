@@ -6,12 +6,11 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/safing/spn/hub"
-
 	"github.com/safing/jess"
 	"github.com/safing/jess/tools"
 	"github.com/safing/portbase/log"
 	"github.com/safing/portbase/rng"
+	"github.com/safing/spn/hub"
 )
 
 type providedExchKeyScheme struct {
@@ -28,10 +27,10 @@ var (
 
 	// burnAfter defines how long after expiry keys are burnt/deleted.
 	burnAfter = 12 * time.Hour // 1/2 day
-	// reuseAfter defines how long IDs should be blocked after expiry (and not be reused for new keys)
+	// reuseAfter defines how long IDs should be blocked after expiry (and not be reused for new keys).
 	reuseAfter = 2 * 7 * 24 * time.Hour // 2 weeks
 
-	// provideExchKeySchemes defines the jess tools for creating exchange keys
+	// provideExchKeySchemes defines the jess tools for creating exchange keys.
 	provideExchKeySchemes = []*providedExchKeyScheme{
 		{
 			id:            "ECDH-X25519",
@@ -52,6 +51,8 @@ func initProvidedExchKeySchemes() error {
 	return nil
 }
 
+// MaintainExchKeys maintains the exchange keys, creating new ones and
+// deprecating and deleting old ones.
 func (id *Identity) MaintainExchKeys(newStatus *hub.Status, now time.Time) (changed bool, err error) {
 	// create Keys map
 	if id.ExchKeys == nil {

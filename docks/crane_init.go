@@ -3,13 +3,12 @@ package docks
 import (
 	"time"
 
-	"github.com/safing/portbase/formats/dsd"
-	"github.com/safing/portbase/info"
-	"github.com/safing/portbase/log"
-
 	"github.com/safing/jess"
 	"github.com/safing/portbase/container"
+	"github.com/safing/portbase/formats/dsd"
 	"github.com/safing/portbase/formats/varint"
+	"github.com/safing/portbase/info"
+	"github.com/safing/portbase/log"
 	"github.com/safing/spn/conf"
 	"github.com/safing/spn/terminal"
 )
@@ -34,6 +33,7 @@ Crane Operational Message Format:
 
 */
 
+// Crane Msg Types.
 const (
 	CraneMsgTypeEnd              = 0
 	CraneMsgTypeInfo             = 1
@@ -43,6 +43,7 @@ const (
 	CraneMsgTypeStartUnencrypted = 5
 )
 
+// Start starts the crane.
 func (crane *Crane) Start() error {
 	log.Infof("spn/docks: %s is starting", crane)
 
@@ -61,11 +62,11 @@ func (crane *Crane) Start() error {
 	if tErr != nil {
 		crane.Stop(tErr)
 		return tErr
-	} else {
-		log.Debugf("spn/docks: %s started", crane)
-		// Return an explicit nil for working "!= nil" checks.
-		return nil
 	}
+
+	log.Debugf("spn/docks: %s started", crane)
+	// Return an explicit nil for working "!= nil" checks.
+	return nil
 }
 
 func (crane *Crane) startLocal() *terminal.Error {
@@ -232,8 +233,8 @@ handling:
 			initMsg = request
 
 			// Start crane with initMsg.
-			break handling
 			log.Debugf("spn/docks: %s initiated unencrypted channel", crane)
+			break handling
 
 		case CraneMsgTypeStartEncrypted:
 			if crane.identity == nil {

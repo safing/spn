@@ -62,6 +62,7 @@ func (a sortBySuggestedHopDistanceInRegionAndLowestMeasuredCost) Len() int { ret
 func (a sortBySuggestedHopDistanceInRegionAndLowestMeasuredCost) Swap(i, j int) {
 	a[i], a[j] = a[j], a[i]
 }
+
 func (a sortBySuggestedHopDistanceInRegionAndLowestMeasuredCost) Less(i, j int) bool {
 	// First sort by suggested hop distance.
 	if a[i].analysis.SuggestedHopDistanceInRegion != a[j].analysis.SuggestedHopDistanceInRegion {

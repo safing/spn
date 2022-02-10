@@ -97,10 +97,9 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Return success.
-	w.Write([]byte(
+	_, _ = w.Write([]byte(
 		fmt.Sprintf("Now logged in as %s as device %s", user.Username, user.Device.Name),
 	))
-	return
 }
 
 func handleLogout(ar *api.Request) (msg string, err error) {

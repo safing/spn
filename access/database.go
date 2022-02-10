@@ -13,8 +13,8 @@ import (
 
 const (
 	userRecordKey           = "core:spn/account/user"
-	authTokenRecordKey      = "core:spn/account/authtoken"
-	tokenStorageKeyTemplate = "core:spn/account/tokens/%s"
+	authTokenRecordKey      = "core:spn/account/authtoken" //nolint:gosec // Not a credential.
+	tokenStorageKeyTemplate = "core:spn/account/tokens/%s" //nolint:gosec // Not a credential.
 )
 
 var db = database.NewInterface(&database.Options{
@@ -22,6 +22,7 @@ var db = database.NewInterface(&database.Options{
 	Internal: true,
 })
 
+// UserRecord holds a SPN user account.
 type UserRecord struct {
 	record.Base
 	sync.Mutex
@@ -32,6 +33,7 @@ type UserRecord struct {
 	LoggedInAt *time.Time
 }
 
+// AuthTokenRecord holds an authentication token.
 type AuthTokenRecord struct {
 	record.Base
 	sync.Mutex
@@ -39,6 +41,7 @@ type AuthTokenRecord struct {
 	Token *account.AuthToken
 }
 
+// GetToken returns the token from the record.
 func (authToken *AuthTokenRecord) GetToken() *account.AuthToken {
 	authToken.Lock()
 	defer authToken.Unlock()
@@ -46,6 +49,7 @@ func (authToken *AuthTokenRecord) GetToken() *account.AuthToken {
 	return authToken.Token
 }
 
+// SaveNewAuthToken saves a new auth token to the database.
 func SaveNewAuthToken(deviceID string, resp *http.Response) error {
 	token, ok := account.GetNextTokenFromResponse(resp)
 	if !ok {
@@ -61,6 +65,7 @@ func SaveNewAuthToken(deviceID string, resp *http.Response) error {
 	return newAuthToken.Save()
 }
 
+// Update updates an existing auth token with the next token from a response.
 func (authToken *AuthTokenRecord) Update(resp *http.Response) error {
 	token, ok := account.GetNextTokenFromResponse(resp)
 	if !ok {
@@ -95,6 +100,7 @@ func clearUserCaches() {
 	cachedAuthToken = nil
 }
 
+// GetUser returns the current user account.
 func GetUser() (*UserRecord, error) {
 	// Check cache.
 	accountCacheLock.Lock()
@@ -112,24 +118,25 @@ func GetUser() (*UserRecord, error) {
 	// Unwrap record.
 	if r.IsWrapped() {
 		// only allocate a new struct, if we need it
-		new := &UserRecord{}
-		err = record.Unwrap(r, new)
+		newUser := &UserRecord{}
+		err = record.Unwrap(r, newUser)
 		if err != nil {
 			return nil, err
 		}
-		cachedUser = new
+		cachedUser = newUser
 		return cachedUser, nil
 	}
 
 	// Or adjust type.
-	new, ok := r.(*UserRecord)
+	newUser, ok := r.(*UserRecord)
 	if !ok {
 		return nil, fmt.Errorf("record not of type *UserRecord, but %T", r)
 	}
-	cachedUser = new
+	cachedUser = newUser
 	return cachedUser, nil
 }
 
+// Save saves the User.
 func (user *UserRecord) Save() error {
 	// Update automatic fields.
 	func() {
@@ -153,6 +160,7 @@ func (user *UserRecord) Save() error {
 	return db.Put(user)
 }
 
+// GetAuthToken returns the current auth token.
 func GetAuthToken() (*AuthTokenRecord, error) {
 	// Check cache.
 	accountCacheLock.Lock()
@@ -170,24 +178,25 @@ func GetAuthToken() (*AuthTokenRecord, error) {
 	// Unwrap record.
 	if r.IsWrapped() {
 		// only allocate a new struct, if we need it
-		new := &AuthTokenRecord{}
-		err = record.Unwrap(r, new)
+		newAuthRecord := &AuthTokenRecord{}
+		err = record.Unwrap(r, newAuthRecord)
 		if err != nil {
 			return nil, err
 		}
-		cachedAuthToken = new
-		return new, nil
+		cachedAuthToken = newAuthRecord
+		return newAuthRecord, nil
 	}
 
 	// Or adjust type.
-	new, ok := r.(*AuthTokenRecord)
+	newAuthRecord, ok := r.(*AuthTokenRecord)
 	if !ok {
 		return nil, fmt.Errorf("record not of type *AuthTokenRecord, but %T", r)
 	}
-	cachedAuthToken = new
-	return new, nil
+	cachedAuthToken = newAuthRecord
+	return newAuthRecord, nil
 }
 
+// Save saves the auth token to the database.
 func (authToken *AuthTokenRecord) Save() error {
 	// Update cache.
 	accountCacheLock.Lock()

@@ -5,12 +5,10 @@ import (
 	"github.com/safing/spn/conf"
 )
 
-var (
-	module *modules.Module
-)
+var module *modules.Module
 
 func init() {
-	modules.Register("cabin", prep, nil, nil, "base")
+	module = modules.Register("cabin", prep, nil, nil, "base", "rng")
 }
 
 func prep() error {

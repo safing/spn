@@ -6,6 +6,7 @@ import (
 	"strings"
 )
 
+// MapStats holds generic map statistics.
 type MapStats struct {
 	Name   string
 	States map[PinState]int
@@ -32,7 +33,7 @@ func (m *Map) Stats() *MapStats {
 		// Check all states.
 		for _, state := range allStates {
 			if pin.State.has(state) {
-				stats.States[state] += 1
+				stats.States[state]++
 			}
 		}
 

@@ -8,6 +8,8 @@ import (
 )
 
 func TestTestShip(t *testing.T) {
+	t.Parallel()
+
 	tShip := NewTestShip(true, 100)
 
 	// interface conformance test

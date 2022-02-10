@@ -6,6 +6,7 @@ import (
 	"strings"
 )
 
+// Routes holds a collection of Routes.
 type Routes struct {
 	All       []*Route
 	maxCost   float32 // automatic
@@ -59,13 +60,14 @@ func (r *Routes) clean() {
 	}
 }
 
+// Route is a path through the map.
 type Route struct {
-	// DstCost is the calculated cost between the Destination Hub and the destination IP.
-	DstCost float32
-
 	// Path is a list of Transit Hubs and the Destination Hub, including the Cost
 	// for each Hop.
 	Path []*Hop
+
+	// DstCost is the calculated cost between the Destination Hub and the destination IP.
+	DstCost float32
 
 	// TotalCost is the sum of all costs of this Route.
 	TotalCost float32
@@ -74,6 +76,7 @@ type Route struct {
 	Algorithm string
 }
 
+// Hop is one hop of a route's path.
 type Hop struct {
 	pin *Pin
 
@@ -165,6 +168,7 @@ func (hop *Hop) makeExportReady() {
 	hop.HubID = hop.pin.Hub.ID
 }
 
+// Pin returns the Pin of the Hop.
 func (hop *Hop) Pin() *Pin {
 	return hop.pin
 }

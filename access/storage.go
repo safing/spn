@@ -68,9 +68,9 @@ func storeTokens() {
 			// Remove possible old entry from database.
 			err := db.Delete(storageKey)
 			if err != nil {
-				log.Warningf("access: failed to delete possible old %s tokens from storage: %s", err)
+				log.Warningf("access: failed to delete possible old %s tokens from storage: %s", zone, err)
 			}
-			log.Debugf("access: no %s tokens to store")
+			log.Debugf("access: no %s tokens to store", zone)
 			continue
 		}
 
@@ -120,10 +120,11 @@ func clearTokens() {
 	}
 
 	// Purge database storage prefix.
-	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 	n, err := db.Purge(ctx, query.New(fmt.Sprintf(tokenStorageKeyTemplate, "")))
 	if err != nil {
-		log.Warningf("access: failed to clear token storages: %s")
+		log.Warningf("access: failed to clear token storages: %s", err)
 		return
 	}
 	log.Infof("access: cleared %d token storages", n)

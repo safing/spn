@@ -26,6 +26,7 @@ Terminal and Operation Message Format:
 		- Error Code [varint]
 */
 
+// MsgType is the message type for both terminals and operations.
 type MsgType uint8
 
 const (
@@ -58,6 +59,7 @@ func (t *TerminalBase) SubmitAsDataMsg(submitFunc func(*container.Container)) fu
 	}
 }
 
+// ParseIDType parses the combined message ID and type.
 func ParseIDType(c *container.Container) (id uint32, msgType MsgType, err error) {
 	idType, err := c.GetNextN32()
 	if err != nil {

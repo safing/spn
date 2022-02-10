@@ -5,6 +5,7 @@ import (
 	"github.com/safing/spn/terminal"
 )
 
+// CraneControllerTerminal is a terminal for the crane itself.
 type CraneControllerTerminal struct {
 	*terminal.TerminalBase
 	*terminal.DuplexFlowQueue
@@ -12,6 +13,7 @@ type CraneControllerTerminal struct {
 	Crane *Crane
 }
 
+// NewLocalCraneControllerTerminal returns a new local crane controller.
 func NewLocalCraneControllerTerminal(
 	crane *Crane,
 	initMsg *terminal.TerminalOpts,
@@ -25,6 +27,7 @@ func NewLocalCraneControllerTerminal(
 	return initCraneController(crane, t, initMsg), initData, nil
 }
 
+// NewRemoteCraneControllerTerminal returns a new remote crane controller.
 func NewRemoteCraneControllerTerminal(
 	crane *Crane,
 	initData *container.Container,
@@ -75,15 +78,18 @@ func initCraneController(
 	return cct
 }
 
+// Deliver delivers a message to the crane controller.
 func (controller *CraneControllerTerminal) Deliver(c *container.Container) *terminal.Error {
 	return controller.DuplexFlowQueue.Deliver(c)
 }
 
+// Flush flushes the crane controller's terminal and flow queue.
 func (controller *CraneControllerTerminal) Flush() {
 	controller.TerminalBase.Flush()
 	controller.DuplexFlowQueue.Flush()
 }
 
+// Abandon abandons the crane controller.
 func (controller *CraneControllerTerminal) Abandon(err *terminal.Error) {
 	if controller.Abandoned.SetToIf(false, true) {
 		// Send stop msg and end all operations.

@@ -2,6 +2,7 @@ package token
 
 import "errors"
 
+// Errors.
 var (
 	ErrEmpty          = errors.New("token storage is empty")
 	ErrNoZone         = errors.New("no zone specified")
@@ -11,6 +12,4 @@ var (
 	ErrZoneMismatch   = errors.New("zone mismatch")
 	ErrZoneTaken      = errors.New("zone taken")
 	ErrZoneUnknown    = errors.New("zone unknown")
-
-	errSignatureMalformed = errors.New("signature malformed")
 )

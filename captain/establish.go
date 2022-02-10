@@ -13,6 +13,7 @@ import (
 	"github.com/safing/spn/terminal"
 )
 
+// EstablishCrane establishes a crane to another Hub.
 func EstablishCrane(ctx context.Context, dst *hub.Hub) (*docks.Crane, error) {
 	if conf.PublicHub() && dst.ID == publicIdentity.ID {
 		return nil, errors.New("connecting to self")
@@ -46,6 +47,7 @@ func EstablishCrane(ctx context.Context, dst *hub.Hub) (*docks.Crane, error) {
 	return crane, nil
 }
 
+// EstablishPublicLane establishes a crane to another Hub and publishes it.
 func EstablishPublicLane(ctx context.Context, dst *hub.Hub) (*docks.Crane, *terminal.Error) {
 	crane, err := EstablishCrane(ctx, dst)
 	if err != nil {

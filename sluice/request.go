@@ -18,14 +18,17 @@ var (
 	ErrSluiceOffline = errors.New("is offline")
 )
 
+// Request holds request data for a sluice entry.
 type Request struct {
 	ConnInfo   *network.Connection
 	CallbackFn RequestCallbackFunc
 	Expires    time.Time
 }
 
+// RequestCallbackFunc is called for taking a over handling connection that arrived at the sluice.
 type RequestCallbackFunc func(connInfo *network.Connection, conn net.Conn)
 
+// AwaitRequest pre-registers a connection at the sluice for initializing it when it arrives.
 func AwaitRequest(connInfo *network.Connection, callbackFn RequestCallbackFunc) error {
 	network := getNetworkFromConnInfo(connInfo)
 	if network == "" {
@@ -48,7 +51,7 @@ func getNetworkFromConnInfo(connInfo *network.Connection) string {
 	var network string
 
 	// protocol
-	switch connInfo.IPProtocol {
+	switch connInfo.IPProtocol { //nolint:exhaustive // Looking for specific values.
 	case packet.TCP:
 		network = "tcp"
 	case packet.UDP:

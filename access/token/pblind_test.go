@@ -33,6 +33,8 @@ func init() {
 }
 
 func TestPBlind(t *testing.T) {
+	t.Parallel()
+
 	opts := &PBlindOptions{
 		Zone:           PBlindTestZone,
 		Curve:          elliptic.P256(),
@@ -96,6 +98,8 @@ func TestPBlind(t *testing.T) {
 }
 
 func TestPBlindLibrary(t *testing.T) {
+	t.Parallel()
+
 	// generate a key-pair
 
 	curve := elliptic.P256()

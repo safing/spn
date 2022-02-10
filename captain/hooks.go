@@ -4,7 +4,6 @@ import (
 	"time"
 
 	"github.com/safing/portmaster/updates"
-
 	"github.com/safing/spn/conf"
 	"github.com/safing/spn/docks"
 )

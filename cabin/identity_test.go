@@ -5,12 +5,15 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/safing/spn/conf"
 	"github.com/safing/spn/hub"
-	"github.com/stretchr/testify/assert"
 )
 
 func TestIdentity(t *testing.T) {
+	t.Parallel()
+
 	// Register config options for public hub.
 	if err := prepPublicHubConfig(); err != nil {
 		t.Fatal(err)
@@ -66,17 +69,17 @@ func TestIdentity(t *testing.T) {
 
 	// Change lanes.
 	lanes := []*hub.Lane{
-		&hub.Lane{
+		{
 			ID:       "A",
 			Capacity: 1,
 			Latency:  2,
 		},
-		&hub.Lane{
+		{
 			ID:       "B",
 			Capacity: 3,
 			Latency:  4,
 		},
-		&hub.Lane{
+		{
 			ID:       "C",
 			Capacity: 5,
 			Latency:  6,

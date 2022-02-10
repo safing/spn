@@ -27,6 +27,8 @@ func init() {
 }
 
 func TestScramble(t *testing.T) {
+	t.Parallel()
+
 	opts := &ScrambleOptions{
 		Zone:      ScrambleTestZone,
 		Algorithm: lhash.SHA2_256,

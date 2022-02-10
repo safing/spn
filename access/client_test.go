@@ -11,6 +11,12 @@ var (
 )
 
 func TestClient(t *testing.T) {
+	// Skip test in CI.
+	if testing.Short() {
+		t.Skip()
+	}
+	t.Parallel()
+
 	if testUsername == "" || testPassword == "" {
 		t.Fatal("test username or password not configured")
 	}
@@ -37,6 +43,8 @@ func TestClient(t *testing.T) {
 }
 
 func loginAndRefresh(t *testing.T, doLogin bool, refreshTimes int) {
+	t.Helper()
+
 	if doLogin {
 		_, _, err := login(testUsername, testPassword)
 		if err != nil {

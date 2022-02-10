@@ -14,6 +14,8 @@ var (
 )
 
 func getOptimizedDefaultTestMap(t *testing.T) *Map {
+	t.Helper()
+
 	optimizedDefaultMapCreate.Do(func() {
 		optimizedDefaultMap = createRandomTestMap(2, 100)
 		optimizedDefaultMap.optimizeTestMap(t)
@@ -22,24 +24,21 @@ func getOptimizedDefaultTestMap(t *testing.T) *Map {
 }
 
 func (m *Map) optimizeTestMap(t *testing.T) {
-	if t != nil {
-		t.Logf("optimizing test map %s with %d pins", m.Name, len(m.all))
-	}
+	t.Helper()
+	t.Logf("optimizing test map %s with %d pins", m.Name, len(m.all))
 
 	// Save original Home, as we will be switching around the home for the
 	// optimization.
 	run := 0
 	newLanes := 0
-	newLanesInRun := 0
-	lastRun := false
 	originalHome := m.home
 	mcf := newMeasurementCachedFactory()
 
 	for {
 		run++
-		newLanesInRun = 0
+		newLanesInRun := 0
 		// Let's check if we have a run without any map changes.
-		lastRun = true
+		lastRun := true
 
 		for _, pin := range m.all {
 			// Set Home to this Pin for this iteration.
@@ -55,19 +54,19 @@ func (m *Map) optimizeTestMap(t *testing.T) {
 				panic(err)
 			}
 			lanesCreatedWithResult := 0
-			for _, connectToHub := range optimizeResult.SuggestedConnections {
+			for _, connectTo := range optimizeResult.SuggestedConnections {
 				// Check if lane to suggested Hub already exists.
-				if m.home.Hub.GetLaneTo(connectToHub.ID) != nil {
+				if m.home.Hub.GetLaneTo(connectTo.Hub.ID) != nil {
 					continue
 				}
 
 				// Add lanes to the Hub status.
-				m.home.Hub.AddLane(createLane(connectToHub.ID))
-				connectToHub.AddLane(createLane(m.home.Hub.ID))
+				_ = m.home.Hub.AddLane(createLane(connectTo.Hub.ID))
+				_ = connectTo.Hub.AddLane(createLane(m.home.Hub.ID))
 
 				// Update Hubs in map.
 				m.UpdateHub(m.home.Hub)
-				m.UpdateHub(connectToHub)
+				m.UpdateHub(connectTo.Hub)
 				newLanes++
 				newLanesInRun++
 
@@ -111,6 +110,8 @@ func (m *Map) optimizeTestMap(t *testing.T) {
 }
 
 func TestOptimize(t *testing.T) {
+	t.Parallel()
+
 	m := getOptimizedDefaultTestMap(t)
 	matcher := m.defaultOptions().Matcher(DestinationHub)
 	originalHome := m.home
@@ -129,7 +130,8 @@ func TestOptimize(t *testing.T) {
 				continue
 			}
 
-			if peer.HopDistance > optimizationHopDistanceTarget {
+			// TODO: Adapt test to new regions.
+			if peer.HopDistance > 5 {
 				t.Errorf("Optimization error: %s is %d hops away from %s", peer, peer.HopDistance, pin)
 			}
 		}

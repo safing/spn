@@ -1,7 +1,9 @@
 package terminal
 
+// Permission is a bit-map of granted permissions.
 type Permission uint16
 
+// Permissions.
 const (
 	NoPermission      Permission = 0x0
 	MayExpand         Permission = 0x1
@@ -11,17 +13,18 @@ const (
 	IsCraneController Permission = 0x8000
 )
 
+// AuthorizingTerminal is an interface for terminals that support authorization.
 type AuthorizingTerminal interface {
 	GrantPermission(grant Permission)
 	HasPermission(required Permission) bool
 }
 
-// GrandPermission grants the specified permissions to the Terminal.
+// GrantPermission grants the specified permissions to the Terminal.
 func (t *TerminalBase) GrantPermission(grant Permission) {
 	t.lock.Lock()
 	defer t.lock.Unlock()
 
-	t.permission = t.permission | grant
+	t.permission |= grant
 }
 
 // HasPermission returns if the Terminal has the specified permission.

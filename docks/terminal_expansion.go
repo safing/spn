@@ -5,13 +5,15 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/tevino/abool"
+
 	"github.com/safing/portbase/container"
 	"github.com/safing/portbase/log"
 	"github.com/safing/spn/hub"
 	"github.com/safing/spn/terminal"
-	"github.com/tevino/abool"
 )
 
+// ExpansionTerminal is used for expanding to another Hub.
 type ExpansionTerminal struct {
 	*terminal.TerminalBase
 	*terminal.DuplexFlowQueue
@@ -24,6 +26,7 @@ type ExpansionTerminal struct {
 	changeNotifyFunc      func()
 }
 
+// ExpandTo initiates an expansion.
 func ExpandTo(t terminal.OpTerminal, routeTo string, encryptFor *hub.Hub) (*ExpansionTerminal, *terminal.Error) {
 	// Create expansion terminal.
 	opts := &terminal.TerminalOpts{
@@ -62,10 +65,12 @@ func ExpandTo(t terminal.OpTerminal, routeTo string, encryptFor *hub.Hub) (*Expa
 	return expansion, nil
 }
 
+// Deliver delivers a message to the next local stage.
 func (t *ExpansionTerminal) Deliver(c *container.Container) *terminal.Error {
 	return t.DuplexFlowQueue.Deliver(c)
 }
 
+// Flush flushes the terminal and flow queue.
 func (t *ExpansionTerminal) Flush() {
 	t.TerminalBase.Flush()
 	t.DuplexFlowQueue.Flush()
@@ -78,18 +83,22 @@ func (t *ExpansionTerminal) submitUpstream(c *container.Container) {
 	}
 }
 
+// ID returns the operation ID.
 func (t *ExpansionTerminal) ID() uint32 {
 	return t.opID
 }
 
+// SetID sets the operation ID.
 func (t *ExpansionTerminal) SetID(id uint32) {
 	t.opID = id
 }
 
+// Type returns the type ID.
 func (t *ExpansionTerminal) Type() string {
 	return ExpandOpType
 }
 
+// HasEnded returns whether the operation has ended.
 func (t *ExpansionTerminal) HasEnded(end bool) bool {
 	if end {
 		// Return false if we just only it to ended.
@@ -98,10 +107,12 @@ func (t *ExpansionTerminal) HasEnded(end bool) bool {
 	return t.relayOpEnded.IsSet()
 }
 
+// End ends the operation.
 func (t *ExpansionTerminal) End(err *terminal.Error) {
 	t.stop(err)
 }
 
+// Abandon ends the terminal.
 func (t *ExpansionTerminal) Abandon(err *terminal.Error) {
 	t.stop(err)
 }
@@ -130,10 +141,12 @@ func (t *ExpansionTerminal) stop(err *terminal.Error) {
 	}
 }
 
+// IsAbandoned returns whether the terminal has been abandoned.
 func (t *ExpansionTerminal) IsAbandoned() bool {
 	return t.Abandoned.IsSet()
 }
 
+// SetChangeNotifyFunc sets a callback function that is called when the terminal state changes.
 func (t *ExpansionTerminal) SetChangeNotifyFunc(f func()) {
 	if t.changeNotifyFuncReady.IsSet() {
 		return
@@ -142,6 +155,7 @@ func (t *ExpansionTerminal) SetChangeNotifyFunc(f func()) {
 	t.changeNotifyFuncReady.Set()
 }
 
+// FmtID formats the operation ID.
 func (t *ExpansionTerminal) FmtID() string {
 	return fmt.Sprintf("%s#%d", t.relayOp.FmtID(), t.opID)
 }

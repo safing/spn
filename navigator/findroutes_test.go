@@ -6,6 +6,8 @@ import (
 )
 
 func TestFindRoutes(t *testing.T) {
+	t.Parallel()
+
 	// Create map and lock faking in order to guarantee reproducability of faked data.
 	m := getOptimizedDefaultTestMap(t)
 	fakeLock.Lock()

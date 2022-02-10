@@ -7,11 +7,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/brianvoe/gofakeit"
+
 	"github.com/safing/jess/lhash"
 	"github.com/safing/portmaster/intel/geoip"
 	"github.com/safing/spn/hub"
-
-	"github.com/brianvoe/gofakeit"
 )
 
 var (
@@ -29,6 +29,8 @@ func getDefaultTestMap() *Map {
 }
 
 func TestRandomMapCreation(t *testing.T) {
+	t.Parallel()
+
 	m := getDefaultTestMap()
 
 	fmt.Println("All Pins:")
@@ -112,11 +114,11 @@ func createRandomTestMap(seed int64, size int) *Map {
 		}
 
 		// Create connections.
-		hubA.AddLane(createLane(hubB.ID))
+		_ = hubA.AddLane(createLane(hubB.ID))
 		// Add the second connection in 99% of cases.
 		// If this is missing, the Pins should not show up as connected.
 		if gofakeit.Number(0, 100) != 0 {
-			hubB.AddLane(createLane(hubA.ID))
+			_ = hubB.AddLane(createLane(hubA.ID))
 		}
 	}
 
@@ -175,7 +177,7 @@ func createFakeHub(group string, randomFailes bool, mapIntel *hub.Intel) *hub.Hu
 		Status: &hub.Status{
 			Timestamp: time.Now().Unix(),
 			Keys: map[string]*hub.Key{
-				"a": &hub.Key{
+				"a": {
 					Expires: time.Now().Add(48 * time.Hour).Unix(),
 				},
 			},

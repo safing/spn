@@ -53,7 +53,7 @@ func (ship *ShipBase) MaskIP(ip net.IP) string {
 // Mask masks the given value.
 func (ship *ShipBase) Mask(value []byte) string {
 	// Hash the IP with masking bytes.
-	hasher := sha1.New()
+	hasher := sha1.New() //nolint:gosec // Not used for cryptography.
 	hasher.Write(maskingBytes)
 	hasher.Write(value)
 	masked := hasher.Sum(nil)

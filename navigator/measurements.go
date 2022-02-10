@@ -11,6 +11,7 @@ import (
 	"github.com/safing/spn/terminal"
 )
 
+// Measurements Configuration.
 const (
 	NavigatorMeasurementTTLDefault    = 2 * time.Hour
 	NavigatorMeasurementTTLByCostBase = 3 * time.Minute
@@ -116,6 +117,7 @@ func (m *Map) measureHubs(ctx context.Context, _ *modules.Task) error {
 	return nil
 }
 
+// SaveMeasuredHubs saves all Hubs that have unsaved measurements.
 func (m *Map) SaveMeasuredHubs() {
 	m.RLock()
 	defer m.RUnlock()

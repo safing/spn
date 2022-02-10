@@ -9,6 +9,8 @@ import (
 )
 
 func TestHubUpdate(t *testing.T) {
+	t.Parallel()
+
 	// message signing
 
 	testData := []byte{0}
@@ -61,7 +63,7 @@ func TestHubUpdate(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, _, _, err = OpenHubMsg(nil, data, "test", true)
+	_, _, _, err = OpenHubMsg(nil, data, "test", true) //nolint:dogsled
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -11,33 +11,33 @@ import (
 	"github.com/safing/spn/hub"
 )
 
-// Configuration Keys
+// Configuration Keys.
 var (
-	// Name of the node
+	// Name of the node.
 	publicCfgOptionNameKey     = "spn/publicHub/name"
 	publicCfgOptionName        config.StringOption
 	publicCfgOptionNameDefault = ""
 	publicCfgOptionNameOrder   = 512
 
-	// Person or organisation, who is in control of the node (should be same for all nodes of this person or organisation)
+	// Person or organisation, who is in control of the node (should be same for all nodes of this person or organisation).
 	publicCfgOptionGroupKey     = "spn/publicHub/group"
 	publicCfgOptionGroup        config.StringOption
 	publicCfgOptionGroupDefault = ""
 	publicCfgOptionGroupOrder   = 513
 
-	// Contact possibility  (recommended, but optional)
+	// Contact possibility  (recommended, but optional).
 	publicCfgOptionContactAddressKey     = "spn/publicHub/contactAddress"
 	publicCfgOptionContactAddress        config.StringOption
 	publicCfgOptionContactAddressDefault = ""
 	publicCfgOptionContactAddressOrder   = 514
 
-	// Type of service of the contact address, if not email
+	// Type of service of the contact address, if not email.
 	publicCfgOptionContactServiceKey     = "spn/publicHub/contactService"
 	publicCfgOptionContactService        config.StringOption
 	publicCfgOptionContactServiceDefault = ""
 	publicCfgOptionContactServiceOrder   = 515
 
-	// Hosters - supply chain (reseller, hosting provider, datacenter operator, ...)
+	// Hosters - supply chain (reseller, hosting provider, datacenter operator, ...).
 	publicCfgOptionHostersKey     = "spn/publicHub/hosters"
 	publicCfgOptionHosters        config.StringArrayOption
 	publicCfgOptionHostersDefault = []string{}
@@ -46,26 +46,27 @@ var (
 	// Datacenter
 	// Format: CC-COMPANY-INTERNALCODE
 	// Eg: DE-Hetzner-FSN1-DC5
+	//.
 	publicCfgOptionDatacenterKey     = "spn/publicHub/datacenter"
 	publicCfgOptionDatacenter        config.StringOption
 	publicCfgOptionDatacenterDefault = ""
 	publicCfgOptionDatacenterOrder   = 517
 
-	// Network Location and Access
+	// Network Location and Access.
 
-	// IPv4 must be global and accessible
+	// IPv4 must be global and accessible.
 	publicCfgOptionIPv4Key     = "spn/publicHub/ip4"
 	publicCfgOptionIPv4        config.StringOption
 	publicCfgOptionIPv4Default = ""
 	publicCfgOptionIPv4Order   = 518
 
-	// IPv6 must be global and accessible
+	// IPv6 must be global and accessible.
 	publicCfgOptionIPv6Key     = "spn/publicHub/ip6"
 	publicCfgOptionIPv6        config.StringOption
 	publicCfgOptionIPv6Default = ""
 	publicCfgOptionIPv6Order   = 519
 
-	// Transports
+	// Transports.
 	publicCfgOptionTransportsKey     = "spn/publicHub/transports"
 	publicCfgOptionTransports        config.StringArrayOption
 	publicCfgOptionTransportsDefault = []string{
@@ -73,13 +74,13 @@ var (
 	}
 	publicCfgOptionTransportsOrder = 520
 
-	// Entry Policy
+	// Entry Policy.
 	publicCfgOptionEntryKey     = "spn/publicHub/entry"
 	publicCfgOptionEntry        config.StringArrayOption
 	publicCfgOptionEntryDefault = []string{}
 	publicCfgOptionEntryOrder   = 521
 
-	// Exit Policy
+	// Exit Policy.
 	publicCfgOptionExitKey     = "spn/publicHub/exit"
 	publicCfgOptionExit        config.StringArrayOption
 	publicCfgOptionExitDefault = []string{"- * TCP/25"}

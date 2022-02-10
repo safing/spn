@@ -3,12 +3,12 @@ package docks
 import (
 	"context"
 
-	"github.com/safing/portbase/log"
-
 	"github.com/safing/portbase/container"
+	"github.com/safing/portbase/log"
 	"github.com/safing/spn/terminal"
 )
 
+// EstablishNewTerminal establishes a new terminal with the crane.
 func (crane *Crane) EstablishNewTerminal(
 	localTerm terminal.TerminalInterface,
 	initData *container.Container,
@@ -25,7 +25,7 @@ func (crane *Crane) EstablishNewTerminal(
 		log.Debugf("spn/docks: %s initiated new terminal %d", crane, localTerm.ID())
 		return nil
 	case <-crane.ctx.Done():
-		crane.AbandonTerminal(localTerm.ID(), terminal.ErrStopping.With("initation aborted"))
+		crane.AbandonTerminal(localTerm.ID(), terminal.ErrStopping.With("initiation aborted"))
 		return terminal.ErrStopping
 	}
 }

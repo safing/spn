@@ -3,11 +3,10 @@ package terminal
 import (
 	"context"
 
-	"github.com/safing/portbase/formats/varint"
-
 	"github.com/safing/jess"
 	"github.com/safing/portbase/container"
 	"github.com/safing/portbase/formats/dsd"
+	"github.com/safing/portbase/formats/varint"
 	"github.com/safing/spn/cabin"
 	"github.com/safing/spn/hub"
 )
@@ -31,13 +30,14 @@ const (
 )
 
 // TerminalOpts holds configuration for the terminal.
-type TerminalOpts struct {
+type TerminalOpts struct { //nolint:golint // TODO: Rename.
 	Version   uint8  `json:"-"`
-	QueueSize uint32 `json:"qs,omitempty"`
-	Padding   uint16 `json:"p,omitempty"`
 	Encrypt   bool   `json:"e,omitempty"`
+	Padding   uint16 `json:"p,omitempty"`
+	QueueSize uint32 `json:"qs,omitempty"`
 }
 
+// ParseTerminalOpts parses terminal options from the container.
 func ParseTerminalOpts(c *container.Container) (*TerminalOpts, *Error) {
 	// Parse and check version.
 	version, err := c.GetNextN8()
@@ -59,6 +59,7 @@ func ParseTerminalOpts(c *container.Container) (*TerminalOpts, *Error) {
 	return initMsg, nil
 }
 
+// Pack seriualized the terminal options.
 func (opts *TerminalOpts) Pack() (*container.Container, *Error) {
 	// Pack init message.
 	optsData, err := dsd.Dump(opts, dsd.JSON)
@@ -73,6 +74,7 @@ func (opts *TerminalOpts) Pack() (*container.Container, *Error) {
 	), nil
 }
 
+// NewLocalBaseTerminal creates a new local terminal base for use with inheriting terminals.
 func NewLocalBaseTerminal(
 	ctx context.Context,
 	id uint32,
@@ -128,6 +130,7 @@ func NewLocalBaseTerminal(
 	return t, initData, nil
 }
 
+// NewRemoteBaseTerminal creates a new remote terminal base for use with inheriting terminals.
 func NewRemoteBaseTerminal(
 	ctx context.Context,
 	id uint32,

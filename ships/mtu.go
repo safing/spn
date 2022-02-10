@@ -2,6 +2,7 @@ package ships
 
 import "net"
 
+// MTU Calculation Configuration.
 const (
 	BaseMTU           = 1460 // 1500 with 40 bytes extra space for special cases.
 	IPv4HeaderMTUSize = 20   // Without options, as not common.

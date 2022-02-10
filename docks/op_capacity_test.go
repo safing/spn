@@ -7,33 +7,42 @@ import (
 	"github.com/safing/spn/terminal"
 )
 
+var (
+	testCapacityTestVolume  = 100000000
+	testCapacitytestMaxTime = 1 * time.Second
+)
+
 func TestCapacityOp(t *testing.T) {
+	t.Parallel()
+
 	// Defaults.
 	testCapacityOp(t, &CapacityTestOptions{
-		TestVolume: defaultCapacityTestVolume,
-		MaxTime:    defaultCapacityTestMaxTime,
+		TestVolume: testCapacityTestVolume,
+		MaxTime:    testCapacitytestMaxTime,
 		testing:    true,
 	})
 
 	// Hit max time first.
 	testCapacityOp(t, &CapacityTestOptions{
-		TestVolume: defaultCapacityTestVolume,
+		TestVolume: testCapacityTestVolume,
 		MaxTime:    100 * time.Millisecond,
 		testing:    true,
 	})
 
 	// Hit volume first.
 	testCapacityOp(t, &CapacityTestOptions{
-		TestVolume: 100000,
-		MaxTime:    defaultCapacityTestMaxTime,
+		TestVolume: 10000,
+		MaxTime:    testCapacitytestMaxTime,
 		testing:    true,
 	})
 }
 
 func testCapacityOp(t *testing.T, opts *CapacityTestOptions) {
+	t.Helper()
+
 	var (
 		capTestDelay            = 1 * time.Millisecond
-		capTestQueueSize uint16 = 10
+		capTestQueueSize uint32 = 10
 	)
 
 	// Create test terminal pair.
@@ -70,7 +79,7 @@ func testCapacityOp(t *testing.T, opts *CapacityTestOptions) {
 		t.Fatal("measured capacity too high")
 	}
 	// TODO: Check if we can raise this to at least 90%.
-	if float64(op.testResult) < expectedBitsPerSecond*0.5 {
+	if float64(op.testResult) < expectedBitsPerSecond*0.2 {
 		t.Fatal("measured capacity too low")
 	}
 }

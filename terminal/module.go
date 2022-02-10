@@ -18,9 +18,12 @@ func init() {
 
 func start() error {
 	rngFeeder = rng.NewFeeder()
+
+	lockOpRegistry()
 	return nil
 }
 
+// FmtID formats the terminal ID together with the parent's ID.
 func (t *TerminalBase) FmtID() string {
 	return fmtTerminalID(t.parentID, t.id)
 }

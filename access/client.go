@@ -15,12 +15,13 @@ import (
 	"github.com/safing/spn/access/token"
 )
 
+// Client URLs.
 const (
 	AccountServer         = "https://api.account.safing.io"
 	LoginPath             = "/api/v1/authenticate"
 	UserProfilePath       = "/api/v1/user/profile"
-	TokenRequestSetupPath = "/api/v1/token/request/setup"
-	TokenRequestIssuePath = "/api/v1/token/request/issue"
+	TokenRequestSetupPath = "/api/v1/token/request/setup" //nolint:gosec
+	TokenRequestIssuePath = "/api/v1/token/request/issue" //nolint:gosec
 	HealthCheckPath       = "/api/v1/health"
 
 	defaultDataFormat     = dsd.CBOR
@@ -37,15 +38,15 @@ type clientRequestOptions struct {
 	url                  string
 	send                 interface{}
 	recv                 interface{}
-	dataFormat           uint8
 	requestTimeout       time.Duration
+	dataFormat           uint8
 	setAuthToken         bool
 	requireNextAuthToken bool
 	logoutOnAuthError    bool
 	requestSetupFunc     func(*http.Request) error
 }
 
-func (cro *clientRequestOptions) logoutOnAuthErrorIfDesired(err error) {
+func (cro *clientRequestOptions) logoutOnAuthErrorIfDesired() {
 	if cro.logoutOnAuthError {
 		module.StartWorker("logout user", func(_ context.Context) error {
 			return logout(true, false)
@@ -60,12 +61,15 @@ func makeClientRequest(opts *clientRequestOptions) (resp *http.Response, err err
 	}
 	// Get context for request.
 	var ctx context.Context
+	var cancel context.CancelFunc
 	if module.Online() {
 		// Only use module context if online.
-		ctx, _ = context.WithTimeout(module.Ctx, opts.requestTimeout)
+		ctx, cancel = context.WithTimeout(module.Ctx, opts.requestTimeout)
+		defer cancel()
 	} else {
 		// Otherwise, use the background context.
-		ctx, _ = context.WithTimeout(context.Background(), opts.requestTimeout)
+		ctx, cancel = context.WithTimeout(context.Background(), opts.requestTimeout)
+		defer cancel()
 	}
 
 	// Create new request.
@@ -116,7 +120,9 @@ func makeClientRequest(opts *clientRequestOptions) (resp *http.Response, err err
 		tokenIssuerFailed()
 		return nil, fmt.Errorf("http request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 	// Handle request error.
 	switch resp.StatusCode {
 	case http.StatusOK, http.StatusCreated:
@@ -124,17 +130,17 @@ func makeClientRequest(opts *clientRequestOptions) (resp *http.Response, err err
 
 	case account.StatusInvalidAuth, account.StatusInvalidDevice:
 		// Wrong username / password.
-		opts.logoutOnAuthErrorIfDesired(err)
+		opts.logoutOnAuthErrorIfDesired()
 		return resp, ErrInvalidCredentials
 
 	case account.StatusReachedDeviceLimit:
 		// Device limit is reached.
-		opts.logoutOnAuthErrorIfDesired(err)
+		opts.logoutOnAuthErrorIfDesired()
 		return resp, ErrDeviceLimitReached
 
 	case account.StatusDeviceInactive:
 		// Device is locked.
-		opts.logoutOnAuthErrorIfDesired(err)
+		opts.logoutOnAuthErrorIfDesired()
 		return resp, ErrDeviceIsLocked
 
 	default:
@@ -204,20 +210,19 @@ func login(username, password string) (user *UserRecord, code int, err error) {
 	}
 
 	// Make request.
-	resp, err := makeClientRequest(requestOptions)
+	resp, err := makeClientRequest(requestOptions) //nolint:bodyclose // Body is closed in function.
 	if err != nil {
 		if resp != nil && resp.StatusCode == account.StatusInvalidDevice {
 			// Try again without the previous device ID.
 			previousUser = nil
 			log.Info("access: retrying log in without re-using previous device ID")
-			resp, err = makeClientRequest(requestOptions)
+			resp, err = makeClientRequest(requestOptions) //nolint:bodyclose // Body is closed in function.
 		}
 		if err != nil {
 			if resp != nil {
 				return nil, resp.StatusCode, err
-			} else {
-				return nil, 0, err
 			}
+			return nil, 0, err
 		}
 	}
 
@@ -322,7 +327,7 @@ func logout(shallow, purge bool) error {
 	return nil
 }
 
-func getUserProfile() (user *UserRecord, statusCode int, err error) {
+func getUserProfile() (user *UserRecord, statusCode int, err error) { //nolint:unparam // Names are documentation.
 	clientRequestLock.Lock()
 	defer clientRequestLock.Unlock()
 
@@ -339,13 +344,12 @@ func getUserProfile() (user *UserRecord, statusCode int, err error) {
 	}
 
 	// Make request.
-	resp, err := makeClientRequest(requestOptions)
+	resp, err := makeClientRequest(requestOptions) //nolint:bodyclose // Body is closed in function.
 	if err != nil {
 		if resp != nil {
 			return nil, resp.StatusCode, err
-		} else {
-			return nil, 0, err
 		}
+		return nil, 0, err
 	}
 
 	// Save to previous user, if exists.
@@ -399,7 +403,7 @@ func getTokens() error {
 	if setupRequired {
 		// Request setup data.
 		setupResponse = &token.SetupResponse{}
-		_, err := makeClientRequest(&clientRequestOptions{
+		_, err := makeClientRequest(&clientRequestOptions{ //nolint:bodyclose // Body is closed in function.
 			method:            http.MethodPost,
 			url:               AccountServer + TokenRequestSetupPath,
 			send:              setupRequest,
@@ -424,7 +428,7 @@ func getTokens() error {
 
 	// Request issuing new tokens.
 	issuedTokens := &token.IssuedTokens{}
-	_, err = makeClientRequest(&clientRequestOptions{
+	_, err = makeClientRequest(&clientRequestOptions{ //nolint:bodyclose // Body is closed in function.
 		method:            http.MethodPost,
 		url:               AccountServer + TokenRequestIssuePath,
 		send:              tokenRequest,
@@ -470,7 +474,7 @@ func healthCheck() (ok bool) {
 	}
 
 	// Check health.
-	_, err := makeClientRequest(&clientRequestOptions{
+	_, err := makeClientRequest(&clientRequestOptions{ //nolint:bodyclose // Body is closed in function.
 		method: http.MethodGet,
 		url:    AccountServer + HealthCheckPath,
 	})

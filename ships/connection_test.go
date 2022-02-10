@@ -7,9 +7,9 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/safing/spn/hub"
-
 	"github.com/stretchr/testify/assert"
+
+	"github.com/safing/spn/hub"
 )
 
 var (
@@ -28,13 +28,20 @@ func getTestBuf() []byte {
 }
 
 func TestConnections(t *testing.T) {
-	ctx := context.Background()
-	var wg sync.WaitGroup
+	t.Parallel()
 
 	registryLock.Lock()
-	defer registryLock.Unlock()
-	for protocol, builder := range registry {
+	t.Cleanup(func() {
+		registryLock.Unlock()
+	})
+
+	for k, v := range registry { //nolint:paralleltest // False positive.
+		protocol, builder := k, v
 		t.Run(protocol, func(t *testing.T) {
+			t.Parallel()
+
+			var wg sync.WaitGroup
+			ctx := context.Background()
 
 			// docking requests
 			requests := make(chan *DockingRequest, 1)
@@ -52,7 +59,7 @@ func TestConnections(t *testing.T) {
 			go func() { //nolint:staticcheck // we wait for the goroutine
 				err := pier.Docking(ctx)
 				if err != nil {
-					t.Fatal(err)
+					t.Fatal(err) //nolint:staticcheck,govet // TODO: Fix.
 				}
 				wg.Done()
 			}()

@@ -45,6 +45,7 @@ func NewMap(name string, enableMeasuring bool) *Map {
 	return m
 }
 
+// Close removes the map's integration, taking it "offline".
 func (m *Map) Close() {
 	removeMapFromAPI(m.Name)
 }

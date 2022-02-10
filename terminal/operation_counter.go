@@ -6,17 +6,18 @@ import (
 	"sync"
 	"time"
 
-	"github.com/safing/portbase/formats/dsd"
-
 	"github.com/tevino/abool"
 
 	"github.com/safing/portbase/container"
+	"github.com/safing/portbase/formats/dsd"
 	"github.com/safing/portbase/formats/varint"
 	"github.com/safing/portbase/log"
 )
 
+// CounterOpType is the type ID for the Counter Operation.
 const CounterOpType string = "debug/count"
 
+// CounterOp sends increasing numbers on both sides.
 type CounterOp struct {
 	t      OpTerminal
 	id     uint32
@@ -31,11 +32,12 @@ type CounterOp struct {
 	Error         error
 }
 
+// CounterOpts holds the options for CounterOp.
 type CounterOpts struct {
 	ClientCountTo uint64
 	ServerCountTo uint64
-	Flush         bool
 	Wait          time.Duration
+	Flush         bool
 
 	suppressWorker bool
 }
@@ -47,6 +49,7 @@ func init() {
 	})
 }
 
+// NewCounterOp returns a new CounterOp.
 func NewCounterOp(t OpTerminal, opts CounterOpts) (*CounterOp, *Error) {
 	// Create operation.
 	op := &CounterOp{
@@ -101,18 +104,22 @@ func runCounterOp(t OpTerminal, opID uint32, data *container.Container) (Operati
 	return op, nil
 }
 
+// ID returns the ID of the operation.
 func (op *CounterOp) ID() uint32 {
 	return op.id
 }
 
+// SetID sets the ID of the operation.
 func (op *CounterOp) SetID(id uint32) {
 	op.id = id
 }
 
+// Type returns the type ID.
 func (op *CounterOp) Type() string {
 	return CounterOpType
 }
 
+// HasEnded returns whether the operation has ended.
 func (op *CounterOp) HasEnded(end bool) bool {
 	if end {
 		// Return false if we just only it to ended.
@@ -154,6 +161,7 @@ func (op *CounterOp) isDone() bool {
 		op.ServerCounter >= op.opts.ServerCountTo
 }
 
+// Deliver delivers data to the operation.
 func (op *CounterOp) Deliver(data *container.Container) *Error {
 	nextStep, err := data.GetNextN64()
 	if err != nil {
@@ -191,6 +199,7 @@ func (op *CounterOp) Deliver(data *container.Container) *Error {
 	return nil
 }
 
+// End ends the operation.
 func (op *CounterOp) End(err *Error) {
 	// Check if counting finished.
 	if !op.isDone() {
@@ -206,6 +215,7 @@ func (op *CounterOp) End(err *Error) {
 	op.wg.Done()
 }
 
+// SendCounter sends the next counter.
 func (op *CounterOp) SendCounter() *Error {
 	if op.ended.IsSet() {
 		return ErrStopping
@@ -226,10 +236,12 @@ func (op *CounterOp) SendCounter() *Error {
 	return op.t.OpSend(op, container.New(varint.Pack64(counter)))
 }
 
+// Wait waits for the Counter Op to finish.
 func (op *CounterOp) Wait() {
 	op.wg.Wait()
 }
 
+// CounterWorker is a worker that sends counters.
 func (op *CounterOp) CounterWorker(ctx context.Context) error {
 	for {
 		// Send counter msg.

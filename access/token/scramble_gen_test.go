@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/mr-tron/base58"
+
 	"github.com/safing/jess/lhash"
 )
 
@@ -15,6 +16,8 @@ type genAlgs struct {
 }
 
 func TestGenerateScrambleKeys(t *testing.T) {
+	t.Parallel()
+
 	for _, alg := range []genAlgs{
 		{alg: lhash.SHA2_256, name: "SHA2_256"},
 		{alg: lhash.SHA3_256, name: "SHA3_256"},

@@ -12,6 +12,7 @@ import (
 	"github.com/safing/portmaster/netenv"
 )
 
+// Sluice is a tunnel entry listener.
 type Sluice struct {
 	network        string
 	address        string
@@ -23,8 +24,10 @@ type Sluice struct {
 	abandoned       bool
 }
 
+// ListenerFactory defines a function to create a listener.
 type ListenerFactory func(network, address string) (net.Listener, error)
 
+// StartSluice starts a sluice listener at the given address.
 func StartSluice(network, address string) {
 	s := &Sluice{
 		network:         network,
@@ -50,6 +53,7 @@ func StartSluice(network, address string) {
 	)
 }
 
+// AwaitRequest pre-registers a connection.
 func (s *Sluice) AwaitRequest(r *Request) {
 	// Set default expiry.
 	if r.Expires.IsZero() {
@@ -83,7 +87,7 @@ func (s *Sluice) init() error {
 	s.listener = nil
 	ln, err := s.createListener(s.network, s.address)
 	if err != nil {
-		return fmt.Errorf("failed to listen: %s", err)
+		return fmt.Errorf("failed to listen: %w", err)
 	}
 	s.listener = ln
 
@@ -121,7 +125,7 @@ func (s *Sluice) handleConnection(conn net.Conn) {
 	success := false
 	defer func() {
 		if !success {
-			conn.Close()
+			_ = conn.Close()
 		}
 	}()
 
@@ -185,7 +189,7 @@ func (s *Sluice) listenHandler(_ context.Context) error {
 			if module.IsStopping() {
 				return nil
 			}
-			return fmt.Errorf("failed to accept connection: %s", err)
+			return fmt.Errorf("failed to accept connection: %w", err)
 		}
 
 		// Handle accepted connection.

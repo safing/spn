@@ -5,6 +5,8 @@ import (
 )
 
 func TestFindNearest(t *testing.T) {
+	t.Parallel()
+
 	// Create map and lock faking in order to guarantee reproducability of faked data.
 	m := getDefaultTestMap()
 	fakeLock.Lock()
@@ -79,10 +81,14 @@ func findFakeHomeHub(m *Map) {
 	m.home = nbPins.pins[0].pin
 
 	// Recalculate reachability.
-	m.recalculateReachableHubs()
+	if err := m.recalculateReachableHubs(); err != nil {
+		panic(err)
+	}
 }
 
 func TestNearbyPinsCleaning(t *testing.T) {
+	t.Parallel()
+
 	testCleaning(t, []float32{10, 20, 30, 40, 50, 60, 70, 80, 90, 100}, 5)
 	testCleaning(t, []float32{10, 11, 12, 13, 14, 15, 70, 80, 90, 100}, 4)
 	testCleaning(t, []float32{10, 11, 12, 13, 14, 15, 16, 80, 90, 100}, 3)

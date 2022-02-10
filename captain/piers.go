@@ -4,10 +4,9 @@ import (
 	"context"
 	"sync"
 
-	"github.com/safing/spn/docks"
-
 	"github.com/safing/portbase/log"
 	"github.com/safing/portbase/modules"
+	"github.com/safing/spn/docks"
 	"github.com/safing/spn/hub"
 	"github.com/safing/spn/ships"
 )

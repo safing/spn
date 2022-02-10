@@ -4,18 +4,24 @@ import (
 	"testing"
 	"time"
 
+	"github.com/tevino/abool"
+
 	"github.com/safing/portbase/container"
 	"github.com/safing/portbase/formats/dsd"
 	"github.com/safing/spn/terminal"
-	"github.com/tevino/abool"
 )
 
-func TestEffectiveBandwidth(t *testing.T) {
+func TestEffectiveBandwidth(t *testing.T) { //nolint:paralleltest // Run alone.
+	// Skip in CI.
+	if testing.Short() {
+		t.Skip()
+	}
+
 	var (
 		bwTestDelay            = 50 * time.Millisecond
-		bwTestQueueSize uint16 = 1000
+		bwTestQueueSize uint32 = 1000
 		bwTestVolume           = 10000000 // 10MB
-		beTestTime             = 20 * time.Second
+		beTestTime             = 10 * time.Second
 	)
 
 	// Create test terminal pair.

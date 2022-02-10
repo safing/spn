@@ -11,6 +11,7 @@ import (
 	"github.com/tevino/abool"
 )
 
+// PacketListener is a listener for packet based protocols.
 type PacketListener struct {
 	sock     net.PacketConn
 	closed   *abool.AtomicBool
@@ -21,6 +22,7 @@ type PacketListener struct {
 	err   error
 }
 
+// ListenPacket creates a packet listener.
 func ListenPacket(network, address string) (net.Listener, error) {
 	// Create a new listening packet socket.
 	sock, err := net.ListenPacket(network, address)
@@ -108,8 +110,8 @@ func (ln *PacketListener) reader(_ context.Context) error {
 			ln.err = err
 			ln.lock.Unlock()
 			// Close and return
-			ln.Close()
-			return nil
+			_ = ln.Close()
+			return nil //nolint:nilerr
 		}
 		buf = buf[:n]
 
@@ -171,11 +173,12 @@ func (ln *PacketListener) cleanInactiveConns(overInactivityCnt uint32) {
 		case cnt > overInactivityCnt*2:
 			delete(ln.conns, k)
 		case cnt > overInactivityCnt:
-			conn.Close()
+			_ = conn.Close()
 		}
 	}
 }
 
+// PacketConn simulates a connection for a stateless protocol.
 type PacketConn struct {
 	ln      *PacketListener
 	addr    net.Addr

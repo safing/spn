@@ -6,6 +6,7 @@ import (
 	"github.com/safing/spn/hub"
 )
 
+// Primary Map Configuration.
 var (
 	MainMapName  = "main"
 	MainMapScope = hub.ScopePublic

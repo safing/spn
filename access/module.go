@@ -6,12 +6,13 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/safing/spn/access/account"
 	"github.com/tevino/abool"
 
 	"github.com/safing/portbase/config"
 	"github.com/safing/portbase/log"
 	"github.com/safing/portbase/modules"
+	"github.com/safing/spn/access/account"
+	"github.com/safing/spn/access/token"
 	"github.com/safing/spn/conf"
 )
 
@@ -82,11 +83,12 @@ func stop() error {
 	}
 
 	// Reset zones.
-	resetZones()
+	token.ResetRegistry()
 
 	return nil
 }
 
+// UpdateAccount updates the user account and fetches new tokens, if needed.
 func UpdateAccount(_ context.Context, task *modules.Task) error {
 	// Retry sooner if the token issuer is failing.
 	defer func() {
@@ -122,6 +124,7 @@ func disableSPN() {
 	}
 }
 
+// TokenIssuerIsFailing returns whether token issuing is currently failing.
 func TokenIssuerIsFailing() bool {
 	return tokenIssuerIsFailing.IsSet()
 }
@@ -137,6 +140,7 @@ func tokenIssuerFailed() {
 	accountUpdateTask.Schedule(time.Now().Add(tokenIssuerRetryDuration))
 }
 
+// IsLoggedIn returns whether a User is currently logged in.
 func (user *UserRecord) IsLoggedIn() bool {
 	user.Lock()
 	defer user.Unlock()
@@ -149,6 +153,7 @@ func (user *UserRecord) IsLoggedIn() bool {
 	}
 }
 
+// MayUseTheSPN returns whether the currently logged in User may use the SPN.
 func (user *UserRecord) MayUseTheSPN() bool {
 	user.Lock()
 	defer user.Unlock()

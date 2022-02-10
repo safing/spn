@@ -8,7 +8,7 @@ import (
 
 	"github.com/safing/portbase/modules"
 	"github.com/safing/portbase/rng"
-	_ "github.com/safing/spn/access" // Required module.
+	_ "github.com/safing/spn/access"
 )
 
 var (
@@ -71,6 +71,7 @@ func stopAllCranes() error {
 	return nil
 }
 
+// AssignCrane assigns a crane to the given Hub ID.
 func AssignCrane(hubID string, crane *Crane) {
 	cranesLock.Lock()
 	defer cranesLock.Unlock()
@@ -78,6 +79,7 @@ func AssignCrane(hubID string, crane *Crane) {
 	assignedCranes[hubID] = crane
 }
 
+// GetAssignedCrane returns the assigned crane of the given Hub ID.
 func GetAssignedCrane(hubID string) *Crane {
 	cranesLock.RLock()
 	defer cranesLock.RUnlock()
@@ -101,6 +103,7 @@ func getAllCranes() map[string]*Crane {
 	return copiedCranes
 }
 
+// GetAllAssignedCranes returns a copy of the map of all assigned cranes.
 func GetAllAssignedCranes() map[string]*Crane {
 	copiedCranes := make(map[string]*Crane, len(assignedCranes))
 

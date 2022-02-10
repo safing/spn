@@ -10,6 +10,8 @@ import (
 )
 
 func TestGeneratePBlindKeys(t *testing.T) {
+	t.Parallel()
+
 	for _, curve := range []elliptic.Curve{
 		elliptic.P256(),
 		elliptic.P384(),

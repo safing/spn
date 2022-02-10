@@ -8,6 +8,8 @@ import (
 )
 
 func TestFull(t *testing.T) {
+	t.Parallel()
+
 	testStart := time.Now()
 
 	// Roundtrip 1
@@ -21,7 +23,7 @@ func TestFull(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	setupRequest = nil
+	setupRequest = nil // nolint:ineffassign,wastedassign // Just to be sure.
 	t.Logf("setupRequest: %s, %d bytes", time.Since(start), len(setupRequestData))
 
 	start = time.Now()
@@ -38,7 +40,7 @@ func TestFull(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	setupResponse = nil
+	setupResponse = nil // nolint:ineffassign,wastedassign // Just to be sure.
 	t.Logf("setupResponse: %s, %d bytes", time.Since(start), len(setupResponseData))
 
 	// Roundtrip 2
@@ -60,7 +62,7 @@ func TestFull(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	request = nil
+	request = nil // nolint:ineffassign,wastedassign // Just to be sure.
 	t.Logf("request: %s, %d bytes", time.Since(start), len(requestData))
 
 	start = time.Now()
@@ -77,7 +79,7 @@ func TestFull(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	response = nil
+	response = nil // nolint:ineffassign,wastedassign // Just to be sure.
 	t.Logf("response: %s, %d bytes", time.Since(start), len(responseData))
 
 	start = time.Now()
@@ -105,7 +107,7 @@ func TestFull(t *testing.T) {
 			t.Fatal(err)
 		}
 		tokenData := token.Raw()
-		token = nil
+		token = nil // nolint:wastedassign // Just to be sure.
 
 		loadedToken, err := ParseRawToken(tokenData)
 		if err != nil {

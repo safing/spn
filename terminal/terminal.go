@@ -7,22 +7,19 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/safing/spn/cabin"
+	"github.com/tevino/abool"
 
 	"github.com/safing/jess"
-
-	"github.com/safing/portbase/rng"
-
 	"github.com/safing/portbase/container"
 	"github.com/safing/portbase/log"
-	"github.com/tevino/abool"
+	"github.com/safing/portbase/rng"
+	"github.com/safing/spn/cabin"
 )
 
-const (
-	timeoutTicks = 5
-)
+const timeoutTicks = 5
 
-type TerminalInterface interface {
+// TerminalInterface is a generic interface to a terminal.
+type TerminalInterface interface { //nolint:golint // Being explicit is helpful here.
 	ID() uint32
 	Ctx() context.Context
 	Deliver(c *container.Container) *Error
@@ -31,7 +28,8 @@ type TerminalInterface interface {
 	Flush()
 }
 
-type TerminalExtension interface {
+// TerminalExtension is a generic interface to a terminal extension.
+type TerminalExtension interface { //nolint:golint // Being explicit is helpful here.
 	OpTerminal
 
 	ReadyToSend() <-chan struct{}
@@ -42,7 +40,9 @@ type TerminalExtension interface {
 }
 
 // TerminalBase contains the basic functions of a terminal.
-type TerminalBase struct {
+type TerminalBase struct { //nolint:golint,maligned // Being explicit is helpful here.
+	// TODO: Fix maligned.
+
 	lock sync.RWMutex
 
 	// id is the underlying id of the Terminal.

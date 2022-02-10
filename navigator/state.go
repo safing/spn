@@ -13,7 +13,7 @@ const (
 	// StateNone represents an empty state.
 	StateNone PinState = 0
 
-	// Negative States
+	// Negative States.
 
 	// StateInvalid signifies that there was an error while processing or
 	// handling this Hub.
@@ -32,7 +32,7 @@ const (
 	// StateOffline signifies that the Hub is offline.
 	StateOffline // 0x08
 
-	// Positive States
+	// Positive States.
 
 	// StateHasRequiredInfo signifies that the Hub announces the minimum required
 	// information about itself.
@@ -49,7 +49,7 @@ const (
 
 	_ // 0x80: Reserved
 
-	// Trust and Advisory States
+	// Trust and Advisory States.
 
 	// StateTrusted signifies the Hub has the special trusted status.
 	StateTrusted // 0x0100
@@ -63,14 +63,14 @@ const (
 	// StateUsageAsDestinationDiscouraged signifies that usage of the Hub as a Destination Hub is discouraged.
 	StateUsageAsDestinationDiscouraged // 0x0800
 
-	// Special States
+	// Special States.
 
 	// StateIsHomeHub signifies that the Hub is the current Home Hub. While not
 	// negative in itself, selecting the Home Hub does not make sense in almost
 	// all cases.
 	StateIsHomeHub // 0x1000
 
-	// State Summaries
+	// State Summaries.
 
 	// StateSummaryRegard summarizes all states that must always be set in order to take a Hub into consideration for any task.
 	// TODO: Add StateHasRequiredInfo when we start enforcing Hub information.
@@ -85,69 +85,67 @@ const (
 		StateIsHomeHub
 )
 
-var (
-	allStates = []PinState{
-		StateInvalid,
-		StateSuperseded,
-		StateFailing,
-		StateOffline,
-		StateHasRequiredInfo,
-		StateReachable,
-		StateActive,
-		StateTrusted,
-		StateUsageDiscouraged,
-		StateUsageAsHomeDiscouraged,
-		StateUsageAsDestinationDiscouraged,
-		StateIsHomeHub,
-	}
-)
+var allStates = []PinState{
+	StateInvalid,
+	StateSuperseded,
+	StateFailing,
+	StateOffline,
+	StateHasRequiredInfo,
+	StateReachable,
+	StateActive,
+	StateTrusted,
+	StateUsageDiscouraged,
+	StateUsageAsHomeDiscouraged,
+	StateUsageAsDestinationDiscouraged,
+	StateIsHomeHub,
+}
 
 // add returns a new PinState with the given states added.
-func (state PinState) add(states PinState) PinState {
+func (pinState PinState) add(states PinState) PinState {
 	// OR:
 	//   0011
 	// | 0101
 	// = 0111
-	return state | states
+	return pinState | states
 }
 
 // remove returns a new PinState with the given states removed.
-func (state PinState) remove(states PinState) PinState {
+func (pinState PinState) remove(states PinState) PinState {
 	// AND NOT:
 	//    0011
 	// &^ 0101
 	// =  0010
-	return state &^ states
+	return pinState &^ states
 }
 
 // has returns whether the state has all of the given states.
-func (state PinState) has(states PinState) bool {
+func (pinState PinState) has(states PinState) bool {
 	// AND:
 	//   0011
 	// & 0101
 	// = 0001
 
-	return state&states == states
+	return pinState&states == states
 }
 
 // hasAnyOf returns whether the state has any of the given states.
-func (state PinState) hasAnyOf(states PinState) bool {
+func (pinState PinState) hasAnyOf(states PinState) bool {
 	// AND:
 	//   0011
 	// & 0101
 	// = 0001
 
-	return (state & states) != 0
+	return (pinState & states) != 0
 }
 
 // hasNoneOf returns whether the state does not have any of the given states.
-func (state PinState) hasNoneOf(states PinState) bool {
+func (pinState PinState) hasNoneOf(states PinState) bool {
 	// AND:
 	//   0011
 	// & 0101
 	// = 0001
 
-	return (state & states) == 0
+	return (pinState & states) == 0
 }
 
 // addStates adds the given states on the Pin.
@@ -166,7 +164,7 @@ func (m *Map) updateStateSuperseded(pin *Pin) {
 	// Update StateSuperseded
 	// Iterate over all Pins in order to find a matching IP address.
 	// In order to prevent false positive matching, we have to go through IPv4
-	// and IPv6 seperately.
+	// and IPv6 separately.
 	// TODO: This will not scale well beyond about 1000 Hubs.
 
 	// IPv4 Loop
@@ -279,7 +277,7 @@ func (pin *Pin) markReachable(hopDistance int) {
 		// Pin wasn't reachable before.
 	case hopDistance < pin.HopDistance:
 		// New path has a shorter distance.
-	case pin.State.hasAnyOf(StateSummaryDisregard):
+	case pin.State.hasAnyOf(StateSummaryDisregard): //nolint:staticcheck
 		// Ignore disregarded pins for reachability calculation.
 		return
 	default:
@@ -293,7 +291,7 @@ func (pin *Pin) markReachable(hopDistance int) {
 	pin.pushChanges.Set()
 
 	// Propagate to connected Pins.
-	hopDistance += 1
+	hopDistance++
 	for _, lane := range pin.ConnectedTo {
 		lane.Pin.markReachable(hopDistance)
 	}
@@ -356,6 +354,9 @@ func (pinState PinState) Name() string {
 		return "UsageAsDestinationDiscouraged"
 	case StateIsHomeHub:
 		return "IsHomeHub"
+	case StateSummaryRegard, StateSummaryDisregard:
+		// Satisfy exhaustive linter.
+		fallthrough
 	default:
 		return "Unknown"
 	}
