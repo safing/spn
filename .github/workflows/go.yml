@@ -57,7 +57,7 @@ jobs:
           export GOPROXY=direct
           export GOSUMDB=off
           go get -u -v github.com/safing/portbase@develop
-          go get -u -v github.com/safing/spn@develop
+          go get -u -v github.com/safing/portmaster@develop
         else
           echo "::debug::not updating development dependencies; master branch"
         fi
