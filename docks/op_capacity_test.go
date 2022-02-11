@@ -12,9 +12,7 @@ var (
 	testCapacitytestMaxTime = 1 * time.Second
 )
 
-func TestCapacityOp(t *testing.T) {
-	t.Parallel()
-
+func TestCapacityOp(t *testing.T) { //nolint:paralleltest // Performance test.
 	// Defaults.
 	testCapacityOp(t, &CapacityTestOptions{
 		TestVolume: testCapacityTestVolume,

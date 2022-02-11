@@ -21,10 +21,10 @@ import (
 func TestCraneCommunication(t *testing.T) {
 	t.Parallel()
 
-	testCraneWithCounter(t, "plain-counter-100", false, 100, 10000)
-	testCraneWithCounter(t, "plain-counter-1000", false, 1000, 10000)
-	testCraneWithCounter(t, "plain-counter-10000", false, 10000, 10000)
-	testCraneWithCounter(t, "encrypted-counter", true, 1000, 10000)
+	testCraneWithCounter(t, "plain-counter-100", false, 100, 1000)
+	testCraneWithCounter(t, "plain-counter-1000", false, 1000, 1000)
+	testCraneWithCounter(t, "plain-counter-10000", false, 10000, 1000)
+	testCraneWithCounter(t, "encrypted-counter", true, 1000, 1000)
 }
 
 func testCraneWithCounter(t *testing.T, testID string, encrypting bool, loadSize int, countTo uint64) { //nolint:unparam,thelper
