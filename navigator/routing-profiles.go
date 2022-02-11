@@ -4,6 +4,7 @@ import (
 	"github.com/safing/portbase/log"
 )
 
+// RoutingProfile defines a routing algorithm with some options.
 type RoutingProfile struct {
 	ID string
 
@@ -28,12 +29,14 @@ type RoutingProfile struct {
 	MaxExtraCost float32
 }
 
+// Routing Profile Names.
 const (
 	RoutingProfileDefaultName  = "default"
 	RoutingProfileShortestName = "shortest"
 	RoutingProfileHomeName     = "home"
 )
 
+// Routing Profiles.
 var (
 	RoutingProfileDefault = &RoutingProfile{
 		ID:           RoutingProfileDefaultName,

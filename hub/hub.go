@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/mitchellh/copystructure"
+
 	"github.com/safing/jess"
 	"github.com/safing/portbase/database/record"
 )
@@ -14,16 +15,16 @@ import (
 type Scope uint8
 
 const (
-	// ScopeInvalid defines an invalid scope
+	// ScopeInvalid defines an invalid scope.
 	ScopeInvalid Scope = 0
 
-	// ScopeLocal identifies local Hubs
+	// ScopeLocal identifies local Hubs.
 	ScopeLocal Scope = 1
 
-	// ScopePublic identifies public Hubs
+	// ScopePublic identifies public Hubs.
 	ScopePublic Scope = 2
 
-	// ScopeTest identifies Hubs for testing
+	// ScopeTest identifies Hubs for testing.
 	ScopeTest Scope = 0xFF
 )
 
@@ -32,15 +33,17 @@ const (
 	obsoleteInvalidAfter = 7 * 24 * time.Hour
 )
 
+// MsgType defines the message type.
 type MsgType string
 
+// Message Types.
 const (
 	MsgTypeAnnouncement = "announcement"
 	MsgTypeStatus       = "status"
 )
 
 // Hub represents a network node in the SPN.
-type Hub struct {
+type Hub struct { //nolint:maligned
 	sync.Mutex
 	record.Base
 
@@ -116,7 +119,7 @@ func (a *Announcement) Copy() (*Announcement, error) {
 	if err != nil {
 		return nil, err
 	}
-	return copied.(*Announcement), nil
+	return copied.(*Announcement), nil //nolint:forcetypeassert // Can only be an *Announcement.
 }
 
 // GetInfo returns the hub info.
@@ -127,7 +130,7 @@ func (h *Hub) GetInfo() *Announcement {
 	return h.Info
 }
 
-// GetInfo returns the hub status.
+// GetStatus returns the hub status.
 func (h *Hub) GetStatus() *Status {
 	h.Lock()
 	defer h.Unlock()
@@ -173,7 +176,7 @@ func (h *Hub) String() string {
 	return "<Hub " + h.getName() + ">"
 }
 
-// String returns a human-readable representation of the Hub without locking it.
+// StringWithoutLocking returns a human-readable representation of the Hub without locking it.
 func (h *Hub) StringWithoutLocking() string {
 	return "<Hub " + h.getName() + ">"
 }
@@ -192,10 +195,9 @@ func (h *Hub) getName() string {
 		return h.ID
 	}
 
-	shortenedID :=
-		h.ID[len(h.ID)-8:len(h.ID)-4] +
-			"-" +
-			h.ID[len(h.ID)-4:]
+	shortenedID := h.ID[len(h.ID)-8:len(h.ID)-4] +
+		"-" +
+		h.ID[len(h.ID)-4:]
 
 	// Be more careful, as the Hub name is user input.
 	switch {
@@ -233,9 +235,8 @@ func (h *Hub) Obsolete() bool {
 	// Check if Hub is obsolete.
 	if valid {
 		return time.Now().Add(-obsoleteValidAfter).After(lastSeen)
-	} else {
-		return time.Now().Add(-obsoleteInvalidAfter).After(lastSeen)
 	}
+	return time.Now().Add(-obsoleteInvalidAfter).After(lastSeen)
 }
 
 // Equal returns whether the given Announcements are equal.

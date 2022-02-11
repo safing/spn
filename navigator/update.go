@@ -7,6 +7,8 @@ import (
 	"path"
 	"time"
 
+	"github.com/tevino/abool"
+
 	"github.com/safing/portbase/database"
 	"github.com/safing/portbase/database/query"
 	"github.com/safing/portbase/database/record"
@@ -15,15 +17,12 @@ import (
 	"github.com/safing/portmaster/intel/geoip"
 	"github.com/safing/portmaster/netenv"
 	"github.com/safing/spn/hub"
-	"github.com/tevino/abool"
 )
 
-var (
-	db = database.NewInterface(&database.Options{
-		Local:    true,
-		Internal: true,
-	})
-)
+var db = database.NewInterface(&database.Options{
+	Local:    true,
+	Internal: true,
+})
 
 // InitializeFromDatabase loads all Hubs from the given database prefix and adds them to the Map.
 func (m *Map) InitializeFromDatabase() {
@@ -47,8 +46,7 @@ func (m *Map) InitializeFromDatabase() {
 			continue
 		}
 
-		hubCount += 1
-
+		hubCount++
 		m.updateHub(h, false, true)
 	}
 	switch {
@@ -61,6 +59,7 @@ func (m *Map) InitializeFromDatabase() {
 	}
 }
 
+// UpdateHook updates the a map from database changes.
 type UpdateHook struct {
 	database.HookBase
 	m *Map
@@ -100,6 +99,7 @@ func (m *Map) RegisterHubUpdateHook() (err error) {
 	return err
 }
 
+// CancelHubUpdateHook cancels the map's update hook.
 func (m *Map) CancelHubUpdateHook() {
 	if m.hubUpdateHook != nil {
 		if err := m.hubUpdateHook.Cancel(); err != nil {
@@ -121,7 +121,7 @@ func (m *Map) RemoveHub(id string) {
 	delete(m.all, id)
 
 	// Remove lanes from removed Pin.
-	for id, _ := range pin.ConnectedTo {
+	for id := range pin.ConnectedTo {
 		// Remove Lane from peer.
 		peer, ok := m.all[id]
 		if ok {
@@ -437,7 +437,7 @@ pinLoop:
 	return m.recalculateReachableHubs()
 }
 
-// AddBootstrapHubs adds the given bootstrap hubs to the map
+// AddBootstrapHubs adds the given bootstrap hubs to the map.
 func (m *Map) AddBootstrapHubs(bootstrapTransports []string) error {
 	m.Lock()
 	defer m.Unlock()

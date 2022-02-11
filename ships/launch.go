@@ -9,6 +9,7 @@ import (
 	"github.com/safing/spn/hub"
 )
 
+// Launch launches a new ship to the given Hub.
 func Launch(ctx context.Context, h *hub.Hub, transport *hub.Transport, ip net.IP) (Ship, error) {
 	var transports []*hub.Transport
 	var ips []net.IP

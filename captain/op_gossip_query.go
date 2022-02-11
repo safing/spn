@@ -14,8 +14,10 @@ import (
 	"github.com/safing/spn/terminal"
 )
 
+// GossipQueryOpType is the type ID of the gossip query operation.
 const GossipQueryOpType string = "gossip/query"
 
+// GossipQueryOp is used to query gossip messages.
 type GossipQueryOp struct {
 	terminal.OpBase
 
@@ -27,6 +29,7 @@ type GossipQueryOp struct {
 	cancelCtx context.CancelFunc
 }
 
+// Type returns the type ID.
 func (op *GossipQueryOp) Type() string {
 	return GossipQueryOpType
 }
@@ -39,6 +42,7 @@ func init() {
 	})
 }
 
+// NewGossipQueryOp starts a new gossip query operation.
 func NewGossipQueryOp(t terminal.OpTerminal) (*GossipQueryOp, *terminal.Error) {
 	// Create and init.
 	op := &GossipQueryOp{
@@ -137,6 +141,7 @@ iterating:
 	}
 }
 
+// Deliver delivers the message to the operation.
 func (op *GossipQueryOp) Deliver(c *container.Container) *terminal.Error {
 	gossipMsgTypeN, err := c.GetNextN8()
 	if err != nil {
@@ -168,13 +173,14 @@ func (op *GossipQueryOp) Deliver(c *container.Container) *terminal.Error {
 
 	// Relay data.
 	if forward {
-		// FIXME: Find better way to get craneID.
+		// TODO: Find better way to get craneID.
 		craneID := strings.SplitN(op.t.FmtID(), "#", 2)[0]
 		gossipRelayMsg(craneID, gossipMsgType, data)
 	}
 	return nil
 }
 
+// End ends the operation.
 func (op *GossipQueryOp) End(err *terminal.Error) {
 	if op.client {
 		log.Infof("spn/captain: gossip query imported %d entries", op.importCnt)

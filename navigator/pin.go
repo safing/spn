@@ -4,16 +4,17 @@ import (
 	"context"
 	"time"
 
+	"github.com/tevino/abool"
+
 	"github.com/safing/portbase/log"
 	"github.com/safing/portmaster/intel"
 	"github.com/safing/portmaster/intel/geoip"
 	"github.com/safing/spn/docks"
 	"github.com/safing/spn/hub"
-	"github.com/tevino/abool"
 )
 
 // Pin represents a Hub on a Map.
-type Pin struct {
+type Pin struct { //nolint:maligned
 	// Hub Information
 	Hub        *hub.Hub
 	EntityV4   *intel.Entity
@@ -90,10 +91,12 @@ type Lane struct {
 	active bool
 }
 
+// Lock locks the Pin via the Hub's lock.
 func (pin *Pin) Lock() {
 	pin.Hub.Lock()
 }
 
+// Unlock unlocks the Pin via the Hub's lock.
 func (pin *Pin) Unlock() {
 	pin.Hub.Unlock()
 }
@@ -136,6 +139,7 @@ func (pin *Pin) updateLocationData() {
 	}
 }
 
+// SetActiveTerminal sets an active terminal for the pin.
 func (pin *Pin) SetActiveTerminal(pc *PinConnection) {
 	pin.Lock()
 	defer pin.Unlock()
@@ -148,6 +152,7 @@ func (pin *Pin) SetActiveTerminal(pc *PinConnection) {
 	pin.pushChanges.Set()
 }
 
+// GetActiveTerminal returns the active terminal of the pin.
 func (pin *Pin) GetActiveTerminal() *docks.ExpansionTerminal {
 	pin.Lock()
 	defer pin.Unlock()
@@ -158,6 +163,7 @@ func (pin *Pin) GetActiveTerminal() *docks.ExpansionTerminal {
 	return pin.Connection.Terminal
 }
 
+// HasActiveTerminal returns whether the Pin has an active terminal.
 func (pin *Pin) HasActiveTerminal() bool {
 	pin.Lock()
 	defer pin.Unlock()
@@ -170,6 +176,7 @@ func (pin *Pin) hasActiveTerminal() bool {
 		!pin.Connection.Terminal.IsAbandoned()
 }
 
+// NotifyTerminalChange notifies subscribers of the changed terminal.
 func (pin *Pin) NotifyTerminalChange() {
 	pin.pushChanges.Set()
 	pin.pushChange()

@@ -5,65 +5,78 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/safing/spn/hub"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/safing/spn/hub"
 )
 
 func TestSorting(t *testing.T) {
+	t.Parallel()
+
 	list := []*Pin{
-		&Pin{
+		{
 			Hub: &hub.Hub{
 				ID: "a",
 			},
-			HopDistance: 3,
 			measurements: &hub.Measurements{
 				Latency:        3,
 				Capacity:       4,
 				CalculatedCost: 5,
 			},
+			analysis: &AnalysisState{
+				SuggestedHopDistance: 3,
+			},
 		},
-		&Pin{
+		{
 			Hub: &hub.Hub{
 				ID: "b",
 			},
-			HopDistance: 2,
 			measurements: &hub.Measurements{
 				Latency:        4,
 				Capacity:       3,
 				CalculatedCost: 1,
 			},
+			analysis: &AnalysisState{
+				SuggestedHopDistance: 2,
+			},
 		},
-		&Pin{
+		{
 			Hub: &hub.Hub{
 				ID: "c",
 			},
-			HopDistance: 4,
 			measurements: &hub.Measurements{
 				Latency:        5,
 				Capacity:       2,
 				CalculatedCost: 2,
 			},
+			analysis: &AnalysisState{
+				SuggestedHopDistance: 4,
+			},
 		},
-		&Pin{
+		{
 			Hub: &hub.Hub{
 				ID: "d",
 			},
-			HopDistance: 4,
 			measurements: &hub.Measurements{
 				Latency:        1,
 				Capacity:       1,
 				CalculatedCost: 3,
 			},
+			analysis: &AnalysisState{
+				SuggestedHopDistance: 4,
+			},
 		},
-		&Pin{
+		{
 			Hub: &hub.Hub{
 				ID: "e",
 			},
-			HopDistance: 4,
 			measurements: &hub.Measurements{
 				Latency:        2,
 				Capacity:       5,
 				CalculatedCost: 4,
+			},
+			analysis: &AnalysisState{
+				SuggestedHopDistance: 4,
 			},
 		},
 	}

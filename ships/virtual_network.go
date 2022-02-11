@@ -12,6 +12,7 @@ var (
 	virtNetConfig *hub.VirtualNetworkConfig
 )
 
+// SetVirtualNetworkConfig sets the virtual networking config.
 func SetVirtualNetworkConfig(config *hub.VirtualNetworkConfig) {
 	virtNetLock.Lock()
 	defer virtNetLock.Unlock()
@@ -19,6 +20,7 @@ func SetVirtualNetworkConfig(config *hub.VirtualNetworkConfig) {
 	virtNetConfig = config
 }
 
+// GetVirtualNetworkConfig returns the virtual networking config.
 func GetVirtualNetworkConfig() *hub.VirtualNetworkConfig {
 	virtNetLock.Lock()
 	defer virtNetLock.Unlock()
@@ -26,6 +28,7 @@ func GetVirtualNetworkConfig() *hub.VirtualNetworkConfig {
 	return virtNetConfig
 }
 
+// GetVirtualNetworkAddress returns the virtual network IP for the given Hub.
 func GetVirtualNetworkAddress(dstHubID string) net.IP {
 	virtNetLock.Lock()
 	defer virtNetLock.Unlock()

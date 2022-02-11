@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/awalterschulze/gographviz"
+
 	"github.com/safing/portbase/api"
 	"github.com/safing/portbase/log"
 	"github.com/safing/spn/docks"
@@ -224,44 +225,50 @@ func handleMapOptimizationTableRequest(ar *api.Request) (data []byte, err error)
 
 		// Add usage stats.
 		if crane, ok := assignedCranes[suggested.Hub.ID]; ok {
-			ltIn, ltOut, ltStart, pIn, pOut, pStart := crane.NetState.GetTrafficStats()
-			ltDuration := time.Since(ltStart)
-			pDuration := time.Since(pStart)
-			var mine string
-			switch {
-			case crane.IsMine() && crane.IsStopping():
-				mine = fmt.Sprintf("yes (stopping since %s)",
-					time.Since(crane.NetState.MarkedStoppingAt().Truncate(time.Minute)))
-			case crane.IsMine():
-				mine = "yes"
-			case !crane.IsMine() && crane.IsStopping():
-				mine = fmt.Sprintf("(stopping since %s)",
-					time.Since(crane.NetState.MarkedStoppingAt().Truncate(time.Minute)))
-			case !crane.IsMine():
-				mine = ""
-			}
-
-			fmt.Fprintf(tabWriter,
-				"\t%.2fGB %.2fMbit/s %.2f%%out since %s\t%.2fGB %.2fMbit/s %.2f%%out since %s\t%s\t%s",
-				float64(ltIn+ltOut)/1000000000,
-				(float64(ltIn+ltOut)/1000000/ltDuration.Seconds())*8,
-				float64(ltOut)/float64(ltIn+ltOut)*100,
-				ltDuration.Truncate(time.Second),
-				float64(pIn+pOut)/1000000000,
-				(float64(pIn+pOut)/1000000/pDuration.Seconds())*8,
-				float64(pOut)/float64(pIn+pOut)*100,
-				pDuration.Truncate(time.Second),
-				crane.Transport().Protocol,
-				mine,
-			)
+			addUsageStatsToTable(crane, tabWriter)
 		}
 
 		// Add linebreak.
 		fmt.Fprint(tabWriter, "\n")
 	}
-	tabWriter.Flush()
+	_ = tabWriter.Flush()
 
 	return buf.Bytes(), nil
+}
+
+// addUsageStatsToTable compiles some usage stats of a lane and addes them to the table.
+// Table Fields: Lifetime Usage, Period Usage, Prot, Mine.
+func addUsageStatsToTable(crane *docks.Crane, tabWriter *tabwriter.Writer) {
+	ltIn, ltOut, ltStart, pIn, pOut, pStart := crane.NetState.GetTrafficStats()
+	ltDuration := time.Since(ltStart)
+	pDuration := time.Since(pStart)
+	var mine string
+	switch {
+	case crane.IsMine() && crane.IsStopping():
+		mine = fmt.Sprintf("yes (stopping since %s)",
+			time.Since(crane.NetState.MarkedStoppingAt().Truncate(time.Minute)))
+	case crane.IsMine():
+		mine = "yes"
+	case !crane.IsMine() && crane.IsStopping():
+		mine = fmt.Sprintf("(stopping since %s)",
+			time.Since(crane.NetState.MarkedStoppingAt().Truncate(time.Minute)))
+	case !crane.IsMine():
+		mine = ""
+	}
+
+	fmt.Fprintf(tabWriter,
+		"\t%.2fGB %.2fMbit/s %.2f%%out since %s\t%.2fGB %.2fMbit/s %.2f%%out since %s\t%s\t%s",
+		float64(ltIn+ltOut)/1000000000,
+		(float64(ltIn+ltOut)/1000000/ltDuration.Seconds())*8,
+		float64(ltOut)/float64(ltIn+ltOut)*100,
+		ltDuration.Truncate(time.Second),
+		float64(pIn+pOut)/1000000000,
+		(float64(pIn+pOut)/1000000/pDuration.Seconds())*8,
+		float64(pOut)/float64(pIn+pOut)*100,
+		pDuration.Truncate(time.Second),
+		crane.Transport().Protocol,
+		mine,
+	)
 }
 
 func handleMapMeasurementsRequest(ar *api.Request) (i interface{}, err error) {
@@ -325,42 +332,13 @@ func handleMapMeasurementsTableRequest(ar *api.Request) (data []byte, err error)
 
 		// Add usage stats.
 		if crane, ok := assignedCranes[pin.Hub.ID]; ok {
-			ltIn, ltOut, ltStart, pIn, pOut, pStart := crane.NetState.GetTrafficStats()
-			ltDuration := time.Since(ltStart)
-			pDuration := time.Since(pStart)
-			var mine string
-			switch {
-			case crane.IsMine() && crane.IsStopping():
-				mine = fmt.Sprintf("yes (stopping since %s)",
-					time.Since(crane.NetState.MarkedStoppingAt().Truncate(time.Minute)))
-			case crane.IsMine():
-				mine = "yes"
-			case !crane.IsMine() && crane.IsStopping():
-				mine = fmt.Sprintf("(stopping since %s)",
-					time.Since(crane.NetState.MarkedStoppingAt().Truncate(time.Minute)))
-			case !crane.IsMine():
-				mine = ""
-			}
-
-			fmt.Fprintf(tabWriter,
-				"\t%.2fGB %.2fMbit/s %.2f%%out since %s\t%.2fGB %.2fMbit/s %.2f%%out since %s\t%s\t%s",
-				float64(ltIn+ltOut)/1000000000,
-				(float64(ltIn+ltOut)/1000000/ltDuration.Seconds())*8,
-				float64(ltOut)/float64(ltIn+ltOut)*100,
-				ltDuration.Truncate(time.Second),
-				float64(pIn+pOut)/1000000000,
-				(float64(pIn+pOut)/1000000/pDuration.Seconds())*8,
-				float64(pOut)/float64(pIn+pOut)*100,
-				pDuration.Truncate(time.Second),
-				crane.Transport().Protocol,
-				mine,
-			)
+			addUsageStatsToTable(crane, tabWriter)
 		}
 
 		// Add linebreak.
 		fmt.Fprint(tabWriter, "\n")
 	}
-	tabWriter.Flush()
+	_ = tabWriter.Flush()
 
 	return buf.Bytes(), nil
 }
@@ -414,13 +392,13 @@ func handleMapGraphRequest(w http.ResponseWriter, hr *http.Request) {
 
 	// Build graph.
 	graph := gographviz.NewGraph()
-	graph.AddAttr("", "ranksep", "0.2")
-	graph.AddAttr("", "nodesep", "0.5")
-	graph.AddAttr("", "center", "true")
-	graph.AddAttr("", "rankdir", "LR")
-	graph.AddAttr("", "ratio", "fill")
+	_ = graph.AddAttr("", "ranksep", "0.2")
+	_ = graph.AddAttr("", "nodesep", "0.5")
+	_ = graph.AddAttr("", "center", "true")
+	_ = graph.AddAttr("", "rankdir", "LR")
+	_ = graph.AddAttr("", "ratio", "fill")
 	for _, pin := range m.sortedPins(true) {
-		graph.AddNode("", pin.Hub.ID, map[string]string{
+		_ = graph.AddNode("", pin.Hub.ID, map[string]string{
 			"label":     graphNodeLabel(pin),
 			"tooltip":   graphNodeTooltip(pin),
 			"color":     graphNodeBorderColor(pin),
@@ -443,7 +421,7 @@ func handleMapGraphRequest(w http.ResponseWriter, hr *http.Request) {
 					edgeOptions["penwidth"] = "2"
 				}
 				// Add edge.
-				graph.AddEdge(pin.Hub.ID, lane.Pin.Hub.ID, false, edgeOptions)
+				_ = graph.AddEdge(pin.Hub.ID, lane.Pin.Hub.ID, false, edgeOptions)
 			}
 		}
 	}

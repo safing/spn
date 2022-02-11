@@ -21,10 +21,12 @@ var (
 	getFromNavigator func(mapName, hubID string) *Hub
 )
 
+// MakeHubDBKey makes a hub db key.
 func MakeHubDBKey(mapName, hubID string) string {
 	return fmt.Sprintf("cache:spn/hubs/%s/%s", mapName, hubID)
 }
 
+// MakeHubMsgDBKey makes a hub msg db key.
 func MakeHubMsgDBKey(mapName string, msgType MsgType, hubID string) string {
 	return fmt.Sprintf("cache:spn/msgs/%s/%s/%s", mapName, msgType, hubID)
 }
@@ -49,6 +51,7 @@ func GetHub(mapName string, hubID string) (*Hub, error) {
 	return GetHubByKey(MakeHubDBKey(mapName, hubID))
 }
 
+// GetHubByKey returns a hub by its raw DB key.
 func GetHubByKey(key string) (*Hub, error) {
 	r, err := db.Get(key)
 	if err != nil {
@@ -77,22 +80,22 @@ func EnsureHub(r record.Record) (*Hub, error) {
 	// unwrap
 	if r.IsWrapped() {
 		// only allocate a new struct, if we need it
-		new := &Hub{}
-		err := record.Unwrap(r, new)
+		newHub := &Hub{}
+		err := record.Unwrap(r, newHub)
 		if err != nil {
 			return nil, err
 		}
-		return checkAndReturn(new), nil
+		return checkAndReturn(newHub), nil
 	}
 
 	// or adjust type
-	new, ok := r.(*Hub)
+	newHub, ok := r.(*Hub)
 	if !ok {
 		return nil, fmt.Errorf("record not of type *Hub, but %T", r)
 	}
 
 	// ensure status
-	return checkAndReturn(new), nil
+	return checkAndReturn(newHub), nil
 }
 
 func checkAndReturn(h *Hub) *Hub {
@@ -104,12 +107,12 @@ func checkAndReturn(h *Hub) *Hub {
 }
 
 // Save saves to Hub to the correct scope in the database.
-func (hub *Hub) Save() error {
-	if !hub.KeyIsSet() {
-		hub.SetKey(MakeHubDBKey(hub.Map, hub.ID))
+func (h *Hub) Save() error {
+	if !h.KeyIsSet() {
+		h.SetKey(MakeHubDBKey(h.Map, h.ID))
 	}
 
-	return db.Put(hub)
+	return db.Put(h)
 }
 
 // RemoveHubAndMsgs deletes a Hub and it's saved messages from the database.
@@ -133,7 +136,7 @@ func RemoveHubAndMsgs(mapName string, hubID string) (err error) {
 }
 
 // HubMsg stores raw Hub messages.
-type HubMsg struct {
+type HubMsg struct { //nolint:golint
 	record.Base
 	sync.Mutex
 
@@ -161,6 +164,7 @@ func SaveHubMsg(id string, mapName string, msgType MsgType, data []byte) error {
 	return db.PutNew(msg)
 }
 
+// QueryRawGossipMsgs queries the database for raw gossip messages.
 func QueryRawGossipMsgs(mapName string, msgType MsgType) (it *iterator.Iterator, err error) {
 	it, err = db.Query(query.New(MakeHubMsgDBKey(mapName, msgType, "")))
 	return
@@ -171,18 +175,18 @@ func EnsureHubMsg(r record.Record) (*HubMsg, error) {
 	// unwrap
 	if r.IsWrapped() {
 		// only allocate a new struct, if we need it
-		new := &HubMsg{}
-		err := record.Unwrap(r, new)
+		newHubMsg := &HubMsg{}
+		err := record.Unwrap(r, newHubMsg)
 		if err != nil {
 			return nil, err
 		}
-		return new, nil
+		return newHubMsg, nil
 	}
 
 	// or adjust type
-	new, ok := r.(*HubMsg)
+	newHubMsg, ok := r.(*HubMsg)
 	if !ok {
 		return nil, fmt.Errorf("record not of type *Hub, but %T", r)
 	}
-	return new, nil
+	return newHubMsg, nil
 }

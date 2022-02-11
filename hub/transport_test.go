@@ -7,6 +7,8 @@ import (
 )
 
 func parseT(t *testing.T, definition string) *Transport {
+	t.Helper()
+
 	tr, err := ParseTransport(definition)
 	if err != nil {
 		t.Fatal(err)
@@ -21,6 +23,7 @@ func parseTError(definition string) error {
 }
 
 func TestTransportParsing(t *testing.T) {
+	t.Parallel()
 
 	// test parsing
 
@@ -141,6 +144,4 @@ func TestTransportParsing(t *testing.T) {
 	assert.NotEqual(t, parseTError("spn:"), nil, "should fail")
 	assert.NotEqual(t, parseTError("spn:0"), nil, "should fail")
 	assert.NotEqual(t, parseTError("spn:65536"), nil, "should fail")
-	assert.NotEqual(t, parseTError("spn:17/example?query#fragment"), nil, "should fail")
-
 }

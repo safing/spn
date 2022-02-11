@@ -6,24 +6,21 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/safing/portbase/info"
-
-	"github.com/safing/portbase/database/record"
-	"github.com/safing/portbase/log"
-
-	"github.com/safing/jess/tools"
-
 	"github.com/safing/jess"
+	"github.com/safing/jess/tools"
+	"github.com/safing/portbase/database/record"
+	"github.com/safing/portbase/info"
+	"github.com/safing/portbase/log"
 	"github.com/safing/spn/conf"
 	"github.com/safing/spn/hub"
 )
 
 const (
-	// DefaultIDKeyScheme is the default jess tool for creating ID keys
+	// DefaultIDKeyScheme is the default jess tool for creating ID keys.
 	DefaultIDKeyScheme = "Ed25519"
 
-	// DefaultIDKeySecurityLevel is the default security level for creating ID keys
-	DefaultIDKeySecurityLevel = 256 // Ed25519 security level is fixed, setting is ignored
+	// DefaultIDKeySecurityLevel is the default security level for creating ID keys.
+	DefaultIDKeySecurityLevel = 256 // Ed25519 security level is fixed, setting is ignored.
 )
 
 // Identity holds the identity of a Hub.
@@ -122,7 +119,7 @@ func (id *Identity) MaintainAnnouncement(selfcheck bool) (changed bool, err erro
 		// Apply the status as all other Hubs would in order to check if it's valid.
 		_, _, _, err = hub.ApplyAnnouncement(id.Hub, newInfoData, conf.MainMapName, conf.MainMapScope, true)
 		if err != nil {
-			return false, fmt.Errorf("failed to apply new announcement: %s", err)
+			return false, fmt.Errorf("failed to apply new announcement: %w", err)
 		}
 		id.infoExportCache = newInfoData
 
@@ -146,7 +143,7 @@ func (id *Identity) MaintainStatus(lanes []*hub.Lane, load *int, selfcheck bool)
 	if id.Hub.Status != nil {
 		newStatus, err = id.Hub.Status.Copy()
 		if err != nil {
-			return false, fmt.Errorf("failed to copy status for maintenance: %s", err)
+			return false, fmt.Errorf("failed to copy status for maintenance: %w", err)
 		}
 	} else {
 		newStatus = &hub.Status{}
@@ -194,7 +191,7 @@ func (id *Identity) MaintainStatus(lanes []*hub.Lane, load *int, selfcheck bool)
 		// Apply the status as all other Hubs would in order to check if it's valid.
 		_, _, _, err = hub.ApplyStatus(id.Hub, newStatusData, conf.MainMapName, conf.MainMapScope, true)
 		if err != nil {
-			return false, fmt.Errorf("failed to apply new status: %s", err)
+			return false, fmt.Errorf("failed to apply new status: %w", err)
 		}
 		id.statusExportCache = newStatusData
 

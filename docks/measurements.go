@@ -10,6 +10,7 @@ import (
 	"github.com/safing/spn/terminal"
 )
 
+// Measurement Configuration.
 const (
 	CraneMeasurementTTLDefault    = 30 * time.Minute
 	CraneMeasurementTTLByCostBase = 1 * time.Minute

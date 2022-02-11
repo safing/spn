@@ -6,31 +6,36 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/safing/portbase/container"
 	"github.com/safing/portbase/formats/varint"
 	"github.com/safing/portbase/log"
 	"github.com/safing/portbase/rng"
-
-	"github.com/safing/portbase/container"
 	"github.com/safing/spn/terminal"
 )
 
 const (
+	// LatencyTestOpType is the type ID of the latency test operation.
 	LatencyTestOpType = "latency"
 
 	latencyPingRequest  = 1
 	latencyPingResponse = 2
 
-	latencyTestNonceSize     = 16
-	latencyTestRuns          = 10
+	latencyTestNonceSize = 16
+	latencyTestRuns      = 10
+)
+
+var (
 	latencyTestPauseDuration = 1 * time.Second
 	latencyTestOpTimeout     = latencyTestRuns * latencyTestPauseDuration * 3
 )
 
+// LatencyTestOp is used to measure latency.
 type LatencyTestOp struct {
 	terminal.OpBase
 	t terminal.OpTerminal
 }
 
+// LatencyTestClientOp is the client version of LatencyTestOp.
 type LatencyTestClientOp struct {
 	LatencyTestOp
 
@@ -43,6 +48,7 @@ type LatencyTestClientOp struct {
 	result chan *terminal.Error
 }
 
+// Type returns the type ID.
 func (op *LatencyTestOp) Type() string {
 	return LatencyTestOpType
 }
@@ -55,6 +61,7 @@ func init() {
 	})
 }
 
+// NewLatencyTestOp runs a latency test.
 func NewLatencyTestOp(t terminal.OpTerminal) (*LatencyTestClientOp, *terminal.Error) {
 	// Create and init.
 	op := &LatencyTestClientOp{
@@ -87,7 +94,10 @@ func NewLatencyTestOp(t terminal.OpTerminal) (*LatencyTestClientOp, *terminal.Er
 
 func (op *LatencyTestClientOp) handler(ctx context.Context) error {
 	returnErr := terminal.ErrStopping
-	defer op.t.OpEnd(op, returnErr)
+	defer func() {
+		// Linters don't get that returnErr is used when directly used as defer.
+		op.t.OpEnd(op, returnErr)
+	}()
 
 	var nextTest <-chan time.Time
 	opTimeout := time.After(latencyTestOpTimeout)
@@ -124,14 +134,14 @@ func (op *LatencyTestClientOp) handler(ctx context.Context) error {
 
 			// Handle response
 			tErr := op.handleResponse(data)
-			if tErr != nil {
+			if tErr.IsError() {
 				returnErr = tErr
 				return nil
 			}
 
 			// Check if we have enough latency tests.
 			if len(op.measuredLatencies) >= latencyTestRuns {
-				op.reportMeasuredLatencies()
+				returnErr = op.reportMeasuredLatencies()
 				return nil
 			}
 
@@ -207,6 +217,7 @@ func (op *LatencyTestClientOp) reportMeasuredLatencies() *terminal.Error {
 	return nil
 }
 
+// Deliver delivers a message to the operation.
 func (op *LatencyTestClientOp) Deliver(c *container.Container) *terminal.Error {
 	// Optimized delivery with 1s timeout.
 	select {
@@ -221,6 +232,7 @@ func (op *LatencyTestClientOp) Deliver(c *container.Container) *terminal.Error {
 	return nil
 }
 
+// End ends the operation.
 func (op *LatencyTestClientOp) End(tErr *terminal.Error) {
 	close(op.responses)
 	select {
@@ -229,6 +241,7 @@ func (op *LatencyTestClientOp) End(tErr *terminal.Error) {
 	}
 }
 
+// Result returns the result (end error) of the operation.
 func (op *LatencyTestClientOp) Result() <-chan *terminal.Error {
 	return op.result
 }
@@ -250,6 +263,7 @@ func runLatencyTestOp(t terminal.OpTerminal, opID uint32, data *container.Contai
 	return op, nil
 }
 
+// Deliver delivers a message to the operation.
 func (op *LatencyTestOp) Deliver(c *container.Container) *terminal.Error {
 	rType, err := c.GetNextN8()
 	if err != nil {
@@ -275,4 +289,5 @@ func (op *LatencyTestOp) Deliver(c *container.Container) *terminal.Error {
 	}
 }
 
+// End ends the operation.
 func (op *LatencyTestOp) End(tErr *terminal.Error) {}

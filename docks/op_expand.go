@@ -6,18 +6,19 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/tevino/abool"
+
 	"github.com/safing/portbase/container"
 	"github.com/safing/spn/conf"
 	"github.com/safing/spn/terminal"
-	"github.com/tevino/abool"
 )
 
+// ExpandOpType is the type ID of the expand operation.
 const ExpandOpType string = "expand"
 
-var (
-	activeExpandOps = new(int64)
-)
+var activeExpandOps = new(int64)
 
+// ExpandOp is used to expand to another Hub.
 type ExpandOp struct {
 	terminal.OpBase
 
@@ -35,6 +36,7 @@ type ExpandOp struct {
 	relayTerminal *ExpansionRelayTerminal
 }
 
+// ExpansionRelayTerminal is a relay used for expansion.
 type ExpansionRelayTerminal struct {
 	*terminal.DuplexFlowQueue
 	op *ExpandOp
@@ -45,18 +47,22 @@ type ExpansionRelayTerminal struct {
 	abandoned *abool.AtomicBool
 }
 
+// Type returns the type ID.
 func (op *ExpandOp) Type() string {
 	return ExpandOpType
 }
 
+// ID returns the operation ID.
 func (t *ExpansionRelayTerminal) ID() uint32 {
 	return t.id
 }
 
+// Ctx returns the operation context.
 func (op *ExpandOp) Ctx() context.Context {
 	return op.ctx
 }
 
+// Ctx returns the relay terminal context.
 func (t *ExpansionRelayTerminal) Ctx() context.Context {
 	return t.op.ctx
 }
@@ -169,7 +175,7 @@ func (op *ExpandOp) forwardHandler(_ context.Context) error {
 
 			// Receive data from the origin and forward it to the relay.
 			if err := op.relayTerminal.DuplexFlowQueue.Send(c); err != nil {
-				return nil
+				return err
 			}
 
 		case <-op.ctx.Done():
@@ -190,7 +196,7 @@ func (op *ExpandOp) backwardHandler(_ context.Context) error {
 
 			// Receive data from the relay and forward it to the origin.
 			if err := op.DuplexFlowQueue.Send(c); err != nil {
-				return nil
+				return err
 			}
 
 		case <-op.ctx.Done():
@@ -199,11 +205,13 @@ func (op *ExpandOp) backwardHandler(_ context.Context) error {
 	}
 }
 
+// Abandon abandons the expansion.
 func (op *ExpandOp) Abandon(err *terminal.Error) {
 	// Proxy for Terminal Interface needed for the Duplex Flow Queue.
 	op.End(err)
 }
 
+// End abandons the expansion.
 func (op *ExpandOp) End(err *terminal.Error) {
 	if op.ended.SetToIf(false, true) {
 		// Init proper process.
@@ -217,6 +225,7 @@ func (op *ExpandOp) End(err *terminal.Error) {
 	}
 }
 
+// Abandon abandons the expansion.
 func (t *ExpansionRelayTerminal) Abandon(err *terminal.Error) {
 	if t.abandoned.SetToIf(false, true) {
 		// Init proper process.
@@ -227,10 +236,12 @@ func (t *ExpansionRelayTerminal) Abandon(err *terminal.Error) {
 	}
 }
 
+// FmtID returns the expansion ID hierarchy.
 func (op *ExpandOp) FmtID() string {
 	return fmt.Sprintf("%s>%d r> %s#%d", op.opTerminal.FmtID(), op.ID(), op.relayTerminal.crane.ID, op.relayTerminal.id)
 }
 
+// FmtID returns the expansion ID hierarchy.
 func (t *ExpansionRelayTerminal) FmtID() string {
 	return fmt.Sprintf("%s#%d", t.crane.ID, t.id)
 }

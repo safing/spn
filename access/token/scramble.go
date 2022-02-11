@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/mr-tron/base58"
+
 	"github.com/safing/jess/lhash"
 	"github.com/safing/portbase/formats/dsd"
 )
@@ -13,18 +14,22 @@ const (
 	scrambleSecretSize = 32
 )
 
+// ScrambleToken is token based on hashing.
 type ScrambleToken struct {
 	Token []byte
 }
 
+// Pack packs the token.
 func (pbt *ScrambleToken) Pack() ([]byte, error) {
 	return pbt.Token, nil
 }
 
+// UnpackScrambleToken unpacks the token.
 func UnpackScrambleToken(token []byte) (*ScrambleToken, error) {
 	return &ScrambleToken{Token: token}, nil
 }
 
+// ScrambleHandler is a handler for the scramble tokens.
 type ScrambleHandler struct {
 	sync.Mutex
 	opts *ScrambleOptions
@@ -36,6 +41,7 @@ type ScrambleHandler struct {
 	verifiers     map[string]*ScrambleToken
 }
 
+// ScrambleOptions are options for the ScrambleHandler.
 type ScrambleOptions struct {
 	Zone             string
 	Algorithm        lhash.Algorithm
@@ -44,13 +50,15 @@ type ScrambleOptions struct {
 	Fallback         bool
 }
 
-type ScrambleTokenRequest struct {
-}
+// ScrambleTokenRequest is a token request.
+type ScrambleTokenRequest struct{}
 
+// IssuedScrambleTokens are issued scrambled tokens.
 type IssuedScrambleTokens struct {
 	Tokens []*ScrambleToken
 }
 
+// NewScrambleHandler creates a new scramble handler.
 func NewScrambleHandler(opts ScrambleOptions) (*ScrambleHandler, error) {
 	sh := &ScrambleHandler{
 		opts:      &opts,
@@ -187,6 +195,7 @@ func (sh *ScrambleHandler) GetToken() (*Token, error) {
 	}, nil
 }
 
+// ScrambleStorage is a storage for scramble tokens.
 type ScrambleStorage struct {
 	Storage []*ScrambleToken
 }

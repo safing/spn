@@ -15,14 +15,18 @@ const (
 	waitUntilMeasuredUpToPercent      = 0.5
 
 	desegrationAttemptBackoff = time.Hour
+)
 
+// Optimization Purposes.
+const (
 	OptimizePurposeBootstrap       = "bootstrap"
 	OptimizePurposeDesegregate     = "desegregate"
 	OptimizePurposeWait            = "wait"
 	OptimizePurposeTargetStructure = "target-structure"
 )
 
-type AnalysisState struct {
+// AnalysisState holds state for analyzing the network for optimizations.
+type AnalysisState struct { //nolint:maligned
 	// Suggested signifies that a direct connection to this Hub is suggested by
 	// the optimization algorithm.
 	Suggested bool
@@ -114,6 +118,7 @@ type OptimizationResult struct {
 	matcher PinMatcher
 }
 
+// SuggestedConnection holds suggestions by the optimization system.
 type SuggestedConnection struct {
 	// Hub holds the Hub to which a connection is suggested.
 	Hub *hub.Hub
@@ -215,10 +220,7 @@ func (m *Map) optimize(opts *Options) (result *OptimizationResult, err error) {
 
 	// Bootstrap to the network and desegregate map.
 	// If there is a result, return it immediately.
-	returnImmediately, err := m.optimizeForBootstrappingAndDesegregation(result)
-	if err != nil {
-		return nil, err
-	}
+	returnImmediately := m.optimizeForBootstrappingAndDesegregation(result)
 	if returnImmediately {
 		return result, nil
 	}
@@ -249,34 +251,19 @@ func (m *Map) optimize(opts *Options) (result *OptimizationResult, err error) {
 	result.StopOthers = true
 
 	// Optimize for lowest cost.
-	err = m.optimizeForLowestCost(result, optimizationLowestCostConnections)
-	if err != nil {
-		return nil, err
-	}
+	m.optimizeForLowestCost(result, optimizationLowestCostConnections)
 
 	// Optimize for lowest cost in region.
-	err = m.optimizeForLowestCostInRegion(result)
-	if err != nil {
-		return nil, err
-	}
+	m.optimizeForLowestCostInRegion(result)
 
 	// Optimize for distance constraint in region.
-	err = m.optimizeForDistanceConstraintInRegion(result, 3)
-	if err != nil {
-		return nil, err
-	}
+	m.optimizeForDistanceConstraintInRegion(result, 3)
 
 	// Optimize for region-to-region connectivity.
-	err = m.optimizeForRegionConnectivity(result)
-	if err != nil {
-		return nil, err
-	}
+	m.optimizeForRegionConnectivity(result)
 
 	// Optimize for satellite-to-region connectivity.
-	err = m.optimizeForSatelliteConnectivity(result)
-	if err != nil {
-		return nil, err
-	}
+	m.optimizeForSatelliteConnectivity(result)
 
 	// Lapse traffic stats after optimizing for good fresh data next time.
 	for _, crane := range docks.GetAllAssignedCranes() {
@@ -287,7 +274,7 @@ func (m *Map) optimize(opts *Options) (result *OptimizationResult, err error) {
 	return result, nil
 }
 
-func (m *Map) optimizeForBootstrappingAndDesegregation(result *OptimizationResult) (returnImmediately bool, err error) {
+func (m *Map) optimizeForBootstrappingAndDesegregation(result *OptimizationResult) (returnImmediately bool) {
 	// All regarded Pins are reachable.
 	reachable := len(m.regardedPins)
 
@@ -317,7 +304,7 @@ func (m *Map) optimizeForBootstrappingAndDesegregation(result *OptimizationResul
 		result.Approach = []string{"Connect to a near Hub to connect to the network."}
 		result.MaxConnect = 1
 		result.addSuggested("bootstrap", connectable...)
-		return true, nil
+		return true
 
 	case reachable > len(connectable)/2:
 		// We are part of the majority network, continue with regular optimization.
@@ -356,13 +343,13 @@ func (m *Map) optimizeForBootstrappingAndDesegregation(result *OptimizationResul
 		// Record desegregation attempt.
 		m.lastDesegrationAttempt = time.Now()
 
-		return true, nil
+		return true
 	}
 
-	return false, nil
+	return false
 }
 
-func (m *Map) optimizeForLowestCost(result *OptimizationResult, max int) error {
+func (m *Map) optimizeForLowestCost(result *OptimizationResult, max int) {
 	// Add approach.
 	result.addApproach(fmt.Sprintf("Connect to best (lowest cost) %d Hubs globally.", max))
 
@@ -375,11 +362,9 @@ func (m *Map) optimizeForLowestCost(result *OptimizationResult, max int) error {
 	} else {
 		result.addSuggested("best globally", m.regardedPins[:max]...)
 	}
-
-	return nil
 }
 
-func (m *Map) optimizeForDistanceConstraint(result *OptimizationResult, max int) error {
+func (m *Map) optimizeForDistanceConstraint(result *OptimizationResult, max int) { //nolint:unused // TODO: Likely to be used again.
 	// Add approach.
 	result.addApproach(fmt.Sprintf("Satisfy max hop constraint of %d globally.", optimizationHopDistanceTarget))
 
@@ -389,12 +374,10 @@ func (m *Map) optimizeForDistanceConstraint(result *OptimizationResult, max int)
 
 		// Return when all regarded Pins are within the distance constraint.
 		if m.regardedPins[0].analysis.SuggestedHopDistance <= optimizationHopDistanceTarget {
-			return nil
+			return
 		}
 
 		// If not, suggest a connection to the best match.
 		result.addSuggested("satisfy global hop constraint", m.regardedPins[0])
 	}
-
-	return nil
 }

@@ -16,11 +16,13 @@ const (
 	logTestCraneMsgs     = false
 )
 
+// TestTerminal is a terminal for running tests.
 type TestTerminal struct {
 	*TerminalBase
 	*DuplexFlowQueue
 }
 
+// NewLocalTestTerminal returns a new local test terminal.
 func NewLocalTestTerminal(
 	ctx context.Context,
 	id uint32,
@@ -38,6 +40,7 @@ func NewLocalTestTerminal(
 	return initTestTerminal(t, initMsg, submitUpstream), initData, nil
 }
 
+// NewRemoteTestTerminal returns a new remote test terminal.
 func NewRemoteTestTerminal(
 	ctx context.Context,
 	id uint32,
@@ -133,11 +136,13 @@ func createDelayingTestForwardingFunc(
 	}
 }
 
+// Flush flushes the terminal base and flow queue.
 func (t *TestTerminal) Flush() {
 	t.TerminalBase.Flush()
 	t.DuplexFlowQueue.Flush()
 }
 
+// Abandon abandons the terminal.
 func (t *TestTerminal) Abandon(err *Error) {
 	if t.Abandoned.SetToIf(false, true) {
 		switch err {
@@ -154,6 +159,7 @@ func (t *TestTerminal) Abandon(err *Error) {
 	}
 }
 
+// NewSimpleTestTerminalPair provides a simple conntected terminal pair for tests.
 func NewSimpleTestTerminalPair(delay time.Duration, opts *TerminalOpts) (a, b *TestTerminal, err error) {
 	if opts == nil {
 		opts = &TerminalOpts{

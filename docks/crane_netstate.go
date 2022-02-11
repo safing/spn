@@ -6,8 +6,10 @@ import (
 	"time"
 )
 
+// NetStatePeriodInterval defines the interval some of the net state should be reset.
 const NetStatePeriodInterval = 15 * time.Minute
 
+// NetworkOptimizationState holds data for optimization purposes.
 type NetworkOptimizationState struct {
 	lock sync.Mutex
 
@@ -36,6 +38,7 @@ func newNetworkOptimizationState() *NetworkOptimizationState {
 	}
 }
 
+// UpdateLastSuggestedAt sets when the lane was last suggested to the current time.
 func (netState *NetworkOptimizationState) UpdateLastSuggestedAt() {
 	netState.lock.Lock()
 	defer netState.lock.Unlock()
@@ -43,6 +46,7 @@ func (netState *NetworkOptimizationState) UpdateLastSuggestedAt() {
 	netState.lastSuggestedAt = time.Now()
 }
 
+// LastSuggestedAt returns when the lane was last suggested.
 func (netState *NetworkOptimizationState) LastSuggestedAt() time.Time {
 	netState.lock.Lock()
 	defer netState.lock.Unlock()
@@ -50,6 +54,7 @@ func (netState *NetworkOptimizationState) LastSuggestedAt() time.Time {
 	return netState.lastSuggestedAt
 }
 
+// UpdateMarkedStoppingAt setse when the lane was last marked as stopping to the current time.
 func (netState *NetworkOptimizationState) UpdateMarkedStoppingAt() {
 	netState.lock.Lock()
 	defer netState.lock.Unlock()
@@ -57,6 +62,7 @@ func (netState *NetworkOptimizationState) UpdateMarkedStoppingAt() {
 	netState.markedStoppingAt = time.Now()
 }
 
+// MarkedStoppingAt returns when the lane was last marked as stopping.
 func (netState *NetworkOptimizationState) MarkedStoppingAt() time.Time {
 	netState.lock.Lock()
 	defer netState.lock.Unlock()
@@ -64,6 +70,7 @@ func (netState *NetworkOptimizationState) MarkedStoppingAt() time.Time {
 	return netState.markedStoppingAt
 }
 
+// ReportTraffic adds the reported transferred data to the traffic stats.
 func (netState *NetworkOptimizationState) ReportTraffic(bytes uint64, in bool) {
 	if in {
 		atomic.AddUint64(netState.lifetimeBytesIn, bytes)
@@ -74,6 +81,7 @@ func (netState *NetworkOptimizationState) ReportTraffic(bytes uint64, in bool) {
 	}
 }
 
+// LapsePeriod lapses the net state period, if needed.
 func (netState *NetworkOptimizationState) LapsePeriod() {
 	netState.lock.Lock()
 	defer netState.lock.Unlock()
@@ -86,6 +94,7 @@ func (netState *NetworkOptimizationState) LapsePeriod() {
 	}
 }
 
+// GetTrafficStats returns the traffic stats.
 func (netState *NetworkOptimizationState) GetTrafficStats() (
 	lifetimeBytesIn uint64,
 	lifetimeBytesOut uint64,

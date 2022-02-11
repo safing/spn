@@ -50,6 +50,7 @@ func initRegistry() {
 	scrambleRegistry = make([]*ScrambleHandler, 0, 1)
 }
 
+// RegisterPBlindHandler registers a pblind handler with the registry.
 func RegisterPBlindHandler(h *PBlindHandler) error {
 	registryLock.Lock()
 	defer registryLock.Unlock()
@@ -62,6 +63,7 @@ func RegisterPBlindHandler(h *PBlindHandler) error {
 	return nil
 }
 
+// RegisterScrambleHandler registers a scramble handler with the registry.
 func RegisterScrambleHandler(h *ScrambleHandler) error {
 	registryLock.Lock()
 	defer registryLock.Unlock()
@@ -88,6 +90,7 @@ func registerHandler(h Handler, zone string) error {
 	return nil
 }
 
+// GetHandler returns the handler of the given zone.
 func GetHandler(zone string) (handler Handler, ok bool) {
 	registryLock.RLock()
 	defer registryLock.RUnlock()
@@ -96,9 +99,18 @@ func GetHandler(zone string) (handler Handler, ok bool) {
 	return
 }
 
+// ResetRegistry resets the token handler registry.
 func ResetRegistry() {
 	registryLock.Lock()
 	defer registryLock.Unlock()
 
 	initRegistry()
+}
+
+// RegistrySize returns the amount of handler registered.
+func RegistrySize() int {
+	registryLock.Lock()
+	defer registryLock.Unlock()
+
+	return len(registry)
 }

@@ -8,6 +8,7 @@ import (
 	"github.com/safing/portmaster/network/netutils"
 )
 
+// BaselineCharset defines the permitted characters.
 var BaselineCharset = regexp.MustCompile(
 	// Start of charset selection.
 	`^[` +
@@ -30,7 +31,7 @@ func checkStringFormat(fieldName, value string, maxLength int) error {
 	}
 }
 
-func checkStringSliceFormat(fieldName string, value []string, maxLength, maxStringLength int) error {
+func checkStringSliceFormat(fieldName string, value []string, maxLength, maxStringLength int) error { //nolint:unparam
 	if len(value) > maxLength {
 		return fmt.Errorf("field %s with array/slice length of %d exceeds max length of %d", fieldName, len(value), maxLength)
 	}

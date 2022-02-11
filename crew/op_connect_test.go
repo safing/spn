@@ -15,12 +15,13 @@ import (
 )
 
 const (
-	logTestCraneMsgs = false
-	testPadding      = 8
-	testQueueSize    = 10
+	testPadding   = 8
+	testQueueSize = 10
 )
 
 func TestConnectOp(t *testing.T) {
+	t.Parallel()
+
 	if testing.Short() {
 		t.Skip("skipping test in short mode, as it interacts with the network")
 	}

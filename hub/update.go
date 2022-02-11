@@ -5,14 +5,13 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/safing/portbase/log"
-	"github.com/safing/portmaster/network/netutils"
-
 	"github.com/safing/jess"
 	"github.com/safing/jess/lhash"
 	"github.com/safing/portbase/container"
 	"github.com/safing/portbase/database"
 	"github.com/safing/portbase/formats/dsd"
+	"github.com/safing/portbase/log"
+	"github.com/safing/portmaster/network/netutils"
 )
 
 var (
@@ -31,12 +30,12 @@ func SignHubMsg(msg []byte, env *jess.Envelope, enableTofu bool) ([]byte, error)
 	// start session from envelope
 	session, err := env.Correspondence(nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to initiate signing session: %s", err)
+		return nil, fmt.Errorf("failed to initiate signing session: %w", err)
 	}
 	// sign the data
 	letter, err := session.Close(msg)
 	if err != nil {
-		return nil, fmt.Errorf("failed to sign msg: %s", err)
+		return nil, fmt.Errorf("failed to sign msg: %w", err)
 	}
 
 	if enableTofu {
@@ -47,12 +46,12 @@ func SignHubMsg(msg []byte, env *jess.Envelope, enableTofu bool) ([]byte, error)
 			// get public key
 			public, err := sender.AsRecipient()
 			if err != nil {
-				return nil, fmt.Errorf("failed to get public key of %s: %s", sender.ID, err)
+				return nil, fmt.Errorf("failed to get public key of %s: %w", sender.ID, err)
 			}
 			// serialize key
 			err = public.StoreKey()
 			if err != nil {
-				return nil, fmt.Errorf("failed to serialize public key %s: %s", sender.ID, err)
+				return nil, fmt.Errorf("failed to serialize public key %s: %w", sender.ID, err)
 			}
 			// add to keys
 			letter.Keys = append(letter.Keys, &jess.Seal{
@@ -76,7 +75,7 @@ func SignHubMsg(msg []byte, env *jess.Envelope, enableTofu bool) ([]byte, error)
 func OpenHubMsg(hub *Hub, data []byte, mapName string, tofu bool) (msg []byte, sendingHub *Hub, known bool, err error) {
 	letter, err := jess.LetterFromDSD(data)
 	if err != nil {
-		return nil, nil, false, fmt.Errorf("malformed letter: %s", err)
+		return nil, nil, false, fmt.Errorf("malformed letter: %w", err)
 	}
 
 	// check signatures
@@ -99,8 +98,8 @@ func OpenHubMsg(hub *Hub, data []byte, mapName string, tofu bool) (msg []byte, s
 	if hub == nil {
 		hub, err = GetHub(mapName, seal.ID)
 		if err != nil {
-			if err != database.ErrNotFound {
-				return nil, nil, false, fmt.Errorf("failed to get existing hub %s: %s", seal.ID, err)
+			if !errors.Is(err, database.ErrNotFound) {
+				return nil, nil, false, fmt.Errorf("failed to get existing hub %s: %w", seal.ID, err)
 			}
 			hub = nil
 		} else {
@@ -125,7 +124,7 @@ func OpenHubMsg(hub *Hub, data []byte, mapName string, tofu bool) (msg []byte, s
 		}
 
 		// trust on first use, extract key from keys
-		// FIXME: testing if works without
+		// TODO: Test if works without TOFU.
 
 		// get key
 		var pubkey *jess.Seal
@@ -175,11 +174,11 @@ func OpenHubMsg(hub *Hub, data []byte, mapName string, tofu bool) (msg []byte, s
 }
 
 // Export exports the announcement with the given signature configuration.
-func (ha *Announcement) Export(env *jess.Envelope) ([]byte, error) {
+func (a *Announcement) Export(env *jess.Envelope) ([]byte, error) {
 	// pack
-	msg, err := dsd.Dump(ha, dsd.JSON)
+	msg, err := dsd.Dump(a, dsd.JSON)
 	if err != nil {
-		return nil, fmt.Errorf("failed to pack announcement: %s", err)
+		return nil, fmt.Errorf("failed to pack announcement: %w", err)
 	}
 
 	return SignHubMsg(msg, env, true)
@@ -284,10 +283,10 @@ func ApplyAnnouncement(existingHub *Hub, data []byte, mapName string, scope Scop
 		hub.FirstSeen = time.Now().UTC()
 	}
 
-	return
+	return //nolint:nakedret
 }
 
-func (hub *Hub) validateAnnouncement(announcement *Announcement, scope Scope) error {
+func (h *Hub) validateAnnouncement(announcement *Announcement, scope Scope) error {
 	// value formatting
 	if err := announcement.validateFormatting(); err != nil {
 		return err
@@ -303,19 +302,19 @@ func (hub *Hub) validateAnnouncement(announcement *Announcement, scope Scope) er
 	}
 
 	// check for illegal IP address changes
-	if hub.Info != nil {
+	if h.Info != nil {
 		switch {
-		case hub.Info.IPv4 != nil && announcement.IPv4 == nil:
-			hub.VerifiedIPs = false
+		case h.Info.IPv4 != nil && announcement.IPv4 == nil:
+			h.VerifiedIPs = false
 			return errors.New("previously announced IPv4 address missing")
-		case hub.Info.IPv4 != nil && !announcement.IPv4.Equal(hub.Info.IPv4):
-			hub.VerifiedIPs = false
+		case h.Info.IPv4 != nil && !announcement.IPv4.Equal(h.Info.IPv4):
+			h.VerifiedIPs = false
 			return errors.New("IPv4 address changed")
-		case hub.Info.IPv6 != nil && announcement.IPv6 == nil:
-			hub.VerifiedIPs = false
+		case h.Info.IPv6 != nil && announcement.IPv6 == nil:
+			h.VerifiedIPs = false
 			return errors.New("previously announced IPv6 address missing")
-		case hub.Info.IPv6 != nil && !announcement.IPv6.Equal(hub.Info.IPv6):
-			hub.VerifiedIPs = false
+		case h.Info.IPv6 != nil && !announcement.IPv6.Equal(h.Info.IPv6):
+			h.VerifiedIPs = false
 			return errors.New("IPv6 address changed")
 		}
 	}
@@ -330,8 +329,8 @@ func (hub *Hub) validateAnnouncement(announcement *Announcement, scope Scope) er
 			return errors.New("IPv4 scope violation: outside of global scope")
 		}
 		// Reset IP verification flag if IPv4 was added.
-		if hub.Info == nil || hub.Info.IPv4 == nil {
-			hub.VerifiedIPs = false
+		if h.Info == nil || h.Info.IPv4 == nil {
+			h.VerifiedIPs = false
 		}
 	}
 	if announcement.IPv6 != nil {
@@ -343,8 +342,8 @@ func (hub *Hub) validateAnnouncement(announcement *Announcement, scope Scope) er
 			return errors.New("IPv6 scope violation: outside of global scope")
 		}
 		// Reset IP verification flag if IPv6 was added.
-		if hub.Info == nil || hub.Info.IPv6 == nil {
-			hub.VerifiedIPs = false
+		if h.Info == nil || h.Info.IPv6 == nil {
+			h.VerifiedIPs = false
 		}
 	}
 
@@ -354,7 +353,7 @@ func (hub *Hub) validateAnnouncement(announcement *Announcement, scope Scope) er
 		_, err := ParseTransport(definition)
 		if err != nil {
 			invalidTransports++
-			log.Warningf("spn/hub: invalid transport in announcement from %s: %s", hub.ID, definition)
+			log.Warningf("spn/hub: invalid transport in announcement from %s: %s", h.ID, definition)
 		}
 	}
 	if invalidTransports >= len(announcement.Transports) {
@@ -365,11 +364,11 @@ func (hub *Hub) validateAnnouncement(announcement *Announcement, scope Scope) er
 }
 
 // Export exports the status with the given signature configuration.
-func (hs *Status) Export(env *jess.Envelope) ([]byte, error) {
+func (s *Status) Export(env *jess.Envelope) ([]byte, error) {
 	// pack
-	msg, err := dsd.Dump(hs, dsd.JSON)
+	msg, err := dsd.Dump(s, dsd.JSON)
 	if err != nil {
-		return nil, fmt.Errorf("failed to pack status: %s", err)
+		return nil, fmt.Errorf("failed to pack status: %w", err)
 	}
 
 	return SignHubMsg(msg, env, false)
@@ -457,10 +456,10 @@ func ApplyStatus(existingHub *Hub, data []byte, mapName string, scope Scope, sel
 		hub.Status = status
 	}
 
-	return
+	return //nolint:nakedret
 }
 
-func (hub *Hub) validateStatus(status *Status) error {
+func (h *Hub) validateStatus(status *Status) error {
 	// value formatting
 	if err := status.validateFormatting(); err != nil {
 		return err
@@ -470,7 +469,7 @@ func (hub *Hub) validateStatus(status *Status) error {
 	if status.Timestamp > time.Now().Add(clockSkewTolerance).Unix() {
 		return fmt.Errorf(
 			"status from %s @ %s is from the future",
-			hub.ID,
+			h.ID,
 			time.Unix(status.Timestamp, 0),
 		)
 	}
@@ -484,21 +483,21 @@ func (hub *Hub) validateStatus(status *Status) error {
 func CreateHubSignet(toolID string, securityLevel int) (private, public *jess.Signet, err error) {
 	private, err = jess.GenerateSignet(toolID, securityLevel)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to generate key: %s", err)
+		return nil, nil, fmt.Errorf("failed to generate key: %w", err)
 	}
 	err = private.StoreKey()
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to store private key: %s", err)
+		return nil, nil, fmt.Errorf("failed to store private key: %w", err)
 	}
 
 	// get public key for creating the Hub ID
 	public, err = private.AsRecipient()
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get public key: %s", err)
+		return nil, nil, fmt.Errorf("failed to get public key: %w", err)
 	}
 	err = public.StoreKey()
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to store public key: %s", err)
+		return nil, nil, fmt.Errorf("failed to store public key: %w", err)
 	}
 
 	// assign IDs

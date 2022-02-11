@@ -30,9 +30,9 @@ func (or *OptimizationResult) markSuggestedReachableInRegion(suggested *Pin, hop
 	}
 }
 
-func (m *Map) optimizeForLowestCostInRegion(result *OptimizationResult) error {
+func (m *Map) optimizeForLowestCostInRegion(result *OptimizationResult) {
 	if m.home == nil || m.home.region == nil {
-		return nil
+		return
 	}
 	region := m.home.region
 
@@ -48,13 +48,11 @@ func (m *Map) optimizeForLowestCostInRegion(result *OptimizationResult) error {
 	} else {
 		result.addSuggested("best in region", region.regardedPins[:region.internalMinLanesOnHub]...)
 	}
-
-	return nil
 }
 
-func (m *Map) optimizeForDistanceConstraintInRegion(result *OptimizationResult, max int) error {
+func (m *Map) optimizeForDistanceConstraintInRegion(result *OptimizationResult, max int) {
 	if m.home == nil || m.home.region == nil {
-		return nil
+		return
 	}
 	region := m.home.region
 
@@ -67,19 +65,17 @@ func (m *Map) optimizeForDistanceConstraintInRegion(result *OptimizationResult, 
 
 		// Return when all regarded Pins are within the distance constraint.
 		if region.regardedPins[0].analysis.SuggestedHopDistanceInRegion <= region.internalMaxHops {
-			return nil
+			return
 		}
 
 		// If not, suggest a connection to the best match.
 		result.addSuggested("satisfy regional hop constraint", region.regardedPins[0])
 	}
-
-	return nil
 }
 
-func (m *Map) optimizeForRegionConnectivity(result *OptimizationResult) error {
+func (m *Map) optimizeForRegionConnectivity(result *OptimizationResult) {
 	if m.home == nil || m.home.region == nil {
-		return nil
+		return
 	}
 	region := m.home.region
 
@@ -141,8 +137,6 @@ checkRegions:
 			}
 		}
 	}
-
-	return nil
 }
 
 // countConnectionsToRegion analyzes existing lanes from this to another
@@ -194,16 +188,16 @@ func (m *Map) countConnectionsToRegion(result *OptimizationResult, region *Regio
 		}
 	}
 
-	return
+	return lanesToRegion, highestCostWithinLaneLimit
 }
 
-func (m *Map) optimizeForSatelliteConnectivity(result *OptimizationResult) error {
+func (m *Map) optimizeForSatelliteConnectivity(result *OptimizationResult) {
 	if m.home == nil {
-		return nil
+		return
 	}
 	// This is only for Hubs that are not in a region.
 	if m.home.region != nil {
-		return nil
+		return
 	}
 
 	// Add approach.
@@ -221,8 +215,6 @@ func (m *Map) optimizeForSatelliteConnectivity(result *OptimizationResult) error
 			result.addSuggested(fmt.Sprintf("best to region %s", region.ID), region.regardedPins[:region.satelliteMinLanes]...)
 		}
 	}
-
-	return nil
 }
 
 type sortCostsByLowest []float32

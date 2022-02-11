@@ -5,9 +5,10 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/tevino/abool"
+
 	"github.com/safing/portbase/api"
 	"github.com/safing/portbase/metrics"
-	"github.com/tevino/abool"
 )
 
 var (

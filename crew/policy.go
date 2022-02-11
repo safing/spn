@@ -17,6 +17,7 @@ var (
 	connectingHubInfoTimestamp int64
 )
 
+// EnableConnecting enables connecting from this Hub.
 func EnableConnecting(my *hub.Hub) {
 	connectingHubLock.Lock()
 	defer connectingHubLock.Unlock()

@@ -14,10 +14,12 @@ import (
 	"github.com/safing/spn/navigator"
 )
 
+// BootstrapFile is used for sideloading bootstrap data.
 type BootstrapFile struct {
 	Main BootstrapFileEntry
 }
 
+// BootstrapFileEntry is the bootstrap data structure for one map.
 type BootstrapFileEntry struct {
 	Hubs []string
 }
@@ -59,9 +61,8 @@ func processBootstrapFileFlag() error {
 	if err != nil {
 		if os.IsNotExist(err) {
 			return createBootstrapFile(bootstrapFileFlag)
-		} else {
-			return fmt.Errorf("failed to access bootstrap hub file: %w", err)
 		}
+		return fmt.Errorf("failed to access bootstrap hub file: %w", err)
 	}
 
 	return loadBootstrapFile(bootstrapFileFlag)
@@ -117,11 +118,12 @@ func createBootstrapFile(filename string) error {
 		return fmt.Errorf("failed to parse transport of public identity: %w", err)
 	}
 	// add IP address
-	if publicIdentity.Hub.Info.IPv4 != nil {
+	switch {
+	case publicIdentity.Hub.Info.IPv4 != nil:
 		t.Domain = publicIdentity.Hub.Info.IPv4.String()
-	} else if publicIdentity.Hub.Info.IPv6 != nil {
+	case publicIdentity.Hub.Info.IPv6 != nil:
 		t.Domain = "[" + publicIdentity.Hub.Info.IPv6.String() + "]"
-	} else {
+	default:
 		return errors.New("public identity has no IP address available")
 	}
 	// add Hub ID
@@ -140,7 +142,7 @@ func createBootstrapFile(filename string) error {
 	}
 
 	// save to disk
-	err = ioutil.WriteFile(filename, fileData, 0664)
+	err = ioutil.WriteFile(filename, fileData, 0o0664) //nolint:gosec // Should be able to be read by others.
 	if err != nil {
 		return err
 	}

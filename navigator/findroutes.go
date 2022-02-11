@@ -8,6 +8,7 @@ import (
 	"github.com/safing/portmaster/intel/geoip"
 )
 
+// FindRoutes finds possible routes to the given IP, with the given options.
 func (m *Map) FindRoutes(ip net.IP, opts *Options, maxRoutes int) (*Routes, error) {
 	m.Lock()
 	defer m.Unlock()
@@ -30,8 +31,8 @@ func (m *Map) FindRoutes(ip net.IP, opts *Options, maxRoutes int) (*Routes, erro
 	// Handle special home routing profile.
 	if opts.RoutingProfile == RoutingProfileHomeName {
 		return &Routes{
-			All: []*Route{&Route{
-				Path: []*Hop{&Hop{
+			All: []*Route{{
+				Path: []*Hop{{
 					pin:   m.home,
 					HubID: m.home.Hub.ID,
 				}},
@@ -147,6 +148,8 @@ func (m *Map) findRoutes(dsts *nearbyPins, opts *Options, maxRoutes int) (*Route
 		case routeNonCompliant:
 			// Continue exploration.
 			exploreLanes(route)
+		case routeDisqualified:
+			fallthrough
 		default:
 			// Route is disqualified and we can return without further exploration.
 		}

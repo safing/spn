@@ -15,6 +15,7 @@ import (
 
 var hubImportLock sync.Mutex
 
+// ImportAndVerifyHubInfo imports the given hub message and verifies them.
 func ImportAndVerifyHubInfo(ctx context.Context, hubID string, announcementData, statusData []byte, mapName string, scope hub.Scope) (h *hub.Hub, forward bool, tErr *terminal.Error) {
 	var firstErr *terminal.Error
 
@@ -69,9 +70,8 @@ func ImportAndVerifyHubInfo(ctx context.Context, hubID string, announcementData,
 	if h == nil {
 		if firstErr != nil {
 			return nil, false, firstErr
-		} else {
-			return nil, false, terminal.ErrInternalError.With("got not hub after data import")
 		}
+		return nil, false, terminal.ErrInternalError.With("got not hub after data import")
 	}
 
 	// Abort if the given hub ID does not match.
@@ -85,7 +85,8 @@ func ImportAndVerifyHubInfo(ctx context.Context, hubID string, announcementData,
 	// - There has been any change.
 	// - The hub is not verified yet.
 	// - We're a public Hub.
-	if firstErr == nil && hubChanged && !h.Verified() && conf.PublicHub() {
+	// - We're not testing.
+	if firstErr == nil && hubChanged && !h.Verified() && conf.PublicHub() && !runningTests {
 		if !conf.HubHasIPv4() && !conf.HubHasIPv6() {
 			firstErr = terminal.ErrInternalError.With("no hub networks set")
 		}
@@ -161,7 +162,7 @@ func verifyHubIP(ctx context.Context, h *hub.Hub, ip net.IP) error {
 	// Create connection.
 	ship, err := ships.Launch(ctx, h, nil, ip)
 	if err != nil {
-		return fmt.Errorf("failed to launch ship to %s: %s", ip, err)
+		return fmt.Errorf("failed to launch ship to %s: %w", ip, err)
 	}
 
 	// Start crane for receiving reply.
@@ -180,7 +181,7 @@ func verifyHubIP(ctx context.Context, h *hub.Hub, ip net.IP) error {
 
 	// End connection.
 	tErr := crane.endInit()
-	if tErr != nil {
+	if tErr.IsError() {
 		log.Debugf("spn/docks: failed to end verification connection to %s: %s", ip, tErr)
 	}
 

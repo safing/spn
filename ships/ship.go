@@ -5,18 +5,18 @@ import (
 	"fmt"
 	"net"
 
+	"github.com/tevino/abool"
+
 	"github.com/safing/portbase/log"
 	"github.com/safing/spn/hub"
-	"github.com/tevino/abool"
 )
 
 const (
 	defaultLoadSize = 4096
 )
 
-var (
-	ErrSunk = errors.New("ship sunk")
-)
+// ErrSunk is returned when a ship sunk, ie. the connection was lost.
+var ErrSunk = errors.New("ship sunk")
 
 // Ship represents a network layer connection.
 type Ship interface {
@@ -62,8 +62,11 @@ type Ship interface {
 	// Sink closes the underlying connection and cleans up any related resources.
 	Sink()
 
+	// MaskAddress masks the address, if enabled.
 	MaskAddress(addr net.Addr) string
+	// MaskIP masks an IP, if enabled.
 	MaskIP(ip net.IP) string
+	// Mask masks a value.
 	Mask(value []byte) string
 }
 
@@ -151,7 +154,7 @@ func (ship *ShipBase) Load(data []byte) error {
 	// Empty load is used as a signal to cease operaetion.
 	if len(data) == 0 {
 		if ship.sinking.SetToIf(false, true) {
-			ship.conn.Close()
+			_ = ship.conn.Close()
 		}
 		return nil
 	}

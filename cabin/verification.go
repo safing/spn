@@ -21,6 +21,7 @@ var (
 					Remove(jess.RecipientAuthentication)
 )
 
+// Verification is used to verify certain aspects of another Hub.
 type Verification struct {
 	// Challenge is a random value chosen by the client.
 	Challenge []byte `json:"c"`
@@ -32,6 +33,8 @@ type Verification struct {
 	ServerReference string `json:"sr"`
 }
 
+// CreateVerificationRequest creates a new verification request with the given
+// purpose and references.
 func CreateVerificationRequest(purpose, clientReference, serverReference string) (v *Verification, request []byte, err error) {
 	// Generate random challenge.
 	challenge, err := rng.Bytes(verificationChallengeSize)
@@ -59,6 +62,9 @@ func CreateVerificationRequest(purpose, clientReference, serverReference string)
 	return v, request, nil
 }
 
+// SignVerificationRequest sign a verification request.
+// The purpose and references must match the request, else the verification
+// will fail.
 func (id *Identity) SignVerificationRequest(request []byte, purpose, clientReference, serverReference string) (response []byte, err error) {
 	// Parse request.
 	v := new(Verification)
@@ -107,6 +113,7 @@ func (id *Identity) SignVerificationRequest(request []byte, purpose, clientRefer
 	return signedResponse, nil
 }
 
+// Verify verifies the verification response and checks if everything is valid.
 func (v *Verification) Verify(response []byte, h *hub.Hub) error {
 	// Parse response.
 	letter, err := jess.LetterFromDSD(response)
@@ -117,7 +124,9 @@ func (v *Verification) Verify(response []byte, h *hub.Hub) error {
 	// Verify response.
 	responseData, err := letter.Open(
 		verificationRequirements,
-		&hub.SingleTrustStore{h.PublicKey},
+		&hub.SingleTrustStore{
+			Signet: h.PublicKey,
+		},
 	)
 	if err != nil {
 		return fmt.Errorf("failed to verify response: %w", err)

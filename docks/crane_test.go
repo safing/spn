@@ -9,27 +9,25 @@ import (
 	"testing"
 	"time"
 
-	"github.com/safing/spn/cabin"
-	"github.com/safing/spn/hub"
-
 	"github.com/stretchr/testify/assert"
 
 	"github.com/safing/portbase/container"
-	"github.com/safing/spn/terminal"
-
+	"github.com/safing/spn/cabin"
+	"github.com/safing/spn/hub"
 	"github.com/safing/spn/ships"
+	"github.com/safing/spn/terminal"
 )
 
-var testData = []byte("The quick brown fox jumps over the lazy dog. ")
-
 func TestCraneCommunication(t *testing.T) {
-	testCraneWithCounter(t, "plain-counter-100", false, 100, 10000)
-	testCraneWithCounter(t, "plain-counter-1000", false, 1000, 10000)
-	testCraneWithCounter(t, "plain-counter-10000", false, 10000, 10000)
-	testCraneWithCounter(t, "encrypted-counter", true, 1000, 10000)
+	t.Parallel()
+
+	testCraneWithCounter(t, "plain-counter-100", false, 100, 1000)
+	testCraneWithCounter(t, "plain-counter-1000", false, 1000, 1000)
+	testCraneWithCounter(t, "plain-counter-10000", false, 10000, 1000)
+	testCraneWithCounter(t, "encrypted-counter", true, 1000, 1000)
 }
 
-func testCraneWithCounter(t *testing.T, testID string, encrypting bool, loadSize int, countTo uint64) {
+func testCraneWithCounter(t *testing.T, testID string, encrypting bool, loadSize int, countTo uint64) { //nolint:unparam,thelper
 	var identity *cabin.Identity
 	var connectedHub *hub.Hub
 	if encrypting {
@@ -49,12 +47,10 @@ func testCraneWithCounter(t *testing.T, testID string, encrypting bool, loadSize
 		crane1, err = NewCrane(context.TODO(), ship, connectedHub, nil)
 		if err != nil {
 			panic(fmt.Sprintf("crane test %s could not create crane1: %s", testID, err))
-			return
 		}
 		err = crane1.Start()
 		if err != nil {
 			panic(fmt.Sprintf("crane test %s could not start crane1: %s", testID, err))
-			return
 		}
 		craneWg.Done()
 	}()
@@ -63,12 +59,10 @@ func testCraneWithCounter(t *testing.T, testID string, encrypting bool, loadSize
 		crane2, err = NewCrane(context.TODO(), ship.Reverse(), nil, identity)
 		if err != nil {
 			panic(fmt.Sprintf("crane test %s could not create crane2: %s", testID, err))
-			return
 		}
 		err = crane2.Start()
 		if err != nil {
 			panic(fmt.Sprintf("crane test %s could not start crane2: %s", testID, err))
-			return
 		}
 		craneWg.Done()
 	}()
@@ -147,11 +141,13 @@ func (t *StreamingTerminal) FmtID() string {
 func (t *StreamingTerminal) Flush() {}
 
 func TestCraneLoadingUnloading(t *testing.T) {
+	t.Parallel()
+
 	testCraneWithStreaming(t, "plain-streaming", false, 100)
 	testCraneWithStreaming(t, "encrypted-streaming", true, 100)
 }
 
-func testCraneWithStreaming(t *testing.T, testID string, encrypting bool, loadSize int) {
+func testCraneWithStreaming(t *testing.T, testID string, encrypting bool, loadSize int) { //nolint:thelper
 	var identity *cabin.Identity
 	var connectedHub *hub.Hub
 	if encrypting {
@@ -171,12 +167,10 @@ func testCraneWithStreaming(t *testing.T, testID string, encrypting bool, loadSi
 		crane1, err = NewCrane(context.TODO(), ship, connectedHub, nil)
 		if err != nil {
 			panic(fmt.Sprintf("crane test %s could not create crane1: %s", testID, err))
-			return
 		}
 		err = crane1.Start()
 		if err != nil {
 			panic(fmt.Sprintf("crane test %s could not start crane1: %s", testID, err))
-			return
 		}
 		craneWg.Done()
 	}()
@@ -185,12 +179,10 @@ func testCraneWithStreaming(t *testing.T, testID string, encrypting bool, loadSi
 		crane2, err = NewCrane(context.TODO(), ship.Reverse(), nil, identity)
 		if err != nil {
 			panic(fmt.Sprintf("crane test %s could not create crane2: %s", testID, err))
-			return
 		}
 		err = crane2.Start()
 		if err != nil {
 			panic(fmt.Sprintf("crane test %s could not start crane2: %s", testID, err))
-			return
 		}
 		craneWg.Done()
 	}()
@@ -252,11 +244,11 @@ func testCraneWithStreaming(t *testing.T, testID string, encrypting bool, loadSi
 	close(finished)
 }
 
-var (
-	testIdentity *cabin.Identity
-)
+var testIdentity *cabin.Identity
 
 func getTestIdentity(t *testing.T) (*cabin.Identity, *hub.Hub) {
+	t.Helper()
+
 	if testIdentity == nil {
 		var err error
 		testIdentity, err = cabin.CreateIdentity(module.Ctx, "test")

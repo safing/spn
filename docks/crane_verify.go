@@ -15,6 +15,7 @@ const (
 	hubVerificationPurpose = "hub identify verification"
 )
 
+// VerifyConnectedHub verifies the connected Hub.
 func (crane *Crane) VerifyConnectedHub() error {
 	if !crane.ship.IsMine() || crane.nextTerminalID != 0 || crane.Public() {
 		return errors.New("hub verification can only be executed in init phase by the client")

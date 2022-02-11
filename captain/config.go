@@ -3,13 +3,14 @@ package captain
 import "github.com/safing/portbase/config"
 
 var (
+	// CfgOptionEnableSPNKey is the configuration key for the SPN module.
 	CfgOptionEnableSPNKey   = "spn/enable"
 	cfgOptionEnableSPNOrder = 128
 
-	// Special Access Code
+	// Special Access Code.
 	cfgOptionSpecialAccessCodeKey     = "spn/specialAccessCode"
 	cfgOptionSpecialAccessCodeDefault = "none"
-	cfgOptionSpecialAccessCode        config.StringOption
+	cfgOptionSpecialAccessCode        config.StringOption //nolint:unused // Linter, you drunk?
 	cfgOptionSpecialAccessCodeOrder   = 144
 )
 

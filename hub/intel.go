@@ -6,6 +6,7 @@ import (
 	"net"
 
 	"github.com/ghodss/yaml"
+
 	"github.com/safing/jess/lhash"
 	"github.com/safing/portmaster/profile/endpoints"
 )
@@ -150,11 +151,12 @@ func (i *Intel) ParseAdvisories() (err error) {
 	return nil
 }
 
+// ParseBootstrapHub parses a bootstrap hub.
 func ParseBootstrapHub(bootstrapTransport string, mapName string) (*Hub, error) {
 	// Parse transport and check Hub ID.
 	t, err := ParseTransport(bootstrapTransport)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse transport: %s", err)
+		return nil, fmt.Errorf("failed to parse transport: %w", err)
 	}
 	if t.Option == "" {
 		return nil, errors.New("missing hub ID in URL fragment")

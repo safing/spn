@@ -7,6 +7,8 @@ import (
 )
 
 func TestVerification(t *testing.T) {
+	t.Parallel()
+
 	id, err := CreateIdentity(context.Background(), "test")
 	if err != nil {
 		t.Fatal(err)
@@ -87,11 +89,13 @@ func TestVerification(t *testing.T) {
 
 func testVerificationWith(
 	t *testing.T, id *Identity,
-	purpose1, clientRef1, serverRef1 string,
+	purpose1, clientRef1, serverRef1 string, //nolint:unparam
 	purpose2, clientRef2, serverRef2 string,
 	mitmPurpose, mitmClientRef, mitmServerRef string,
 	mitmChallenge []byte,
 ) error {
+	t.Helper()
+
 	v, request, err := CreateVerificationRequest(purpose1, clientRef1, serverRef1)
 	if err != nil {
 		return fmt.Errorf("failed to create verification request: %w", err)

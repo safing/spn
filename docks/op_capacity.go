@@ -6,14 +6,16 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/tevino/abool"
+
 	"github.com/safing/portbase/container"
 	"github.com/safing/portbase/formats/dsd"
 	"github.com/safing/portbase/log"
 	"github.com/safing/spn/terminal"
-	"github.com/tevino/abool"
 )
 
 const (
+	// CapacityTestOpType is the type ID of the capacity test operation.
 	CapacityTestOpType = "capacity"
 
 	defaultCapacityTestVolume = 50000000  // 50MB
@@ -34,7 +36,8 @@ var (
 	capacityTestRunning = abool.New()
 )
 
-type CapacityTestOp struct {
+// CapacityTestOp is used for capacity test operations.
+type CapacityTestOp struct { //nolint:maligned
 	terminal.OpBase
 	t terminal.OpTerminal
 
@@ -55,12 +58,14 @@ type CapacityTestOp struct {
 	result     chan *terminal.Error
 }
 
+// CapacityTestOptions holds options for the capacity test.
 type CapacityTestOptions struct {
 	TestVolume int
 	MaxTime    time.Duration
 	testing    bool
 }
 
+// Type returns the type ID.
 func (op *CapacityTestOp) Type() string {
 	return CapacityTestOpType
 }
@@ -73,6 +78,7 @@ func init() {
 	})
 }
 
+// NewCapacityTestOp runs a capacity test.
 func NewCapacityTestOp(t terminal.OpTerminal, opts *CapacityTestOptions) (*CapacityTestOp, *terminal.Error) {
 	// Check options.
 	if opts == nil {
@@ -137,6 +143,10 @@ func runCapacityTestOp(t terminal.OpTerminal, opID uint32, data *container.Conta
 		capacityTestRunning.UnSet()
 		return nil, terminal.ErrInvalidOptions.With("maximum volume exceeded")
 	}
+	if opts.MaxTime > maxCapacityTestMaxTime {
+		capacityTestRunning.UnSet()
+		return nil, terminal.ErrInvalidOptions.With("maximum maxtime exceeded")
+	}
 
 	// Create operation.
 	op := &CapacityTestOp{
@@ -162,7 +172,10 @@ func (op *CapacityTestOp) handler(ctx context.Context) error {
 	defer capacityTestRunning.UnSet()
 
 	returnErr := terminal.ErrStopping
-	defer op.t.OpEnd(op, returnErr)
+	defer func() {
+		// Linters don't get that returnErr is used when directly used as defer.
+		op.t.OpEnd(op, returnErr)
+	}()
 
 	var maxTestTimeReached <-chan time.Time
 	opTimeout := time.After(capacityTestTimeout)
@@ -285,6 +298,7 @@ func (op *CapacityTestOp) reportMeasuredCapacity() *terminal.Error {
 	return nil
 }
 
+// Deliver delivers a message.
 func (op *CapacityTestOp) Deliver(c *container.Container) *terminal.Error {
 	// Optimized delivery with 1s timeout.
 	select {
@@ -299,6 +313,7 @@ func (op *CapacityTestOp) Deliver(c *container.Container) *terminal.Error {
 	return nil
 }
 
+// End ends the operation.
 func (op *CapacityTestOp) End(tErr *terminal.Error) {
 	select {
 	case op.result <- tErr:
@@ -306,6 +321,7 @@ func (op *CapacityTestOp) End(tErr *terminal.Error) {
 	}
 }
 
+// Result returns the result (end error) of the operation.
 func (op *CapacityTestOp) Result() <-chan *terminal.Error {
 	return op.result
 }

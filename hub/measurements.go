@@ -7,6 +7,7 @@ import (
 	"github.com/tevino/abool"
 )
 
+// MaxCalculatedCost specifies the max calculated cost to be used for an unknown high cost.
 const MaxCalculatedCost = 1000000
 
 // Measurements holds various measurements relating to a Hub.
@@ -39,6 +40,7 @@ type Measurements struct {
 	persisted *abool.AtomicBool
 }
 
+// NewMeasurements returns a new measurements struct.
 func NewMeasurements() *Measurements {
 	m := &Measurements{
 		CalculatedCost: MaxCalculatedCost, // Push to back when sorting without data.
@@ -77,20 +79,6 @@ func (m *Measurements) check() {
 // IsPersisted return whether changes to the measurements have been persisted.
 func (m *Measurements) IsPersisted() bool {
 	return m.persisted.IsSet()
-}
-
-// markAsPersistedWithLocking marks the measurements as persisted.
-func (m *Measurements) markAsPersistedWithLocking() {
-	if m == nil {
-		return
-	}
-
-	m.Lock()
-	defer m.Unlock()
-
-	if m.persisted != nil {
-		m.persisted.Set()
-	}
 }
 
 // Valid returns whether there is a valid value .

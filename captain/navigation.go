@@ -27,7 +27,7 @@ func homeHubManager(ctx context.Context) (err error) {
 managing:
 	for {
 		// Check if we are online enough for connecting.
-		switch netenv.GetOnlineStatus() {
+		switch netenv.GetOnlineStatus() { //nolint:exhaustive
 		case netenv.StatusOffline,
 			netenv.StatusLimited:
 			select {
@@ -113,8 +113,6 @@ managing:
 		case <-time.After(1 * time.Second):
 		}
 	}
-
-	return nil
 }
 
 func establishHomeHub(ctx context.Context) error {
@@ -146,7 +144,7 @@ findCandidates:
 			goto findCandidates
 		}
 
-		return fmt.Errorf("failed to find nearby hubs: %s", err)
+		return fmt.Errorf("failed to find nearby hubs: %w", err)
 	}
 
 	// Try connecting to a hub.
@@ -165,7 +163,7 @@ findCandidates:
 		}
 	}
 	if err != nil {
-		return fmt.Errorf("failed to connect to a new home hub - tried %d hubs: %s", tries+1, err)
+		return fmt.Errorf("failed to connect to a new home hub - tried %d hubs: %w", tries+1, err)
 	}
 	return fmt.Errorf("no home hub candidates available")
 }

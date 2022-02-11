@@ -7,12 +7,12 @@ import (
 	"time"
 
 	"github.com/mitchellh/copystructure"
+
 	"github.com/safing/jess"
 )
 
-const (
-	VersionOffline = "offline"
-)
+// VersionOffline is a special version used to signify that the Hub has gone offline.
+const VersionOffline = "offline"
 
 // Status is the message type used to update changing Hub Information. Changes are made automatically.
 type Status struct {
@@ -57,7 +57,7 @@ func (s *Status) Copy() (*Status, error) {
 	if err != nil {
 		return nil, err
 	}
-	return copied.(*Status), nil
+	return copied.(*Status), nil //nolint:forcetypeassert // Can only be an *Status.
 }
 
 // SelectSignet selects the public key to use for initiating connections to that Hub.

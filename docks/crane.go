@@ -23,6 +23,7 @@ import (
 )
 
 const (
+	// QOTD holds the quote of the day to return on idling unused connections.
 	QOTD = "Privacy is not an option, and it shouldn't be the price we accept for just getting on the Internet.\nGary Kovacs\n"
 
 	// maxUnloadSize defines the maximum size of a message to unload.
@@ -45,6 +46,7 @@ var (
 	ErrDone = errors.New("crane is done")
 )
 
+// Crane is the primary duplexer and connection manager.
 type Crane struct {
 	// ID is the ID of the Crane.
 	ID string
@@ -104,10 +106,11 @@ type Crane struct {
 	targetLoadSize int
 }
 
+// NewCrane returns a new crane.
 func NewCrane(ctx context.Context, ship ships.Ship, connectedHub *hub.Hub, id *cabin.Identity) (*Crane, error) {
 	ctx, cancelCtx := context.WithCancel(ctx)
 
-	new := &Crane{
+	newCrane := &Crane{
 		ctx:           ctx,
 		cancelCtx:     cancelCtx,
 		stopping:      abool.NewBool(false),
@@ -119,21 +122,21 @@ func NewCrane(ctx context.Context, ship ships.Ship, connectedHub *hub.Hub, id *c
 		identity:     id,
 
 		ship:          ship,
-		unloading:     make(chan *container.Container, 0),
+		unloading:     make(chan *container.Container),
 		loading:       make(chan *container.Container, 100),
 		terminalMsgs:  make(chan *container.Container, 100),
 		importantMsgs: make(chan *container.Container, 100),
 
 		terminals: make(map[uint32]terminal.TerminalInterface),
 	}
-	err := registerCrane(new)
+	err := registerCrane(newCrane)
 	if err != nil {
 		return nil, fmt.Errorf("failed to register crane: %w", err)
 	}
 
 	// Shift next terminal IDs on the server.
 	if !ship.IsMine() {
-		new.nextTerminalID += 4
+		newCrane.nextTerminalID += 4
 	}
 
 	// Calculate target load size.
@@ -141,30 +144,34 @@ func NewCrane(ctx context.Context, ship ships.Ship, connectedHub *hub.Hub, id *c
 	if loadSize <= 0 {
 		loadSize = ships.BaseMTU
 	}
-	new.targetLoadSize = loadSize
-	for new.targetLoadSize < optimalMinLoadSize {
-		new.targetLoadSize += loadSize
+	newCrane.targetLoadSize = loadSize
+	for newCrane.targetLoadSize < optimalMinLoadSize {
+		newCrane.targetLoadSize += loadSize
 	}
 	// Subtract overhead needed for encryption.
-	new.targetLoadSize -= 25 // Manually tested for jess.SuiteWireV1
+	newCrane.targetLoadSize -= 25 // Manually tested for jess.SuiteWireV1
 	// Subtract space needed for length encoding the final chunk.
-	new.targetLoadSize -= varint.EncodedSize(uint64(new.targetLoadSize))
+	newCrane.targetLoadSize -= varint.EncodedSize(uint64(newCrane.targetLoadSize))
 
-	return new, nil
+	return newCrane, nil
 }
 
+// IsMine returns whether the crane was started on this side.
 func (crane *Crane) IsMine() bool {
 	return crane.ship.IsMine()
 }
 
+// Public returns whether the crane has been published.
 func (crane *Crane) Public() bool {
 	return crane.ship.Public()
 }
 
+// IsStopping returns whether the crane is stopping.
 func (crane *Crane) IsStopping() bool {
 	return crane.stopping.IsSet()
 }
 
+// MarkStopping marks the crane as stopping.
 func (crane *Crane) MarkStopping() (stopping bool) {
 	// Can only stop owned public cranes.
 	if !crane.Public() || !crane.IsMine() {
@@ -191,6 +198,7 @@ func (crane *Crane) MarkStopping() (stopping bool) {
 	return true
 }
 
+// AbortStopping aborts the stopping.
 func (crane *Crane) AbortStopping() (aborted bool) {
 	// Can only stop owned public cranes.
 	if !crane.Public() || !crane.IsMine() {
@@ -207,10 +215,13 @@ func (crane *Crane) AbortStopping() (aborted bool) {
 	return true
 }
 
+// Authenticated returns whether the other side of the crane has authenticated
+// itself with an access code.
 func (crane *Crane) Authenticated() bool {
 	return crane.authenticated.IsSet()
 }
 
+// Publish publishes the connection as a lane.
 func (crane *Crane) Publish() error {
 	// Check if crane is connected.
 	if crane.ConnectedHub == nil {
@@ -233,14 +244,17 @@ func (crane *Crane) Publish() error {
 	return nil
 }
 
+// LocalAddr returns ship's local address.
 func (crane *Crane) LocalAddr() net.Addr {
 	return crane.ship.LocalAddr()
 }
 
+// RemoteAddr returns ship's local address.
 func (crane *Crane) RemoteAddr() net.Addr {
 	return crane.ship.RemoteAddr()
 }
 
+// Transport returns ship's transport.
 func (crane *Crane) Transport() *hub.Transport {
 	t := crane.ship.Transport()
 	return &t
@@ -296,6 +310,7 @@ func (crane *Crane) deleteTerminal(id uint32) (t terminal.TerminalInterface, ok 
 	return nil, false
 }
 
+// AbandonTerminal abandons the terminal with the given ID.
 func (crane *Crane) AbandonTerminal(id uint32, err *terminal.Error) {
 	// Get active terminal.
 	t, ok := crane.deleteTerminal(id)
@@ -356,7 +371,7 @@ func (crane *Crane) encrypt(shipment *container.Container) (encrypted *container
 
 	encrypted, err = letter.ToWire()
 	if err != nil {
-		return nil, fmt.Errorf("failed to pack letter: %s", err)
+		return nil, fmt.Errorf("failed to pack letter: %w", err)
 	}
 
 	return encrypted, nil
@@ -373,7 +388,7 @@ func (crane *Crane) decrypt(shipment *container.Container) (decrypted *container
 
 	letter, err := jess.LetterFromWire(shipment)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse letter: %s", err)
+		return nil, fmt.Errorf("failed to parse letter: %w", err)
 	}
 
 	decryptedData, err := crane.jession.Open(letter)
@@ -542,7 +557,7 @@ handling:
 				// Get terminal ID and message type of segment.
 				terminalID, terminalMsgType, err := terminal.ParseIDType(segment)
 				if err != nil {
-					crane.Stop(terminal.ErrMalformedData.With("failed to get terminal ID and msg type: %s", err))
+					crane.Stop(terminal.ErrMalformedData.With("failed to get terminal ID and msg type: %w", err))
 					return nil
 				}
 
@@ -586,7 +601,7 @@ handling:
 
 func (crane *Crane) loader(ctx context.Context) (err error) {
 	shipment := container.New()
-	var newSegment, partialShipment *container.Container
+	var partialShipment *container.Container
 	var loadingTimer *time.Timer
 
 	// Return the loading wait channel if waiting.
@@ -601,8 +616,8 @@ func (crane *Crane) loader(ctx context.Context) (err error) {
 
 	fillingShipment:
 		for shipment.Length() < crane.targetLoadSize {
-			newSegment = nil
-			// Gather segments until shipment is filled, or
+			// Gather segments until shipment is filled.
+			var newSegment *container.Container
 
 			// Prioritize messages from the controller.
 			select {
@@ -710,7 +725,7 @@ func (crane *Crane) load(c *container.Container) error {
 		if paddingNeeded > 0 {
 			// Add padding indicator.
 			c.Append([]byte{0})
-			paddingNeeded -= 1
+			paddingNeeded--
 
 			// Add needed padding data.
 			if paddingNeeded > 0 {
@@ -747,6 +762,7 @@ func (crane *Crane) load(c *container.Container) error {
 	return nil
 }
 
+// Stop stops the crane.
 func (crane *Crane) Stop(err *terminal.Error) {
 	if !crane.stopped.SetToIf(false, true) {
 		return
@@ -811,6 +827,7 @@ func (crane *Crane) String() string {
 	}
 }
 
+// Stopped returns whether the crane has stopped.
 func (crane *Crane) Stopped() bool {
 	return crane.stopped.IsSet()
 }

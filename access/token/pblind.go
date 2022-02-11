@@ -12,24 +12,26 @@ import (
 
 	"github.com/mr-tron/base58"
 	"github.com/rot256/pblind"
+
 	"github.com/safing/portbase/container"
 	"github.com/safing/portbase/formats/dsd"
 )
 
-const (
-	pblindSecretSize = 32
-)
+const pblindSecretSize = 32
 
+// PBlindToken is token based on the pblind library.
 type PBlindToken struct {
 	Serial    int               `json:"N,omitempty"`
 	Token     []byte            `json:"T,omitempty"`
 	Signature *pblind.Signature `json:"S,omitempty"`
 }
 
+// Pack packs the token.
 func (pbt *PBlindToken) Pack() ([]byte, error) {
 	return dsd.Dump(pbt, dsd.CBOR)
 }
 
+// UnpackPBlindToken unpacks the token.
 func UnpackPBlindToken(token []byte) (*PBlindToken, error) {
 	t := &PBlindToken{}
 
@@ -41,6 +43,7 @@ func UnpackPBlindToken(token []byte) (*PBlindToken, error) {
 	return t, nil
 }
 
+// PBlindHandler is a handler for the pblind tokens.
 type PBlindHandler struct {
 	sync.Mutex
 	opts *PBlindOptions
@@ -56,41 +59,48 @@ type PBlindHandler struct {
 	requestState     []RequestState
 }
 
+// PBlindOptions are options for the PBlindHandler.
 type PBlindOptions struct {
 	Zone                  string
 	CurveName             string
 	Curve                 elliptic.Curve
 	PublicKey             string
 	PrivateKey            string
-	UseSerials            bool
 	BatchSize             int
+	UseSerials            bool
 	RandomizeOrder        bool
+	Fallback              bool
 	SignalShouldRequest   func(Handler)
 	DoubleSpendProtection func([]byte) error
-	Fallback              bool
 }
 
+// PBlindSignerState is a signer state.
 type PBlindSignerState struct {
 	signers []*pblind.StateSigner
 }
 
+// PBlindSetupResponse is a setup response.
 type PBlindSetupResponse struct {
 	Msgs []*pblind.Message1
 }
 
+// PBlindTokenRequest is a token request.
 type PBlindTokenRequest struct {
 	Msgs []*pblind.Message2
 }
 
+// IssuedPBlindTokens are issued pblind tokens.
 type IssuedPBlindTokens struct {
 	Msgs []*pblind.Message3
 }
 
+// RequestState is a request state.
 type RequestState struct {
 	Token []byte
 	State *pblind.StateRequester
 }
 
+// NewPBlindHandler creates a new pblind handler.
 func NewPBlindHandler(opts PBlindOptions) (*PBlindHandler, error) {
 	pbh := &PBlindHandler{
 		opts: &opts,
@@ -228,7 +238,7 @@ func (pbh *PBlindHandler) CreateSetup() (state *PBlindSignerState, setupResponse
 		setupResponse.Msgs[i] = &setupMsg
 	}
 
-	return
+	return state, setupResponse, nil
 }
 
 // CreateTokenRequest creates a token request to be sent to the token server.
@@ -329,7 +339,7 @@ func (pbh *PBlindHandler) IssueTokens(state *PBlindSignerState, request *PBlindT
 		response.Msgs[i] = &responseMsg
 	}
 
-	return
+	return response, nil
 }
 
 // ProcessIssuedTokens processes the issued token from the server.
@@ -483,6 +493,7 @@ func (pbh *PBlindHandler) Verify(token *Token) error {
 	return nil
 }
 
+// PBlindStorage is a storage for pblind tokens.
 type PBlindStorage struct {
 	Storage []*PBlindToken
 }

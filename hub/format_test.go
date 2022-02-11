@@ -9,6 +9,8 @@ import (
 )
 
 func TestCheckStringFormat(t *testing.T) {
+	t.Parallel()
+
 	testSet := map[string]bool{
 		// Printable ASCII (character code 32-127)
 		" ": true, "!": true, `"`: false, "#": true, "$": false, "%": false, "&": false, "'": false,
@@ -54,6 +56,8 @@ func TestCheckStringFormat(t *testing.T) {
 }
 
 func TestCheckIPFormat(t *testing.T) {
+	t.Parallel()
+
 	// IPv4
 	assert.NoError(t, checkIPFormat("test IP 1.1.1.1", net.IPv4(1, 1, 1, 1)))
 	assert.NoError(t, checkIPFormat("test IP 192.168.1.1", net.IPv4(192, 168, 1, 1)))

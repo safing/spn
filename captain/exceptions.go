@@ -19,6 +19,7 @@ func setExceptions(ipv4, ipv6 net.IP) {
 	exceptIPv6 = ipv6
 }
 
+// IsExcepted checks if the given IP is currently excepted from the SPN.
 func IsExcepted(ip net.IP) bool {
 	exceptionLock.Lock()
 	defer exceptionLock.Unlock()

@@ -6,17 +6,15 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/safing/portbase/database"
+	"github.com/safing/portbase/log"
 	"github.com/safing/portbase/metrics"
-
+	"github.com/safing/portbase/modules"
+	"github.com/safing/spn/cabin"
 	"github.com/safing/spn/conf"
 	"github.com/safing/spn/docks"
 	"github.com/safing/spn/hub"
 	"github.com/safing/spn/navigator"
-
-	"github.com/safing/portbase/database"
-	"github.com/safing/portbase/log"
-	"github.com/safing/portbase/modules"
-	"github.com/safing/spn/cabin"
 )
 
 const (
@@ -36,11 +34,11 @@ func loadPublicIdentity() (err error) {
 	var changed bool
 
 	publicIdentity, changed, err = cabin.LoadIdentity(publicIdentityKey)
-	switch err {
-	case nil:
+	switch {
+	case err == nil:
 		// load was successful
 		log.Infof("spn/captain: loaded public hub identity %s", publicIdentity.Hub.ID)
-	case database.ErrNotFound:
+	case errors.Is(err, database.ErrNotFound):
 		// does not exist, create new
 		publicIdentity, err = cabin.CreateIdentity(module.Ctx, conf.MainMapName)
 		if err != nil {

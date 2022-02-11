@@ -9,6 +9,8 @@ import (
 )
 
 func TestKeyMaintenance(t *testing.T) {
+	t.Parallel()
+
 	id, err := CreateIdentity(context.Background(), conf.MainMapName)
 	if err != nil {
 		t.Fatal(err)
@@ -24,7 +26,7 @@ func TestKeyMaintenance(t *testing.T) {
 			t.Fatal(err)
 		}
 		if changed {
-			changeCnt += 1
+			changeCnt++
 			t.Logf("===== exchange keys updated at %s:\n", now)
 			for keyID, exchKey := range id.ExchKeys {
 				t.Logf("[%s] %s %v\n", exchKey.Created, keyID, exchKey.key)

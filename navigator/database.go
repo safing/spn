@@ -12,9 +12,7 @@ import (
 	"github.com/safing/portbase/database/storage"
 )
 
-var (
-	mapDBController *database.Controller
-)
+var mapDBController *database.Controller
 
 // StorageInterface provices a storage.Interface to the
 // configuration manager.
@@ -123,12 +121,11 @@ func registerMapDatabase() error {
 	return nil
 }
 
-func withdrawMapDatabase() error {
+func withdrawMapDatabase() {
 	mapDBController.Withdraw()
-
-	return nil
 }
 
+// PushPinChanges pushes all changed pins to subscribers.
 func (m *Map) PushPinChanges() {
 	module.StartWorker("push pin changes", m.pushPinChangesWorker)
 }

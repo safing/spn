@@ -6,18 +6,18 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/tevino/abool"
+
 	"github.com/safing/portbase/container"
 	"github.com/safing/portbase/log"
 	"github.com/safing/portbase/utils"
-	"github.com/tevino/abool"
 )
 
-const (
-	// DefaultOperationTimeout is the default time duration after which an idle
-	// operation times out and is ended or regarded as failed.
-	DefaultOperationTimeout = 10 * time.Second
-)
+// DefaultOperationTimeout is the default time duration after which an idle
+// operation times out and is ended or regarded as failed.
+const DefaultOperationTimeout = 10 * time.Second
 
+// Operation is an interface for all operations.
 type Operation interface {
 	ID() uint32
 	SetID(id uint32)
@@ -27,6 +27,7 @@ type Operation interface {
 	End(err *Error)
 }
 
+// OpParams defines an operation.
 type OpParams struct {
 	// Type is the type name of an operation.
 	Type string
@@ -36,6 +37,7 @@ type OpParams struct {
 	RunOp OpRunner
 }
 
+// OpRunner is used to initialize operations remotely.
 type OpRunner func(t OpTerminal, opID uint32, initData *container.Container) (Operation, *Error)
 
 var (
@@ -44,7 +46,7 @@ var (
 	opRegistryLocked = abool.New()
 )
 
-// RegisterOpType registeres a new operation type and may only be called during
+// RegisterOpType registers a new operation type and may only be called during
 // Go's init and a module's prep phase.
 func RegisterOpType(params OpParams) {
 	// Check if we can still register an operation type.
@@ -70,7 +72,7 @@ func lockOpRegistry() {
 	opRegistryLocked.Set()
 }
 
-func (t *TerminalBase) runOperation(ctx context.Context, opTerminal OpTerminal, opID uint32, initData *container.Container) {
+func (t *TerminalBase) runOperation(_ context.Context, opTerminal OpTerminal, opID uint32, initData *container.Container) {
 	// Extract the requested operation name.
 	opType, err := initData.GetNextBlock()
 	if err != nil {
@@ -189,7 +191,10 @@ func (t *TerminalBase) OpEnd(op Operation, err *Error) {
 
 		// Send error to the connected Operation, if the error is internal.
 		if !err.IsExternal() {
-			t.addToOpMsgSendBuffer(op.ID(), MsgTypeStop, container.New(err.Pack()), 0)
+			tErr := t.addToOpMsgSendBuffer(op.ID(), MsgTypeStop, container.New(err.Pack()), 0)
+			if tErr.IsError() {
+				log.Warningf("spn/terminal: failed to send stop msg: %s", tErr)
+			}
 		}
 
 		// Remove operation from terminal.
@@ -197,8 +202,6 @@ func (t *TerminalBase) OpEnd(op Operation, err *Error) {
 
 		return nil
 	})
-
-	return
 }
 
 // GetActiveOp returns the active operation with the given ID from the

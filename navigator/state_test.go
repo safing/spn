@@ -7,6 +7,8 @@ import (
 )
 
 func TestStates(t *testing.T) {
+	t.Parallel()
+
 	p := &Pin{}
 
 	p.addStates(StateInvalid | StateFailing | StateSuperseded)

@@ -19,7 +19,9 @@ var (
 
 var (
 	module *modules.Module
-	Main   *Map
+
+	// Main is the primary map used.
+	Main *Map
 
 	devMode config.BoolOption
 )
@@ -60,8 +62,10 @@ func start() error {
 			Schedule(time.Now().Add(1 * time.Minute))
 
 		// Only register metrics on Hubs, as they only make sense there.
-		registerMetrics()
-
+		err := registerMetrics()
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil

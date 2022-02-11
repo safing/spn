@@ -11,11 +11,13 @@ import (
 	"github.com/safing/portbase/container"
 )
 
+// Token represents a token, consisting of a zone (name) and some data.
 type Token struct {
 	Zone string
 	Data []byte
 }
 
+// GetToken returns a token of the given zone.
 func GetToken(zone string) (*Token, error) {
 	handler, ok := GetHandler(zone)
 	if !ok {
@@ -25,6 +27,7 @@ func GetToken(zone string) (*Token, error) {
 	return handler.GetToken()
 }
 
+// VerifyToken verifies the given token.
 func VerifyToken(token *Token) error {
 	handler, ok := GetHandler(token.Zone)
 	if !ok {
@@ -34,6 +37,7 @@ func VerifyToken(token *Token) error {
 	return handler.Verify(token)
 }
 
+// Raw returns the raw format of the token.
 func (c *Token) Raw() []byte {
 	cont := container.New()
 	cont.Append([]byte(c.Zone))
@@ -42,10 +46,12 @@ func (c *Token) Raw() []byte {
 	return cont.CompileData()
 }
 
+// String returns the stringified format of the token.
 func (c *Token) String() string {
 	return c.Zone + ":" + base58.Encode(c.Data)
 }
 
+// ParseRawToken parses a raw token.
 func ParseRawToken(code []byte) (*Token, error) {
 	splitted := bytes.SplitN(code, []byte(":"), 2)
 	if len(splitted) < 2 {
@@ -58,6 +64,7 @@ func ParseRawToken(code []byte) (*Token, error) {
 	}, nil
 }
 
+// ParseToken parses a stringified token.
 func ParseToken(code string) (*Token, error) {
 	splitted := strings.SplitN(code, ":", 2)
 	if len(splitted) < 2 {
@@ -66,7 +73,7 @@ func ParseToken(code string) (*Token, error) {
 
 	data, err := base58.Decode(splitted[1])
 	if err != nil {
-		return nil, fmt.Errorf("invalid code format: %s", err)
+		return nil, fmt.Errorf("invalid code format: %w", err)
 	}
 
 	return &Token{

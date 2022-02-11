@@ -17,6 +17,7 @@ const (
 	defaultInternalMaxHops         = 3
 )
 
+// Region specifies a group of Hubs for optimization purposes.
 type Region struct {
 	ID           string
 	Name         string
@@ -80,7 +81,7 @@ func (m *Map) updateRegions(config []*hub.RegionConfig) {
 		}
 		memberPolicy, err := endpoints.ParseEndpoints(regionConfig.MemberPolicy)
 		if err != nil {
-			log.Errorf("navigator: failed to parse member policy of region %s: %w", region.ID, err)
+			log.Errorf("navigator: failed to parse member policy of region %s: %s", region.ID, err)
 			// Abort adding this region to the map.
 			continue
 		}

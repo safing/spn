@@ -43,6 +43,7 @@ type LaneExport struct {
 	Latency time.Duration
 }
 
+// Export puts the Pin's information into an exportable format.
 func (pin *Pin) Export() *PinExport {
 	pin.Lock()
 	defer pin.Unlock()

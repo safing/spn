@@ -7,9 +7,8 @@ import (
 	"github.com/safing/spn/terminal"
 )
 
-const (
-	OpTypeAccessCodeAuth = "auth"
-)
+// OpTypeAccessCodeAuth is the type ID of the auth operation.
+const OpTypeAccessCodeAuth = "auth"
 
 func init() {
 	terminal.RegisterOpType(terminal.OpParams{
@@ -18,14 +17,17 @@ func init() {
 	})
 }
 
+// AuthorizeOp is used to authorize a session.
 type AuthorizeOp struct {
 	terminal.OpBaseRequest
 }
 
+// Type returns the type ID.
 func (op *AuthorizeOp) Type() string {
 	return OpTypeAccessCodeAuth
 }
 
+// AuthorizeToTerminal starts an authorization operation.
 func AuthorizeToTerminal(t terminal.OpTerminal) (*AuthorizeOp, *terminal.Error) {
 	op := &AuthorizeOp{}
 	op.Init(0)

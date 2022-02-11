@@ -10,25 +10,28 @@ import (
 	"time"
 
 	"github.com/safing/spn/access"
-
 	"github.com/safing/spn/cabin"
 	"github.com/safing/spn/hub"
 	"github.com/safing/spn/ships"
 	"github.com/safing/spn/terminal"
 )
 
-func TestExpansion(t *testing.T) {
-	testExpansion(t, "plain-expansion", false, 200, 200, false)
-	testExpansion(t, "encrypted-expansion", true, 200, 200, false)
-	testExpansion(t, "parallel-plain-expansion", false, 200, 200, true)
-	testExpansion(t, "parallel-encrypted-expansion", true, 200, 200, true)
+const defaultTestQueueSize = 200
 
-	testExpansion(t, "expansion-stress-test-down", true, terminal.DefaultQueueSize*100, 0, false)
-	testExpansion(t, "expansion-stress-test-up", true, 0, terminal.DefaultQueueSize*100, false)
-	testExpansion(t, "expansion-stress-test-duplex", true, terminal.DefaultQueueSize*100, terminal.DefaultQueueSize*100, false)
+func TestExpansion(t *testing.T) {
+	t.Parallel()
+
+	testExpansion(t, "plain-expansion", false, defaultTestQueueSize, defaultTestQueueSize, false)
+	testExpansion(t, "encrypted-expansion", true, defaultTestQueueSize, defaultTestQueueSize, false)
+	testExpansion(t, "parallel-plain-expansion", false, defaultTestQueueSize, defaultTestQueueSize, true)
+	testExpansion(t, "parallel-encrypted-expansion", true, defaultTestQueueSize, defaultTestQueueSize, true)
+
+	testExpansion(t, "expansion-stress-test-down", true, defaultTestQueueSize*100, 0, false)
+	testExpansion(t, "expansion-stress-test-up", true, 0, defaultTestQueueSize*100, false)
+	testExpansion(t, "expansion-stress-test-duplex", true, defaultTestQueueSize*100, defaultTestQueueSize*100, false)
 }
 
-func testExpansion(t *testing.T, testID string, encrypting bool, clientCountTo, serverCountTo uint64, inParallel bool) {
+func testExpansion(t *testing.T, testID string, encrypting bool, clientCountTo, serverCountTo uint64, inParallel bool) { //nolint:maintidx,thelper
 	var identity2, identity3, identity4 *cabin.Identity
 	var connectedHub2, connectedHub3, connectedHub4 *hub.Hub
 	if encrypting {
@@ -52,13 +55,11 @@ func testExpansion(t *testing.T, testID string, encrypting bool, clientCountTo, 
 		crane1, err = NewCrane(context.TODO(), ship1to2, connectedHub2, nil)
 		if err != nil {
 			panic(fmt.Sprintf("expansion test %s could not create crane1: %s", testID, err))
-			return
 		}
 		crane1.ID = "c1"
 		err = crane1.Start()
 		if err != nil {
 			panic(fmt.Sprintf("expansion test %s could not start crane1: %s", testID, err))
-			return
 		}
 		crane1.ship.MarkPublic()
 		craneWg.Done()
@@ -68,13 +69,11 @@ func testExpansion(t *testing.T, testID string, encrypting bool, clientCountTo, 
 		crane2to1, err = NewCrane(context.TODO(), ship1to2.Reverse(), nil, identity2)
 		if err != nil {
 			panic(fmt.Sprintf("expansion test %s could not create crane2to1: %s", testID, err))
-			return
 		}
 		crane2to1.ID = "c2to1"
 		err = crane2to1.Start()
 		if err != nil {
 			panic(fmt.Sprintf("expansion test %s could not start crane2to1: %s", testID, err))
-			return
 		}
 		crane2to1.ship.MarkPublic()
 		craneWg.Done()
@@ -84,13 +83,11 @@ func testExpansion(t *testing.T, testID string, encrypting bool, clientCountTo, 
 		crane2to3, err = NewCrane(context.TODO(), ship2to3, connectedHub3, nil)
 		if err != nil {
 			panic(fmt.Sprintf("expansion test %s could not create crane2to3: %s", testID, err))
-			return
 		}
 		crane2to3.ID = "c2to3"
 		err = crane2to3.Start()
 		if err != nil {
 			panic(fmt.Sprintf("expansion test %s could not start crane2to3: %s", testID, err))
-			return
 		}
 		crane2to3.ship.MarkPublic()
 		craneWg.Done()
@@ -100,13 +97,11 @@ func testExpansion(t *testing.T, testID string, encrypting bool, clientCountTo, 
 		crane3to2, err = NewCrane(context.TODO(), ship2to3.Reverse(), nil, identity3)
 		if err != nil {
 			panic(fmt.Sprintf("expansion test %s could not create crane3to2: %s", testID, err))
-			return
 		}
 		crane3to2.ID = "c3to2"
 		err = crane3to2.Start()
 		if err != nil {
 			panic(fmt.Sprintf("expansion test %s could not start crane3to2: %s", testID, err))
-			return
 		}
 		crane3to2.ship.MarkPublic()
 		craneWg.Done()
@@ -116,13 +111,11 @@ func testExpansion(t *testing.T, testID string, encrypting bool, clientCountTo, 
 		crane3to4, err = NewCrane(context.TODO(), ship3to4, connectedHub4, nil)
 		if err != nil {
 			panic(fmt.Sprintf("expansion test %s could not create crane3to4: %s", testID, err))
-			return
 		}
 		crane3to4.ID = "c3to4"
 		err = crane3to4.Start()
 		if err != nil {
 			panic(fmt.Sprintf("expansion test %s could not start crane3to4: %s", testID, err))
-			return
 		}
 		crane3to4.ship.MarkPublic()
 		craneWg.Done()
@@ -132,13 +125,11 @@ func testExpansion(t *testing.T, testID string, encrypting bool, clientCountTo, 
 		crane4, err = NewCrane(context.TODO(), ship3to4.Reverse(), nil, identity4)
 		if err != nil {
 			panic(fmt.Sprintf("expansion test %s could not create crane4: %s", testID, err))
-			return
 		}
 		crane4.ID = "c4"
 		err = crane4.Start()
 		if err != nil {
 			panic(fmt.Sprintf("expansion test %s could not start crane4: %s", testID, err))
-			return
 		}
 		crane4.ship.MarkPublic()
 		craneWg.Done()
@@ -176,7 +167,7 @@ func testExpansion(t *testing.T, testID string, encrypting bool, clientCountTo, 
 	}
 
 	t.Logf("expansion test %s: home terminal setup complete", testID)
-	time.Sleep(1 * time.Second)
+	time.Sleep(100 * time.Millisecond)
 
 	// Start counters for testing.
 	op0, tErr := terminal.NewCounterOp(homeTerminal, terminal.CounterOpts{
@@ -257,7 +248,7 @@ func testExpansion(t *testing.T, testID string, encrypting bool, clientCountTo, 
 
 	// Wait a little so that all errors can be propagated, so we can truly see
 	// if we succeeded.
-	time.Sleep(5 * time.Second)
+	time.Sleep(100 * time.Millisecond)
 
 	// Check errors.
 	if op1.Error != nil {

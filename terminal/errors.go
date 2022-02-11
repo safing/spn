@@ -12,10 +12,10 @@ import (
 type Error struct {
 	// id holds the internal error ID.
 	id uint8
-	// err holds the wrapped error or the default error message.
-	err error
 	// external signifies if the error was received from the outside.
 	external bool
+	// err holds the wrapped error or the default error message.
+	err error
 }
 
 // ID returns the internal ID of the error.
@@ -46,7 +46,7 @@ func (e *Error) Is(target error) bool {
 		return false
 	}
 
-	t, ok := target.(*Error)
+	t, ok := target.(*Error) //nolint:errorlint // Error implementation, not usage.
 	if !ok {
 		return false
 	}
@@ -118,7 +118,7 @@ func (e *Error) Pack() []byte {
 	return varint.Pack8(e.id)
 }
 
-// NewExternalError creates an external error based on the given serialized ID.
+// ParseExternalError parses an external error.
 func ParseExternalError(id []byte) (*Error, error) {
 	// Return nil for an empty error.
 	if len(id) == 0 {
@@ -143,9 +143,7 @@ func NewExternalError(id uint8) *Error {
 	return ErrUnknownError.AsExternal()
 }
 
-var (
-	errorRegistry = make(map[uint8]*Error)
-)
+var errorRegistry = make(map[uint8]*Error)
 
 func registerError(id uint8, err error) *Error {
 	// Check for duplicate.
@@ -170,10 +168,12 @@ func registerError(id uint8, err error) *Error {
 // 	return e.id > 0 && e.id < 8
 // }
 
+// IsOK returns if the error represents a "OK" or success status.
 func (e *Error) IsOK() bool {
 	return !e.IsError()
 }
 
+// IsError returns if the error represents an erronous condition.
 func (e *Error) IsError() bool {
 	if e == nil || e.err == nil {
 		return false

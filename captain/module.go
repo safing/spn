@@ -16,13 +16,10 @@ import (
 	"github.com/safing/spn/conf"
 	"github.com/safing/spn/crew"
 	"github.com/safing/spn/ships"
-
 	_ "github.com/safing/spn/sluice"
 )
 
-var (
-	module *modules.Module
-)
+var module *modules.Module
 
 func init() {
 	module = modules.Register("captain", prep, start, stop, "base", "cabin", "docks", "crew", "navigator", "sluice", "netenv")

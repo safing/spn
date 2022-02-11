@@ -7,9 +7,9 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/safing/spn/hub"
-
 	"github.com/stretchr/testify/assert"
+
+	"github.com/safing/spn/hub"
 )
 
 var (
@@ -28,13 +28,20 @@ func getTestBuf() []byte {
 }
 
 func TestConnections(t *testing.T) {
-	ctx := context.Background()
-	var wg sync.WaitGroup
+	t.Parallel()
 
 	registryLock.Lock()
-	defer registryLock.Unlock()
-	for protocol, builder := range registry {
+	t.Cleanup(func() {
+		registryLock.Unlock()
+	})
+
+	for k, v := range registry { //nolint:paralleltest // False positive.
+		protocol, builder := k, v
 		t.Run(protocol, func(t *testing.T) {
+			t.Parallel()
+
+			var wg sync.WaitGroup
+			ctx := context.Background()
 
 			// docking requests
 			requests := make(chan *DockingRequest, 1)
@@ -49,11 +56,10 @@ func TestConnections(t *testing.T) {
 				t.Fatal(err)
 			}
 			wg.Add(1)
-			go func() { //nolint:staticcheck // we wait for the goroutine
+			var dockingErr error
+			go func() {
 				err := pier.Docking(ctx)
-				if err != nil {
-					t.Fatal(err)
-				}
+				dockingErr = err
 				wg.Done()
 			}()
 
@@ -123,10 +129,20 @@ func TestConnections(t *testing.T) {
 				fmt.Print(".")
 			}
 
+			// Check for docking error.
+			if dockingErr != nil {
+				t.Fatal(err)
+			}
+
 			ship.Sink()
 			srvShip.Sink()
 			pier.Abolish()
 			wg.Wait() // wait for docking procedure to end
+
+			// Check for docking error again.
+			if dockingErr != nil {
+				t.Fatal(err)
+			}
 		})
 	}
 }

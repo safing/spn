@@ -18,9 +18,10 @@ import (
 )
 
 // connectLock locks all routing operations to mitigate racy stuff for now.
-// FIXME: Find a nice way to parallelize route creation.
+// TODO: Find a nice way to parallelize route creation.
 var connectLock sync.Mutex
 
+// HandleSluiceRequest handles a sluice request to build a tunnel.
 func HandleSluiceRequest(connInfo *network.Connection, conn net.Conn) {
 	if conn == nil {
 		log.Debugf("spn/crew: closing tunnel for %s before starting because of shutdown", connInfo)
@@ -38,6 +39,7 @@ func HandleSluiceRequest(connInfo *network.Connection, conn net.Conn) {
 	module.StartWorker("tunnel handler", t.handle)
 }
 
+// Tunnel represents the local information and endpoint of a data tunnel.
 type Tunnel struct {
 	connInfo *network.Connection
 	conn     net.Conn
@@ -99,13 +101,12 @@ func (t *Tunnel) handle(ctx context.Context) (err error) {
 	if tErr != nil {
 		tErr = tErr.Wrap("failed to initialize tunnel")
 
-		// TODO: Clean this up.
 		t.connInfo.Lock()
 		defer t.connInfo.Unlock()
 		t.connInfo.Failed(tErr.Error(), "")
 		t.connInfo.Save()
 
-		// FIXME: try with another route?
+		// TODO: try with another route?
 		return tErr
 	}
 
@@ -135,12 +136,12 @@ func establishRoute(route *navigator.Route) (dstPin *navigator.Pin, dstTerminal 
 	}
 
 	// Get home hub.
-	var previousHop *navigator.Pin
-	var previousTerminal terminal.OpTerminal
-	previousHop, previousTerminal = navigator.Main.GetHome()
-	if previousHop == nil || previousTerminal == nil {
+	previousHop, homeTerminal := navigator.Main.GetHome()
+	if previousHop == nil || homeTerminal == nil {
 		return nil, nil, navigator.ErrHomeHubUnset
 	}
+	// Convert to interface for later use.
+	var previousTerminal terminal.OpTerminal = homeTerminal
 
 	// Check if first hub in path is the home hub.
 	if route.Path[0].HubID != previousHop.Hub.ID {
@@ -152,7 +153,7 @@ func establishRoute(route *navigator.Route) (dstPin *navigator.Pin, dstTerminal 
 		return previousHop, previousTerminal, nil
 	}
 
-	// FIXME: Check what needs locking.
+	// TODO: Check what needs locking.
 
 	// Build path and save created paths.
 	hopChecks := make([]*hopCheck, 0, len(route.Path)-1)
@@ -232,6 +233,7 @@ type TunnelContext struct {
 	RoutingAlg string
 }
 
+// TunnelContextHop holds hop data for TunnelContext.
 type TunnelContextHop struct {
 	ID   string
 	Name string
@@ -239,6 +241,7 @@ type TunnelContextHop struct {
 	IPv6 *TunnelContextHopIPInfo `json:",omitempty"`
 }
 
+// TunnelContextHopIPInfo holds hop IP data for TunnelContextHop.
 type TunnelContextHopIPInfo struct {
 	IP      net.IP
 	Country string

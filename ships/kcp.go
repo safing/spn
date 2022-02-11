@@ -1,13 +1,5 @@
 package ships
 
-import (
-	"context"
-	"net"
-
-	"github.com/safing/spn/hub"
-	kcp "github.com/xtaci/kcp-go/v5"
-)
-
 // KCPShip is a ship that uses KCP.
 type KCPShip struct {
 	ShipBase
@@ -26,7 +18,6 @@ func init() {
 		EstablishPier: establishKCPPier,
 	})
 }
-*/
 
 func launchKCPShip(ctx context.Context, transport *hub.Transport, ip net.IP) (Ship, error) {
 	conn, err := kcp.Dial(net.JoinHostPort(ip.String(), portToA(transport.Port)))
@@ -87,3 +78,4 @@ func (pier *KCPPier) dockShip() (Ship, error) {
 	ship.initBase()
 	return ship, nil
 }
+*/

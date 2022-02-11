@@ -6,17 +6,18 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/safing/portbase/formats/varint"
-
 	"github.com/safing/portbase/container"
+	"github.com/safing/portbase/formats/varint"
 )
 
+// Flow Queue Configuration.
 const (
 	DefaultQueueSize        = 50000
 	MaxQueueSize            = 1000000
 	forceReportBelowPercent = 0.75
 )
 
+// DuplexFlowQueue is a duplex flow control mechanism using queues.
 type DuplexFlowQueue struct {
 	// ti is the interface to the Terminal that is using the DFQ.
 	ti TerminalInterface
@@ -49,6 +50,7 @@ type DuplexFlowQueue struct {
 	flush chan func()
 }
 
+// NewDuplexFlowQueue returns a new duplex flow queue.
 func NewDuplexFlowQueue(
 	ti TerminalInterface,
 	queueSize uint32,
@@ -262,7 +264,7 @@ func init() {
 	close(ready)
 }
 
-// Send adds the given container to the send queue.
+// ReadyToSend returns a channel that can be read when data can be sent.
 func (dfq *DuplexFlowQueue) ReadyToSend() <-chan struct{} {
 	if atomic.LoadInt32(dfq.sendSpace) > 0 {
 		return ready

@@ -64,5 +64,5 @@ func CalculateDestinationCost(proximity float32) (cost float32) {
 
 	// Take the distance to the power of two and then divide by ten in order to
 	// make high distances exponentially more expensive.
-	return float32(distance*distance) / 10
+	return (distance * distance) / 10
 }

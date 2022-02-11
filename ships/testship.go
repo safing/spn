@@ -4,8 +4,9 @@ import (
 	"net"
 
 	"github.com/mr-tron/base58"
-	"github.com/safing/spn/hub"
 	"github.com/tevino/abool"
+
+	"github.com/safing/spn/hub"
 )
 
 // TestShip is a simulated ship that is used for testing higher level components.
@@ -32,45 +33,45 @@ func NewTestShip(secure bool, loadSize int) *TestShip {
 }
 
 // String returns a human readable informational summary about the ship.
-func (d *TestShip) String() string {
-	if d.mine {
+func (ship *TestShip) String() string {
+	if ship.mine {
 		return "<TestShip outbound>"
 	}
 	return "<TestShip inbound>"
 }
 
 // Transport returns the transport used for this ship.
-func (d *TestShip) Transport() hub.Transport {
+func (ship *TestShip) Transport() hub.Transport {
 	return hub.Transport{
 		Protocol: "dummy",
 	}
 }
 
 // IsMine returns whether the ship was launched from here.
-func (d *TestShip) IsMine() bool {
-	return d.mine
+func (ship *TestShip) IsMine() bool {
+	return ship.mine
 }
 
 // IsSecure returns whether the ship provides transport security.
-func (d *TestShip) IsSecure() bool {
-	return d.secure
+func (ship *TestShip) IsSecure() bool {
+	return ship.secure
 }
 
 // LoadSize returns the recommended data size that should be handed to Load().
 // This value will be most likely somehow related to the connection's MTU.
 // Alternatively, using a multiple of LoadSize is also recommended.
-func (d *TestShip) LoadSize() int {
-	return d.loadSize
+func (ship *TestShip) LoadSize() int {
+	return ship.loadSize
 }
 
 // Reverse creates a connected TestShip. This is used to simulate a connection instead of using a Pier.
-func (d *TestShip) Reverse() *TestShip {
+func (ship *TestShip) Reverse() *TestShip {
 	return &TestShip{
-		mine:     !d.mine,
-		secure:   d.secure,
-		loadSize: d.loadSize,
-		forward:  d.backward,
-		backward: d.forward,
+		mine:     !ship.mine,
+		secure:   ship.secure,
+		loadSize: ship.loadSize,
+		forward:  ship.backward,
+		backward: ship.forward,
 		sinking:  abool.NewBool(false),
 	}
 }
@@ -136,18 +137,18 @@ func (ship *TestShip) UnloadTo(buf []byte) (n int, err error) {
 }
 
 // Sink closes the underlying connection and cleans up any related resources.
-func (d *TestShip) Sink() {
-	if d.sinking.SetToIf(false, true) {
-		close(d.forward)
+func (ship *TestShip) Sink() {
+	if ship.sinking.SetToIf(false, true) {
+		close(ship.forward)
 	}
 }
 
 // Dummy methods to conform to interface for testing.
 
-func (d *TestShip) LocalAddr() net.Addr              { return nil }
-func (d *TestShip) RemoteAddr() net.Addr             { return nil }
-func (d *TestShip) Public() bool                     { return true }
-func (d *TestShip) MarkPublic()                      {}
-func (d *TestShip) MaskAddress(addr net.Addr) string { return addr.String() }
-func (d *TestShip) MaskIP(ip net.IP) string          { return ip.String() }
-func (d *TestShip) Mask(value []byte) string         { return base58.Encode(value) }
+func (ship *TestShip) LocalAddr() net.Addr              { return nil }                  //nolint:golint
+func (ship *TestShip) RemoteAddr() net.Addr             { return nil }                  //nolint:golint
+func (ship *TestShip) Public() bool                     { return true }                 //nolint:golint
+func (ship *TestShip) MarkPublic()                      {}                              //nolint:golint
+func (ship *TestShip) MaskAddress(addr net.Addr) string { return addr.String() }        //nolint:golint
+func (ship *TestShip) MaskIP(ip net.IP) string          { return ip.String() }          //nolint:golint
+func (ship *TestShip) Mask(value []byte) string         { return base58.Encode(value) } //nolint:golint

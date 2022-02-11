@@ -19,12 +19,12 @@ import (
 	"github.com/safing/spn/terminal"
 )
 
+// ConnectOpType is the type ID for the connection operation.
 const ConnectOpType string = "connect"
 
-var (
-	activeConnectOps = new(int64)
-)
+var activeConnectOps = new(int64)
 
+// ConnectOp is used to connect data tunnels to servers on the Internet.
 type ConnectOp struct {
 	terminal.OpBase
 	*terminal.DuplexFlowQueue
@@ -43,14 +43,17 @@ type ConnectOp struct {
 	request *ConnectRequest
 }
 
+// Type returns the type ID.
 func (op *ConnectOp) Type() string {
 	return ConnectOpType
 }
 
+// Ctx returns the operation context.
 func (op *ConnectOp) Ctx() context.Context {
 	return op.ctx
 }
 
+// ConnectRequest holds all the information necessary for a connect operation.
 type ConnectRequest struct {
 	Domain    string
 	IP        net.IP
@@ -59,6 +62,7 @@ type ConnectRequest struct {
 	QueueSize uint32
 }
 
+// Address returns the address of the connext request.
 func (r *ConnectRequest) Address() string {
 	return net.JoinHostPort(r.IP.String(), strconv.Itoa(int(r.Port)))
 }
@@ -78,6 +82,7 @@ func init() {
 	})
 }
 
+// NewConnectOp starts a new connect operation.
 func NewConnectOp(t terminal.OpTerminal, request *ConnectRequest, conn net.Conn) (*ConnectOp, *terminal.Error) {
 	// Set defaults.
 	if request.QueueSize == 0 {
@@ -144,7 +149,7 @@ func runConnectOp(t terminal.OpTerminal, opID uint32, data *container.Container)
 
 	// Get protocol net for connecting.
 	var dialNet string
-	switch request.Protocol {
+	switch request.Protocol { //nolint:exhaustive // Only looking at specific values.
 	case packet.TCP:
 		dialNet = "tcp"
 	case packet.UDP:
@@ -236,12 +241,15 @@ func (op *ConnectOp) connReader(_ context.Context) error {
 	}
 }
 
+// Deliver delivers a messages to the operation.
 func (op *ConnectOp) Deliver(c *container.Container) *terminal.Error {
 	return op.DuplexFlowQueue.Deliver(c)
 }
 
 func (op *ConnectOp) connWriter(_ context.Context) error {
-	defer op.conn.Close()
+	defer func() {
+		_ = op.conn.Close()
+	}()
 
 writing:
 	for {
@@ -299,6 +307,7 @@ func (op *ConnectOp) connectedType() string {
 	return "destination"
 }
 
+// End ends the operation.
 func (op *ConnectOp) End(err *terminal.Error) {
 	// Send all data before closing.
 	op.DuplexFlowQueue.Flush()
@@ -307,11 +316,13 @@ func (op *ConnectOp) End(err *terminal.Error) {
 	op.cancelCtx()
 }
 
+// Abandon ends the operation.
 func (op *ConnectOp) Abandon(err *terminal.Error) {
 	// Proxy for DuplexFlowQueue
 	op.t.OpEnd(op, err)
 }
 
+// FmtID formats the operation ID.
 func (op *ConnectOp) FmtID() string {
 	return fmt.Sprintf("%s>%d", op.t.FmtID(), op.ID())
 }

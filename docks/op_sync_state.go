@@ -9,20 +9,22 @@ import (
 	"github.com/safing/spn/terminal"
 )
 
-const (
-	SyncStateOpType = "sync/state"
-)
+// SyncStateOpType is the type ID of the sync state operation.
+const SyncStateOpType = "sync/state"
 
+// SyncStateOp is used to sync the crane state.
 type SyncStateOp struct {
 	terminal.OpBase
 	t      terminal.OpTerminal
 	result chan *terminal.Error
 }
 
+// SyncStateMessage holds the sync data.
 type SyncStateMessage struct {
 	Stopping bool
 }
 
+// Type returns the type ID.
 func (op *SyncStateOp) Type() string {
 	return SyncStateOpType
 }
@@ -35,6 +37,7 @@ func init() {
 	})
 }
 
+// SyncState runs a sync state operation.
 func (controller *CraneControllerTerminal) SyncState(ctx context.Context) *terminal.Error {
 	// Check if we own the crane and it is public.
 	if !controller.Crane.IsMine() || !controller.Crane.Public() {
@@ -117,10 +120,12 @@ func runSyncStateOp(t terminal.OpTerminal, opID uint32, data *container.Containe
 	return nil, nil
 }
 
+// Deliver delivers a message to the operation.
 func (op *SyncStateOp) Deliver(c *container.Container) *terminal.Error {
 	return terminal.ErrIncorrectUsage
 }
 
+// End ends the operation.
 func (op *SyncStateOp) End(tErr *terminal.Error) {
 	if op.result != nil {
 		select {

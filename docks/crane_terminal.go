@@ -10,12 +10,11 @@ import (
 )
 
 const (
-	sendThresholdMaxWait = 100 * time.Microsecond
-
 	expansionClientTimeout = 2 * time.Minute
 	expansionServerTimeout = 5 * time.Minute
 )
 
+// CraneTerminal is a terminal started by a crane.
 type CraneTerminal struct {
 	*terminal.TerminalBase
 	*terminal.DuplexFlowQueue
@@ -23,17 +22,13 @@ type CraneTerminal struct {
 	crane *Crane
 }
 
+// NewLocalCraneTerminal returns a new local crane terminal.
 func NewLocalCraneTerminal(
 	crane *Crane,
 	remoteHub *hub.Hub,
 	initMsg *terminal.TerminalOpts,
 	submitUpstream func(*container.Container),
 ) (*CraneTerminal, *container.Container, *terminal.Error) {
-	// Default to terminal msg submit function.
-	if submitUpstream == nil {
-		submitUpstream = crane.submitTerminalMsg
-	}
-
 	// Create Terminal Base.
 	t, initData, err := terminal.NewLocalBaseTerminal(
 		crane.ctx,
@@ -49,6 +44,7 @@ func NewLocalCraneTerminal(
 	return initCraneTerminal(crane, t, initMsg), initData, nil
 }
 
+// NewRemoteCraneTerminal returns a new remote crane terminal.
 func NewRemoteCraneTerminal(
 	crane *Crane,
 	id uint32,
@@ -93,6 +89,8 @@ func initCraneTerminal(
 	return ct
 }
 
+// GrantPermission grants the given permissions.
+// Additionally, it will mark the crane as authenticated, if not public.
 func (t *CraneTerminal) GrantPermission(grant terminal.Permission) {
 	// Forward granted permission to base terminal.
 	t.TerminalBase.GrantPermission(grant)
@@ -106,31 +104,38 @@ func (t *CraneTerminal) GrantPermission(grant terminal.Permission) {
 	}
 }
 
+// Deliver delivers a message to the crane terminal.
 func (t *CraneTerminal) Deliver(c *container.Container) *terminal.Error {
 	return t.DuplexFlowQueue.Deliver(c)
 }
 
+// Flush flushes the terminal and its flow queue.
 func (t *CraneTerminal) Flush() {
 	t.TerminalBase.Flush()
 	t.DuplexFlowQueue.Flush()
 }
 
+// LocalAddr returns the crane's local address.
 func (t *CraneTerminal) LocalAddr() net.Addr {
 	return t.crane.LocalAddr()
 }
 
+// RemoteAddr returns the crane's remote address.
 func (t *CraneTerminal) RemoteAddr() net.Addr {
 	return t.crane.RemoteAddr()
 }
 
+// Transport returns the crane's transport.
 func (t *CraneTerminal) Transport() *hub.Transport {
 	return t.crane.Transport()
 }
 
+// IsAbandoned returns whether the crane has been abandoned.
 func (t *CraneTerminal) IsAbandoned() bool {
 	return t.Abandoned.IsSet()
 }
 
+// Abandon abandons the crane terminal.
 func (t *CraneTerminal) Abandon(err *terminal.Error) {
 	if t.Abandoned.SetToIf(false, true) {
 		// Send stop msg and end all operations.

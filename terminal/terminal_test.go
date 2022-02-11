@@ -13,11 +13,13 @@ import (
 )
 
 func TestTerminals(t *testing.T) {
-	var testQueueSize uint16 = 10
+	t.Parallel()
+
+	var testQueueSize uint32 = defaultTestQueueSize
 	countToQueueSize := uint64(testQueueSize)
 
 	initMsg := &TerminalOpts{
-		QueueSize: defaultTestQueueSize,
+		QueueSize: testQueueSize,
 		Padding:   defaultTestPadding,
 	}
 
@@ -149,7 +151,9 @@ func TestTerminals(t *testing.T) {
 }
 
 func TestTerminalsWithEncryption(t *testing.T) {
-	var testQueueSize uint32 = DefaultQueueSize
+	t.Parallel()
+
+	var testQueueSize uint32 = defaultTestQueueSize
 	countToQueueSize := uint64(testQueueSize)
 
 	initMsg := &TerminalOpts{
@@ -196,6 +200,8 @@ func TestTerminalsWithEncryption(t *testing.T) {
 }
 
 func createTestForwardingFunc(t *testing.T, srcName, dstName string, deliverFunc func(*container.Container) *Error) func(*container.Container) {
+	t.Helper()
+
 	return func(c *container.Container) {
 		// Fast track nil containers.
 		if c == nil {
@@ -228,6 +234,8 @@ type testWithCounterOpts struct {
 }
 
 func testTerminalWithCounters(t *testing.T, term1, term2 *TestTerminal, opts *testWithCounterOpts) {
+	t.Helper()
+
 	// Wait async for test to complete, print stack after timeout.
 	finished := make(chan struct{})
 	go func() {
@@ -275,6 +283,7 @@ func testTerminalWithCounters(t *testing.T, term1, term2 *TestTerminal, opts *te
 }
 
 func printCTStats(t *testing.T, testName, name string, term *TestTerminal) {
+	t.Helper()
 	t.Logf(
 		"%s: %s: sq=%d rq=%d sends=%d reps=%d opq=%d",
 		testName,

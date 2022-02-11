@@ -9,8 +9,10 @@ import (
 	"github.com/safing/spn/terminal"
 )
 
+// PublishOpType is the type ID of the publish operation.
 const PublishOpType string = "publish"
 
+// PublishOp is used to publish a connection.
 type PublishOp struct {
 	terminal.OpBase
 	controller *docks.CraneControllerTerminal
@@ -21,6 +23,7 @@ type PublishOp struct {
 	result        chan *terminal.Error
 }
 
+// Type returns the type ID.
 func (op *PublishOp) Type() string {
 	return PublishOpType
 }
@@ -33,6 +36,7 @@ func init() {
 	})
 }
 
+// NewPublishOp start a new publish operation.
 func NewPublishOp(controller *docks.CraneControllerTerminal, identity *cabin.Identity) (*PublishOp, *terminal.Error) {
 	// Create and init.
 	op := &PublishOp{
@@ -118,6 +122,7 @@ func runPublishOp(t terminal.OpTerminal, opID uint32, data *container.Container)
 	return op, nil
 }
 
+// Deliver delivers a message to the operation.
 func (op *PublishOp) Deliver(c *container.Container) *terminal.Error {
 	if op.identity != nil {
 		// Client
@@ -143,10 +148,12 @@ func (op *PublishOp) Deliver(c *container.Container) *terminal.Error {
 	return terminal.ErrInternalError.With("invalid operation state")
 }
 
+// Result returns the result (end error) of the operation.
 func (op *PublishOp) Result() <-chan *terminal.Error {
 	return op.result
 }
 
+// End ends the operation.
 func (op *PublishOp) End(tErr *terminal.Error) {
 	if tErr.Is(terminal.ErrExplicitAck) {
 		// TODO: Check for concurrenct access.
