@@ -53,7 +53,6 @@ managing:
 					"spn:home-hub-failure",
 					"SPN Failed to Connect",
 					fmt.Sprintf("Failed to connect to a home hub: %s. The Portmaster will retry to connect automatically.", err),
-					spnTestPhaseStatusLinkButton,
 					spnSettingsButton,
 				).AttachToModule(module)
 				resetSPNStatus(StatusFailed)
@@ -71,7 +70,6 @@ managing:
 				"spn:connected-to-home-hub",
 				"Connected to SPN",
 				fmt.Sprintf("You are connected to the SPN at %s. This notification is persistent for awareness.", homeTerminal.RemoteAddr()),
-				spnTestPhaseStatusLinkButton,
 				spnSettingsButton,
 			).AttachToModule(module)
 			ready.Set()
