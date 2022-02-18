@@ -115,6 +115,13 @@ func (rp *RoutingProfile) checkRouteCompliance(route *Route, foundRoutes *Routes
 		}
 	}
 
+	// Check if hub is already in use, if so check if the route matches.
+	lastPinConnection := route.Path[len(route.Path)-1].pin.Connection
+	if lastPinConnection != nil &&
+		lastPinConnection.Route.Path[len(lastPinConnection.Route.Path)-2].HubID != route.Path[len(route.Path)-2].HubID {
+		return routeDisqualified
+	}
+
 	// Abort route exploration when we are outside the optimization boundaries.
 	if len(foundRoutes.All) > 0 {
 		// Get the best found route.
