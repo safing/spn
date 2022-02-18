@@ -113,7 +113,7 @@ func TestOptimize(t *testing.T) {
 	t.Parallel()
 
 	m := getOptimizedDefaultTestMap(t)
-	matcher := m.defaultOptions().Matcher(DestinationHub)
+	matcher := m.defaultOptions().Matcher(DestinationHub, m.intel)
 	originalHome := m.home
 
 	for _, pin := range m.all {

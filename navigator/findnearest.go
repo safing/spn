@@ -118,7 +118,7 @@ func (m *Map) FindNearestHubs(locationV4, locationV6 *geoip.Location, opts *Opti
 	}
 
 	// Find nearest Pins.
-	nearby, err := m.findNearestPins(locationV4, locationV6, opts.Matcher(matchFor), maxMatches)
+	nearby, err := m.findNearestPins(locationV4, locationV6, opts.Matcher(matchFor, m.intel), maxMatches)
 	if err != nil {
 		return nil, err
 	}

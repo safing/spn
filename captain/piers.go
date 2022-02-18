@@ -2,10 +2,14 @@ package captain
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
 	"github.com/safing/portbase/log"
 	"github.com/safing/portbase/modules"
+	"github.com/safing/portmaster/intel"
+	"github.com/safing/portmaster/network/netutils"
+	"github.com/safing/portmaster/profile/endpoints"
 	"github.com/safing/spn/docks"
 	"github.com/safing/spn/hub"
 	"github.com/safing/spn/ships"
@@ -82,10 +86,10 @@ func dockingRequestHandler(ctx context.Context) error {
 				// TODO: Do actual pier management.
 				log.Errorf("spn/captain: pier %s failed: %s", r.Pier.Transport(), r.Err)
 			case r.Ship != nil:
-				if checkDockingPermission(r.Ship) {
-					handleDockingRequest(r.Ship)
+				if err := checkDockingPermission(ctx, r.Ship); err != nil {
+					log.Warningf("spn/captain: denied ship from %s to dock at pier %s: %s", r.Ship.RemoteAddr(), r.Pier.Transport(), err)
 				} else {
-					log.Warningf("spn/captain: denied ship from %s to dock at pier %s", r.Ship.RemoteAddr(), r.Pier.Transport())
+					handleDockingRequest(r.Ship)
 				}
 			default:
 				log.Warningf("spn/captain: received invalid docking request without ship for pier %s", r.Pier.Transport())
@@ -94,9 +98,26 @@ func dockingRequestHandler(ctx context.Context) error {
 	}
 }
 
-func checkDockingPermission(ship ships.Ship) (ok bool) {
-	// TODO: check docking policies (hub entry policy)
-	return true
+func checkDockingPermission(ctx context.Context, ship ships.Ship) error {
+	remoteIP, err := netutils.IPFromAddr(ship.RemoteAddr())
+	if err != nil {
+		return fmt.Errorf("failed to parse remote IP: %w", err)
+	}
+
+	// Create entity.
+	entity := &intel.Entity{}
+	entity.SetIP(remoteIP)
+	entity.FetchData(ctx)
+
+	// TODO: Do we want to handle protocol and port too?
+
+	// Check against policy.
+	result, reason := publicIdentity.Hub.GetInfo().EntryPolicy().Match(ctx, entity)
+	if result == endpoints.Denied {
+		return fmt.Errorf("entry policy violated: %s", reason)
+	}
+
+	return nil
 }
 
 func handleDockingRequest(ship ships.Ship) {

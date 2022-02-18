@@ -104,8 +104,41 @@ This setting mainly exists for when you need to simulate your presence in anothe
 	if err != nil {
 		return err
 	}
-
 	cfgOptionSpecialAccessCode = config.Concurrent.GetAsString(cfgOptionSpecialAccessCodeKey, "")
 
 	return nil
+}
+
+var (
+	homeHubPolicy     endpoints.Endpoints
+	homeHubPolicyData []string
+	homeHubPolcyLock  sync.Mutex
+)
+
+func getHomeHubPolicy() (endpoints.Endpoints, error) {
+	homeHubPolcyLock.Lock()
+	defer homeHubPolcyLock.Unlock()
+
+	// Get config data and check if it changed.
+	newData := cfgOptionHomeHubPolicy()
+	if utils.StringSliceEqual(newData, homeHubPolicyData) {
+		return homeHubPolicy, nil
+	}
+
+	// Check if policy is empty and return without parsing.
+	if len(newData) == 0 {
+		homeHubPolicy = nil
+		return homeHubPolicy, nil
+	}
+
+	// Parse policy.
+	policy, err := endpoints.ParseEndpoints(newData)
+	if err != nil {
+		homeHubPolicy = nil
+		return nil, err
+	}
+
+	// Save and return the new policy.
+	homeHubPolicy = policy
+	return homeHubPolicy, nil
 }
