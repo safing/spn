@@ -18,11 +18,6 @@ var (
 	bootstrapped = abool.New()
 	ready        = abool.New()
 
-	spnTestPhaseStatusLinkButton = notifications.Action{
-		Text:    "Test Phase Status",
-		Type:    notifications.ActionTypeOpenURL,
-		Payload: "https://docs.safing.io/spn/broader-testing/status",
-	}
 	spnLoginButton = notifications.Action{
 		Text:    "Login",
 		Type:    notifications.ActionTypeOpenPage,
