@@ -1,5 +1,7 @@
 package navigator
 
+import "github.com/safing/portbase/log"
+
 // RoutingProfile defines a routing algorithm with some options.
 type RoutingProfile struct {
 	ID string
@@ -116,10 +118,26 @@ func (rp *RoutingProfile) checkRouteCompliance(route *Route, foundRoutes *Routes
 	}
 
 	// Check if hub is already in use, if so check if the route matches.
-	lastPinConnection := route.Path[len(route.Path)-1].pin.Connection
-	if lastPinConnection != nil &&
-		lastPinConnection.Route.Path[len(lastPinConnection.Route.Path)-2].HubID != route.Path[len(route.Path)-2].HubID {
-		return routeDisqualified
+	if len(route.Path) >= 2 {
+		// Get active connection to the last pin of the current path.
+		lastPinConnection := route.Path[len(route.Path)-1].pin.Connection
+
+		switch {
+		case lastPinConnection == nil:
+			// Last pin is not yet connected.
+		case len(lastPinConnection.Route.Path) < 2:
+			// Path of last pin does not have enough hops.
+			// This is unexpected and should not happen.
+			log.Errorf(
+				"navigator: expected active connection to %s to have 2 hops or more on path, but it had %d",
+				route.Path[len(route.Path)-1].pin.Hub.StringWithoutLocking(),
+				len(lastPinConnection.Route.Path),
+			)
+		case lastPinConnection.Route.Path[len(lastPinConnection.Route.Path)-2].pin.Hub.ID != route.Path[len(route.Path)-2].pin.Hub.ID:
+			// The previous hop of the existing route and the one we are evaluating don't match.
+			// Currently, we only allow one session per Hub.
+			return routeDisqualified
+		}
 	}
 
 	// Abort route exploration when we are outside the optimization boundaries.
