@@ -3,8 +3,6 @@ package captain
 import (
 	"sync"
 
-	"github.com/safing/portbase/utils"
-
 	"github.com/safing/portbase/config"
 	"github.com/safing/portmaster/profile"
 	"github.com/safing/portmaster/profile/endpoints"
@@ -110,29 +108,23 @@ This setting mainly exists for when you need to simulate your presence in anothe
 }
 
 var (
-	homeHubPolicy     endpoints.Endpoints
-	homeHubPolicyData []string
-	homeHubPolcyLock  sync.Mutex
+	homeHubPolicy           endpoints.Endpoints
+	homeHubPolicyLock       sync.Mutex
+	homeHubPolicyConfigFlag = config.NewValidityFlag()
 )
 
 func getHomeHubPolicy() (endpoints.Endpoints, error) {
-	homeHubPolcyLock.Lock()
-	defer homeHubPolcyLock.Unlock()
+	homeHubPolicyLock.Lock()
+	defer homeHubPolicyLock.Unlock()
 
-	// Get config data and check if it changed.
-	newData := cfgOptionHomeHubPolicy()
-	if utils.StringSliceEqual(newData, homeHubPolicyData) {
+	// Return cached value if config is still valid.
+	if homeHubPolicyConfigFlag.IsValid() {
 		return homeHubPolicy, nil
 	}
+	homeHubPolicyConfigFlag.Refresh()
 
-	// Check if policy is empty and return without parsing.
-	if len(newData) == 0 {
-		homeHubPolicy = nil
-		return homeHubPolicy, nil
-	}
-
-	// Parse policy.
-	policy, err := endpoints.ParseEndpoints(newData)
+	// Parse new policy.
+	policy, err := endpoints.ParseEndpoints(cfgOptionHomeHubPolicy())
 	if err != nil {
 		homeHubPolicy = nil
 		return nil, err
@@ -141,4 +133,33 @@ func getHomeHubPolicy() (endpoints.Endpoints, error) {
 	// Save and return the new policy.
 	homeHubPolicy = policy
 	return homeHubPolicy, nil
+}
+
+var (
+	dnsExitHubPolicy           endpoints.Endpoints
+	dnsExitHubPolicyLock       sync.Mutex
+	dnsExitHubPolicyConfigFlag = config.NewValidityFlag()
+)
+
+// GetDNSExitHubPolicy return the current DNS exit policy.
+func GetDNSExitHubPolicy() (endpoints.Endpoints, error) {
+	dnsExitHubPolicyLock.Lock()
+	defer dnsExitHubPolicyLock.Unlock()
+
+	// Return cached value if config is still valid.
+	if dnsExitHubPolicyConfigFlag.IsValid() {
+		return dnsExitHubPolicy, nil
+	}
+	dnsExitHubPolicyConfigFlag.Refresh()
+
+	// Parse new policy.
+	policy, err := endpoints.ParseEndpoints(cfgOptionDNSExitHubPolicy())
+	if err != nil {
+		dnsExitHubPolicy = nil
+		return nil, err
+	}
+
+	// Save and return the new policy.
+	dnsExitHubPolicy = policy
+	return dnsExitHubPolicy, nil
 }
