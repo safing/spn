@@ -85,6 +85,16 @@ func (m *Map) defaultOptions() *Options {
 	return opts
 }
 
+// HubPoliciesAreSet returns whether any hub policies are set and non-empty.
+func (o *Options) HubPoliciesAreSet() bool {
+	for _, policy := range o.HubPolicies {
+		if policy.IsSet() {
+			return true
+		}
+	}
+	return false
+}
+
 // Matcher generates a PinMatcher based on the Options.
 func (o *Options) Matcher(hubType HubType, intel *hub.Intel) PinMatcher {
 	// Compile states to regard and disregard.
