@@ -17,17 +17,17 @@ var (
 
 	CfgOptionHomeHubPolicyKey   = "spn/homePolicy"
 	cfgOptionHomeHubPolicy      config.StringArrayOption
-	cfgOptionHomeHubPolicyOrder = 131
+	cfgOptionHomeHubPolicyOrder = 145
 
 	CfgOptionDNSExitHubPolicyKey   = "spn/dnsExitPolicy"
 	cfgOptionDNSExitHubPolicy      config.StringArrayOption
-	cfgOptionDNSExitHubPolicyOrder = 133
+	cfgOptionDNSExitHubPolicyOrder = 147
 
 	// Special Access Code.
 	cfgOptionSpecialAccessCodeKey     = "spn/specialAccessCode"
 	cfgOptionSpecialAccessCodeDefault = "none"
 	cfgOptionSpecialAccessCode        config.StringOption //nolint:unused // Linter, you drunk?
-	cfgOptionSpecialAccessCodeOrder   = 144
+	cfgOptionSpecialAccessCodeOrder   = 160
 )
 
 func prepConfig() error {
