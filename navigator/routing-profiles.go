@@ -1,12 +1,13 @@
 package navigator
 
-import (
-	"github.com/safing/portbase/log"
-)
+import "github.com/safing/portbase/log"
 
 // RoutingProfile defines a routing algorithm with some options.
 type RoutingProfile struct {
 	ID string
+
+	// Name is the human readable name of the profile.
+	Name string
 
 	// MinHops defines how many hops a route must have at minimum. In order to
 	// reduce confusion, the Home Hub is also counted.
@@ -31,42 +32,60 @@ type RoutingProfile struct {
 
 // Routing Profile Names.
 const (
-	RoutingProfileDefaultName  = "default"
-	RoutingProfileShortestName = "shortest"
-	RoutingProfileHomeName     = "home"
+	RoutingProfileHomeID      = "home"
+	RoutingProfileSingleHopID = "single-hop"
+	RoutingProfileDoubleHopID = "double-hop"
+	RoutingProfileTripleHopID = "triple-hop"
+
+	DefaultRoutingProfileID = RoutingProfileDoubleHopID
 )
 
 // Routing Profiles.
 var (
-	RoutingProfileDefault = &RoutingProfile{
-		ID:           RoutingProfileDefaultName,
-		MinHops:      3,
-		MaxHops:      5,
-		MaxExtraHops: 2,
-		MaxExtraCost: 100, // TODO: implement costs
+	RoutingProfileHome = &RoutingProfile{
+		ID:      "home",
+		Name:    "Plain VPN Mode",
+		MinHops: 1,
+		MaxHops: 1,
 	}
-
-	RoutingProfileShortest = &RoutingProfile{
-		ID:           RoutingProfileShortestName,
+	RoutingProfileSingleHop = &RoutingProfile{
+		ID:           "single-hop",
+		Name:         "Speed Focused",
 		MinHops:      1,
-		MaxHops:      5,
+		MaxHops:      2,
 		MaxExtraHops: 1,
-		MaxExtraCost: 100, // TODO: implement costs
+		MaxExtraCost: 10000,
+	}
+	RoutingProfileDoubleHop = &RoutingProfile{
+		ID:           "double-hop",
+		Name:         "Balanced",
+		MinHops:      2,
+		MaxHops:      3,
+		MaxExtraHops: 2,
+		MaxExtraCost: 10000,
+	}
+	RoutingProfileTripleHop = &RoutingProfile{
+		ID:           "triple-hop",
+		Name:         "Privacy Focused",
+		MinHops:      3,
+		MaxHops:      4,
+		MaxExtraHops: 3,
+		MaxExtraCost: 10000,
 	}
 )
 
-func getRoutingProfile(name string) *RoutingProfile {
-	switch name {
-	case RoutingProfileDefaultName:
-		return RoutingProfileDefault
-	case RoutingProfileShortestName:
-		return RoutingProfileShortest
-	case RoutingProfileHomeName:
-		log.Warningf("spn/navigator: routing profile %q is special and cannot be used for calculation, falling back to default", name)
-		return RoutingProfileDefault
+func getRoutingProfile(id string) *RoutingProfile {
+	switch id {
+	case RoutingProfileHomeID:
+		return RoutingProfileHome
+	case RoutingProfileSingleHopID:
+		return RoutingProfileSingleHop
+	case RoutingProfileDoubleHopID:
+		return RoutingProfileDoubleHop
+	case RoutingProfileTripleHopID:
+		return RoutingProfileTripleHop
 	default:
-		log.Warningf("spn/navigator: routing profile %q does not exist, falling back to default", name)
-		return RoutingProfileDefault
+		return RoutingProfileDoubleHop
 	}
 }
 
@@ -95,6 +114,29 @@ func (rp *RoutingProfile) checkRouteCompliance(route *Route, foundRoutes *Routes
 			if lastHop.pin.Hub.ID == hop.pin.Hub.ID {
 				return routeDisqualified
 			}
+		}
+	}
+
+	// Check if hub is already in use, if so check if the route matches.
+	if len(route.Path) >= 2 {
+		// Get active connection to the last pin of the current path.
+		lastPinConnection := route.Path[len(route.Path)-1].pin.Connection
+
+		switch {
+		case lastPinConnection == nil:
+			// Last pin is not yet connected.
+		case len(lastPinConnection.Route.Path) < 2:
+			// Path of last pin does not have enough hops.
+			// This is unexpected and should not happen.
+			log.Errorf(
+				"navigator: expected active connection to %s to have 2 hops or more on path, but it had %d",
+				route.Path[len(route.Path)-1].pin.Hub.StringWithoutLocking(),
+				len(lastPinConnection.Route.Path),
+			)
+		case lastPinConnection.Route.Path[len(lastPinConnection.Route.Path)-2].pin.Hub.ID != route.Path[len(route.Path)-2].pin.Hub.ID:
+			// The previous hop of the existing route and the one we are evaluating don't match.
+			// Currently, we only allow one session per Hub.
+			return routeDisqualified
 		}
 	}
 

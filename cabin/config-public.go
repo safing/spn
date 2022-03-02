@@ -240,9 +240,8 @@ func prepPublicHubConfig() error {
 		ExpertiseLevel: config.ExpertiseLevelExpert,
 		DefaultValue:   publicCfgOptionEntryDefault,
 		Annotations: config.Annotations{
-			config.DisplayOrderAnnotation:    publicCfgOptionEntryOrder,
-			config.DisplayHintAnnotation:     endpoints.DisplayHintEndpointList,
-			endpoints.EndpointListAnnotation: []string{endpoints.EndpointListIP},
+			config.DisplayOrderAnnotation: publicCfgOptionEntryOrder,
+			config.DisplayHintAnnotation:  endpoints.DisplayHintEndpointList,
 		},
 	})
 	if err != nil {
@@ -258,9 +257,8 @@ func prepPublicHubConfig() error {
 		ExpertiseLevel: config.ExpertiseLevelExpert,
 		DefaultValue:   publicCfgOptionExitDefault,
 		Annotations: config.Annotations{
-			config.DisplayOrderAnnotation:    publicCfgOptionExitOrder,
-			config.DisplayHintAnnotation:     endpoints.DisplayHintEndpointList,
-			endpoints.EndpointListAnnotation: []string{endpoints.EndpointListIP},
+			config.DisplayOrderAnnotation: publicCfgOptionExitOrder,
+			config.DisplayHintAnnotation:  endpoints.DisplayHintEndpointList,
 		},
 	})
 	if err != nil {

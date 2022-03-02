@@ -209,7 +209,7 @@ func (m *Map) optimize(opts *Options) (result *OptimizationResult, err error) {
 	// Create result.
 	result = &OptimizationResult{
 		opts:    opts,
-		matcher: opts.Matcher(TransitHub),
+		matcher: opts.Matcher(TransitHub, m.intel),
 	}
 
 	// Setup analyis.
@@ -286,7 +286,7 @@ func (m *Map) optimizeForBootstrappingAndDesegregation(result *OptimizationResul
 	opts.Regard = StateNone
 	opts.Disregard = StateSummaryDisregard
 	// Collect Pins with matcher.
-	matcher := opts.Matcher(TransitHub)
+	matcher := opts.Matcher(TransitHub, m.intel)
 	for _, pin := range m.all {
 		if matcher(pin) {
 			connectable = append(connectable, pin)
@@ -324,7 +324,7 @@ func (m *Map) optimizeForBootstrappingAndDesegregation(result *OptimizationResul
 
 		// Iterate over all Pins to find any matching Pin.
 		desegregateWith := make([]*Pin, 0, len(m.all)-reachable)
-		matcher := opts.Matcher(TransitHub)
+		matcher := opts.Matcher(TransitHub, m.intel)
 		for _, pin := range m.all {
 			if matcher(pin) {
 				desegregateWith = append(desegregateWith, pin)

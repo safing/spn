@@ -348,11 +348,17 @@ func (crane *Crane) AbandonTerminal(id uint32, err *terminal.Error) {
 }
 
 func (crane *Crane) submitImportantTerminalMsg(c *container.Container) {
-	crane.importantMsgs <- c
+	select {
+	case crane.importantMsgs <- c:
+	case <-crane.ctx.Done():
+	}
 }
 
 func (crane *Crane) submitTerminalMsg(c *container.Container) {
-	crane.terminalMsgs <- c
+	select {
+	case crane.terminalMsgs <- c:
+	case <-crane.ctx.Done():
+	}
 }
 
 func (crane *Crane) encrypt(shipment *container.Container) (encrypted *container.Container, err error) {

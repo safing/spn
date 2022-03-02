@@ -11,10 +11,8 @@ import (
 )
 
 var (
-	connectingHubLock          sync.Mutex
-	connectingHub              *hub.Hub
-	connectingHubExitPolicy    endpoints.Endpoints
-	connectingHubInfoTimestamp int64
+	connectingHubLock sync.Mutex
+	connectingHub     *hub.Hub
 )
 
 // EnableConnecting enables connecting from this Hub.
@@ -23,7 +21,6 @@ func EnableConnecting(my *hub.Hub) {
 	defer connectingHubLock.Unlock()
 
 	connectingHub = my
-	connectingHubInfoTimestamp = -1
 }
 
 func checkExitPolicy(request *ConnectRequest) *terminal.Error {
@@ -33,17 +30,6 @@ func checkExitPolicy(request *ConnectRequest) *terminal.Error {
 	// Check if connect requests are allowed.
 	if connectingHub == nil {
 		return terminal.ErrPermissinDenied.With("connect requests disabled")
-	}
-
-	// Get info and parse the exit policy, if needed.
-	info := connectingHub.GetInfo()
-	if info.Timestamp != connectingHubInfoTimestamp {
-		var err error
-		connectingHubExitPolicy, err = endpoints.ParseEndpoints(info.Exit)
-		if err != nil {
-			return terminal.ErrInternalError.With("failed to parse exit policy: %w", err)
-		}
-		connectingHubInfoTimestamp = info.Timestamp
 	}
 
 	// Create entity.
@@ -56,7 +42,7 @@ func checkExitPolicy(request *ConnectRequest) *terminal.Error {
 	entity.FetchData(context.TODO())
 
 	// Check against policy.
-	result, reason := connectingHubExitPolicy.Match(context.TODO(), entity)
+	result, reason := connectingHub.GetInfo().ExitPolicy().Match(context.TODO(), entity)
 	if result == endpoints.Denied {
 		return terminal.ErrPermissinDenied.With("connect request for %s violates the exit policy: %s", request, reason)
 	}

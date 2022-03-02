@@ -29,14 +29,14 @@ func (m *Map) FindRoutes(ip net.IP, opts *Options, maxRoutes int) (*Routes, erro
 	}
 
 	// Handle special home routing profile.
-	if opts.RoutingProfile == RoutingProfileHomeName {
+	if opts.RoutingProfile == RoutingProfileHomeID {
 		return &Routes{
 			All: []*Route{{
 				Path: []*Hop{{
 					pin:   m.home,
 					HubID: m.home.Hub.ID,
 				}},
-				Algorithm: RoutingProfileHomeName,
+				Algorithm: RoutingProfileHomeID,
 			}},
 		}, nil
 	}
@@ -55,7 +55,7 @@ func (m *Map) FindRoutes(ip net.IP, opts *Options, maxRoutes int) (*Routes, erro
 	}
 
 	// Find nearest Pins.
-	nearby, err := m.findNearestPins(locationV4, locationV6, opts.Matcher(DestinationHub), maxRoutes)
+	nearby, err := m.findNearestPins(locationV4, locationV6, opts.Matcher(DestinationHub, m.intel), maxRoutes)
 	if err != nil {
 		return nil, err
 	}
@@ -70,8 +70,8 @@ func (m *Map) findRoutes(dsts *nearbyPins, opts *Options, maxRoutes int) (*Route
 
 	// Initialize matchers.
 	var done bool
-	transitMatcher := opts.Matcher(TransitHub)
-	destinationMatcher := opts.Matcher(DestinationHub)
+	transitMatcher := opts.Matcher(TransitHub, m.intel)
+	destinationMatcher := opts.Matcher(DestinationHub, m.intel)
 	routingProfile := getRoutingProfile(opts.RoutingProfile)
 
 	// Create routes collector.

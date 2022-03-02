@@ -9,8 +9,10 @@ import (
 	"github.com/safing/portbase/log"
 	"github.com/safing/portbase/modules"
 	"github.com/safing/portbase/notifications"
+	"github.com/safing/portmaster/intel"
 	"github.com/safing/portmaster/netenv"
 	"github.com/safing/portmaster/network/netutils"
+	"github.com/safing/portmaster/profile/endpoints"
 	"github.com/safing/spn/access"
 	"github.com/safing/spn/docks"
 	"github.com/safing/spn/hub"
@@ -19,6 +21,9 @@ import (
 )
 
 const stopCraneAfterBeingUnsuggestedFor = 6 * time.Hour
+
+// ErrAllHomeHubsExcluded is returned when all available home hubs were excluded.
+var ErrAllHomeHubsExcluded = errors.New("all home hubs are excluded")
 
 func homeHubManager(ctx context.Context) (err error) {
 	defer ready.UnSet()
@@ -49,12 +54,28 @@ managing:
 			err = establishHomeHub(ctx)
 			if err != nil {
 				log.Warningf("failed to establish connection to home hub: %s", err)
-				notifications.NotifyWarn(
-					"spn:home-hub-failure",
-					"SPN Failed to Connect",
-					fmt.Sprintf("Failed to connect to a home hub: %s. The Portmaster will retry to connect automatically.", err),
-					spnSettingsButton,
-				).AttachToModule(module)
+				switch {
+				case errors.Is(err, ErrAllHomeHubsExcluded):
+					notifications.NotifyError(
+						"spn:all-home-hubs-excluded",
+						"All Home Nodes Excluded",
+						"Your current Home Node Rules exclude all available SPN Nodes. Please change your rules to allow for at least one available Home Node.",
+						notifications.Action{
+							Text: "Configure",
+							Type: notifications.ActionTypeOpenSetting,
+							Payload: &notifications.ActionTypeOpenSettingPayload{
+								Key: CfgOptionHomeHubPolicyKey,
+							},
+						},
+					).AttachToModule(module)
+				default:
+					notifications.NotifyWarn(
+						"spn:home-hub-failure",
+						"SPN Failed to Connect",
+						fmt.Sprintf("Failed to connect to a home hub: %s. The Portmaster will retry to connect automatically.", err),
+						spnSettingsButton,
+					).AttachToModule(module)
+				}
 				resetSPNStatus(StatusFailed)
 				select {
 				case <-ctx.Done():
@@ -125,12 +146,38 @@ func establishHomeHub(ctx context.Context) error {
 		locations.BestV6(),
 	)
 
+	// Get own entity.
+	// Checking the entity against the entry policies is somewhat hit and miss
+	// anyway, as the device location is an approximation.
+	var myEntity *intel.Entity
+	if dl := locations.BestV4(); dl != nil && dl.IP != nil {
+		myEntity = &intel.Entity{}
+		myEntity.SetIP(dl.IP)
+		myEntity.FetchData(ctx)
+	} else if dl := locations.BestV6(); dl != nil && dl.IP != nil {
+		myEntity = &intel.Entity{}
+		myEntity.SetIP(dl.IP)
+		myEntity.FetchData(ctx)
+	}
+
+	// Get home hub policy for selecting the home hub.
+	homePolicy, err := getHomeHubPolicy()
+	if err != nil {
+		return err
+	}
+
+	// Build navigation options for searching for a home hub.
+	opts := &navigator.Options{
+		HubPolicies:             []endpoints.Endpoints{homePolicy},
+		CheckHubEntryPolicyWith: myEntity,
+	}
+
 	// Find nearby hubs.
 findCandidates:
 	candidates, err := navigator.Main.FindNearestHubs(
 		locations.BestV4().LocationOrNil(),
 		locations.BestV6().LocationOrNil(),
-		nil, navigator.HomeHub, 10,
+		opts, navigator.HomeHub, 10,
 	)
 	if err != nil {
 		if errors.Is(err, navigator.ErrEmptyMap) {
@@ -143,6 +190,11 @@ findCandidates:
 		}
 
 		return fmt.Errorf("failed to find nearby hubs: %w", err)
+	}
+
+	// Check if any candidates were returned.
+	if len(candidates) == 0 && len(homePolicy) > 0 {
+		return ErrAllHomeHubsExcluded
 	}
 
 	// Try connecting to a hub.

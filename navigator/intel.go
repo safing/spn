@@ -42,6 +42,14 @@ func (m *Map) UpdateIntel(update *hub.Intel) error {
 	return nil
 }
 
+// GetIntel returns the map's intel data.
+func (m *Map) GetIntel() *hub.Intel {
+	m.RLock()
+	defer m.RUnlock()
+
+	return m.intel
+}
+
 func (m *Map) updateIntelStatuses(pin *Pin) {
 	// Reset all related states.
 	pin.removeStates(StateTrusted | StateUsageDiscouraged | StateUsageAsHomeDiscouraged | StateUsageAsDestinationDiscouraged)

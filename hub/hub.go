@@ -1,6 +1,7 @@
 package hub
 
 import (
+	"fmt"
 	"net"
 	"sync"
 	"time"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/safing/jess"
 	"github.com/safing/portbase/database/record"
+	"github.com/safing/portmaster/profile/endpoints"
 )
 
 // Scope is the network scope a Hub can be in.
@@ -106,9 +108,11 @@ type Announcement struct {
 	// } // protocols with metadata
 
 	// Policies - default permit
-	Entry []string
+	Entry       []string
+	entryPolicy endpoints.Endpoints
 	// {"+ ", "- *"}
-	Exit []string
+	Exit       []string
+	exitPolicy endpoints.Endpoints
 	// {"- * TCP/25", "- US"}
 }
 
@@ -311,7 +315,28 @@ func (a *Announcement) validateFormatting() (err error) {
 	if err = checkStringSliceFormat("Exit", a.Exit, 255, 255); err != nil {
 		return err
 	}
+	return a.parsePolicies()
+}
+
+func (a *Announcement) parsePolicies() error {
+	var err error
+	if a.entryPolicy, err = endpoints.ParseEndpoints(a.Entry); err != nil {
+		return fmt.Errorf("failed to parse entry policy: %w", err)
+	}
+	if a.exitPolicy, err = endpoints.ParseEndpoints(a.Exit); err != nil {
+		return fmt.Errorf("failed to parse exit policy: %w", err)
+	}
 	return nil
+}
+
+// EntryPolicy returns the Hub's entry policy.
+func (a *Announcement) EntryPolicy() endpoints.Endpoints {
+	return a.entryPolicy
+}
+
+// ExitPolicy returns the Hub's exit policy.
+func (a *Announcement) ExitPolicy() endpoints.Endpoints {
+	return a.exitPolicy
 }
 
 // String returns the string representation of the scope.

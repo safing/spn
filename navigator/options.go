@@ -5,6 +5,7 @@ import (
 
 	"github.com/safing/portmaster/intel"
 	"github.com/safing/portmaster/profile/endpoints"
+	"github.com/safing/spn/hub"
 )
 
 // HubType is the usage type of a Hub in routing.
@@ -29,20 +30,17 @@ type Options struct { //nolint:maligned
 	// set, a basic set of undesirable states is added automatically.
 	Disregard PinState
 
-	// HubPolicy is an endpoint list that all Hubs must pass in order to be taken into account for the operation.
-	HubPolicy endpoints.Endpoints
+	// HubPolicies is a collecion of endpoint lists that Hubs must pass in order
+	// to be taken into account for the operation.
+	HubPolicies []endpoints.Endpoints
 
-	// HomeHubPolicy is an endpoint list that Home Hubs must pass in order to be taken into account for the operation.
-	HomeHubPolicy endpoints.Endpoints
+	// CheckHubEntryPolicyWith provides an entity that must match the Hubs entry
+	// policy in order to be taken into account for the operation.
+	CheckHubEntryPolicyWith *intel.Entity
 
-	// DestinationHubPolicy is an endpoint list that Destination Hubs must pass in order to be taken into account for the operation.
-	DestinationHubPolicy endpoints.Endpoints
-
-	// TODO
-	CheckHubEntryPolicy bool
-
-	// TODO
-	CheckHubExitPolicy bool
+	// CheckHubExitPolicyWith provides an entity that must match the Hubs exit
+	// policy in order to be taken into account for the operation.
+	CheckHubExitPolicyWith *intel.Entity
 
 	// NoDefaults declares whether default and recommended Regard and Disregard states should not be used.
 	NoDefaults bool
@@ -59,11 +57,9 @@ func (o *Options) Copy() *Options {
 	return &Options{
 		Regard:                        o.Regard,
 		Disregard:                     o.Disregard,
-		HubPolicy:                     o.HubPolicy,
-		HomeHubPolicy:                 o.HomeHubPolicy,
-		DestinationHubPolicy:          o.DestinationHubPolicy,
-		CheckHubEntryPolicy:           o.CheckHubEntryPolicy,
-		CheckHubExitPolicy:            o.CheckHubExitPolicy,
+		HubPolicies:                   o.HubPolicies,
+		CheckHubEntryPolicyWith:       o.CheckHubEntryPolicyWith,
+		CheckHubExitPolicyWith:        o.CheckHubExitPolicyWith,
 		NoDefaults:                    o.NoDefaults,
 		RequireTrustedDestinationHubs: o.RequireTrustedDestinationHubs,
 		RoutingProfile:                o.RoutingProfile,
@@ -83,20 +79,24 @@ func (m *Map) DefaultOptions() *Options {
 
 func (m *Map) defaultOptions() *Options {
 	opts := &Options{
-		RoutingProfile: RoutingProfileDefaultName,
-	}
-
-	if m.intel != nil && m.intel.Parsed() != nil {
-		opts.HubPolicy = m.intel.Parsed().HubAdvisory
-		opts.HomeHubPolicy = m.intel.Parsed().HomeHubAdvisory
-		opts.DestinationHubPolicy = m.intel.Parsed().DestinationHubAdvisory
+		RoutingProfile: DefaultRoutingProfileID,
 	}
 
 	return opts
 }
 
+// HubPoliciesAreSet returns whether any hub policies are set and non-empty.
+func (o *Options) HubPoliciesAreSet() bool {
+	for _, policy := range o.HubPolicies {
+		if policy.IsSet() {
+			return true
+		}
+	}
+	return false
+}
+
 // Matcher generates a PinMatcher based on the Options.
-func (o *Options) Matcher(hubType HubType) PinMatcher {
+func (o *Options) Matcher(hubType HubType, intel *hub.Intel) PinMatcher {
 	// Compile states to regard and disregard.
 	regard := o.Regard
 	disregard := o.Disregard
@@ -126,18 +126,22 @@ func (o *Options) Matcher(hubType HubType) PinMatcher {
 		regard |= StateTrusted
 	}
 
-	// Copy and activate applicable policies.
-	hubPolicy := o.HubPolicy
-	var homeHubPolicy endpoints.Endpoints
-	var destinationHubPolicy endpoints.Endpoints
-	switch hubType {
-	case HomeHub:
-		homeHubPolicy = o.HomeHubPolicy
-	case TransitHub:
-		// Transit Hubs have no additional policy.
-	case DestinationHub:
-		destinationHubPolicy = o.DestinationHubPolicy
+	// Add intel policies.
+	hubPolicies := o.HubPolicies
+	if intel != nil && intel.Parsed() != nil {
+		switch hubType {
+		case HomeHub:
+			hubPolicies = append(hubPolicies, intel.Parsed().HubAdvisory, intel.Parsed().HomeHubAdvisory)
+		case TransitHub:
+			hubPolicies = append(hubPolicies, intel.Parsed().HubAdvisory)
+		case DestinationHub:
+			hubPolicies = append(hubPolicies, intel.Parsed().HubAdvisory, intel.Parsed().DestinationHubAdvisory)
+		}
 	}
+
+	// Add entry/exit policiy checks.
+	checkHubEntryPolicyWith := o.CheckHubEntryPolicyWith
+	checkHubExitPolicyWith := o.CheckHubExitPolicyWith
 
 	return func(pin *Pin) bool {
 		// Check required Pin States.
@@ -145,26 +149,28 @@ func (o *Options) Matcher(hubType HubType) PinMatcher {
 			return false
 		}
 
-		// Check main policy.
-		if hubPolicy != nil {
-			if endpointListMatch(hubPolicy, pin.EntityV4) == endpoints.Denied ||
-				endpointListMatch(hubPolicy, pin.EntityV6) == endpoints.Denied {
+		// Check policies.
+		for _, policy := range hubPolicies {
+			switch {
+			case endpointListMatch(policy, pin.EntityV4) == endpoints.Denied:
+				// Hub is denied by policy with its IPv4 entity.
+				return false
+			case endpointListMatch(policy, pin.EntityV6) == endpoints.Denied:
+				// Hub is denied by policy with its IPv6 entity.
 				return false
 			}
 		}
 
-		// Check type based policy.
-		switch {
-		case hubType == HomeHub && homeHubPolicy != nil:
-			if endpointListMatch(homeHubPolicy, pin.EntityV4) == endpoints.Denied ||
-				endpointListMatch(homeHubPolicy, pin.EntityV6) == endpoints.Denied {
-				return false
-			}
-		case hubType == DestinationHub && destinationHubPolicy != nil:
-			if endpointListMatch(destinationHubPolicy, pin.EntityV4) == endpoints.Denied ||
-				endpointListMatch(destinationHubPolicy, pin.EntityV6) == endpoints.Denied {
-				return false
-			}
+		// Check entry/exit policies.
+		if checkHubEntryPolicyWith != nil &&
+			endpointListMatch(pin.Hub.GetInfo().EntryPolicy(), checkHubEntryPolicyWith) == endpoints.Denied {
+			// Hub does not allow entry from the given entity.
+			return false
+		}
+		if checkHubExitPolicyWith != nil &&
+			endpointListMatch(pin.Hub.GetInfo().EntryPolicy(), checkHubExitPolicyWith) == endpoints.Denied {
+			// Hub does not allow exit to the given entity.
+			return false
 		}
 
 		return true // All checks have passed.
@@ -172,6 +178,12 @@ func (o *Options) Matcher(hubType HubType) PinMatcher {
 }
 
 func endpointListMatch(list endpoints.Endpoints, entity *intel.Entity) endpoints.EPResult {
+	// Check if endpoint list and entity are available.
+	if !list.IsSet() || entity == nil {
+		return endpoints.NoMatch
+	}
+
+	// Match and return result only.
 	result, _ := list.Match(context.TODO(), entity)
 	return result
 }
