@@ -13,10 +13,12 @@ var (
 	CfgOptionEnableSPNKey   = "spn/enable"
 	cfgOptionEnableSPNOrder = 128
 
+	// CfgOptionHomeHubPolicyKey is the configuration key for the SPN home policy.
 	CfgOptionHomeHubPolicyKey   = "spn/homePolicy"
 	cfgOptionHomeHubPolicy      config.StringArrayOption
 	cfgOptionHomeHubPolicyOrder = 145
 
+	// CfgOptionDNSExitHubPolicyKey is the configuration key for the SPN DNS exit policy.
 	CfgOptionDNSExitHubPolicyKey   = "spn/dnsExitPolicy"
 	cfgOptionDNSExitHubPolicy      config.StringArrayOption
 	cfgOptionDNSExitHubPolicyOrder = 147

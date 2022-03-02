@@ -6,14 +6,13 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/safing/portmaster/intel"
-	"github.com/safing/portmaster/profile/endpoints"
-
 	"github.com/safing/portbase/log"
 	"github.com/safing/portbase/modules"
 	"github.com/safing/portbase/notifications"
+	"github.com/safing/portmaster/intel"
 	"github.com/safing/portmaster/netenv"
 	"github.com/safing/portmaster/network/netutils"
+	"github.com/safing/portmaster/profile/endpoints"
 	"github.com/safing/spn/access"
 	"github.com/safing/spn/docks"
 	"github.com/safing/spn/hub"
@@ -23,9 +22,8 @@ import (
 
 const stopCraneAfterBeingUnsuggestedFor = 6 * time.Hour
 
-var (
-	ErrAllHomeHubsExcluded = errors.New("all home hubs are excluded")
-)
+// ErrAllHomeHubsExcluded is returned when all available home hubs were excluded.
+var ErrAllHomeHubsExcluded = errors.New("all home hubs are excluded")
 
 func homeHubManager(ctx context.Context) (err error) {
 	defer ready.UnSet()
