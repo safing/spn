@@ -91,14 +91,14 @@ func (controller *CraneControllerTerminal) Flush() {
 
 // Abandon abandons the crane controller.
 func (controller *CraneControllerTerminal) Abandon(err *terminal.Error) {
-	if controller.Abandoned.SetToIf(false, true) {
+	if controller.Abandoning.SetToIf(false, true) {
 		// Send stop msg and end all operations.
-		controller.Shutdown(err, err.IsExternal())
+		controller.StartAbandonProcedure(err, !err.IsExternal(), func() {
+			// Abandon terminal.
+			controller.Crane.AbandonTerminal(0, err)
 
-		// Abandon terminal.
-		controller.Crane.AbandonTerminal(0, err)
-
-		// Stop controlled crane.
-		controller.Crane.Stop(nil)
+			// Stop controlled crane.
+			controller.Crane.Stop(nil)
+		})
 	}
 }

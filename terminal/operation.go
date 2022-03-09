@@ -73,6 +73,12 @@ func lockOpRegistry() {
 }
 
 func (t *TerminalBase) runOperation(_ context.Context, opTerminal OpTerminal, opID uint32, initData *container.Container) {
+	// Check if the terminal is being abandoned.
+	if t.Abandoning.IsSet() {
+		t.OpEnd(newUnknownOp(opID, ""), ErrStopping.With("terminal is being abandoned"))
+		return
+	}
+
 	// Extract the requested operation name.
 	opType, err := initData.GetNextBlock()
 	if err != nil {

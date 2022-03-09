@@ -27,9 +27,10 @@ const (
 	QOTD = "Privacy is not an option, and it shouldn't be the price we accept for just getting on the Internet.\nGary Kovacs\n"
 
 	// maxUnloadSize defines the maximum size of a message to unload.
-	maxUnloadSize        = 16384
-	maxSegmentLength     = 16384
-	maxCraneStoppingTime = 6 * time.Hour
+	maxUnloadSize            = 16384
+	maxSegmentLength         = 16384
+	maxCraneStoppingDuration = 6 * time.Hour
+	maxCraneStopDuration     = 10 * time.Second
 )
 
 var (
@@ -314,36 +315,43 @@ func (crane *Crane) deleteTerminal(id uint32) (t terminal.TerminalInterface, ok 
 func (crane *Crane) AbandonTerminal(id uint32, err *terminal.Error) {
 	// Get active terminal.
 	t, ok := crane.deleteTerminal(id)
-	if !ok {
-		// Do nothing if terminal is not found.
-		return
-	}
+	if ok {
+		// If the terminal was registered, abandon it.
 
-	// Log reason the terminal is ending. Override stopping error with nil.
-	switch {
-	case err == nil:
-		log.Debugf("spn/docks: %T %s is being abandoned", t, t.FmtID())
-	case errors.Is(err, terminal.ErrStopping):
-		err = nil
-		log.Debugf("spn/docks: %T %s is being abandoned by peer", t, t.FmtID())
-	default:
-		log.Warningf("spn/docks: %T %s: %s", t, t.FmtID(), err)
-	}
+		// Log reason the terminal is ending. Override stopping error with nil.
+		switch {
+		case err == nil:
+			log.Debugf("spn/docks: %T %s is being abandoned", t, t.FmtID())
+		case err.Is(terminal.ErrStopping):
+			err = nil
+			log.Debugf("spn/docks: %T %s is being abandoned by peer", t, t.FmtID())
+		case err.Is(terminal.ErrNoActivity):
+			err = nil
+			log.Debugf("spn/docks: %T %s is being abandoned due to no activity", t, t.FmtID())
+		default:
+			log.Warningf("spn/docks: %T %s: %s", t, t.FmtID(), err)
+		}
 
-	// Call the terminal's abandon function.
-	t.Abandon(err)
+		// Call the terminal's abandon function.
+		t.Abandon(err)
+	} else {
+		// When a crane terminal is abandoned, it calls crane.AbandonTerminal when
+		// finished. This time, the terminal won't be in the registry anymore and
+		// it finished shutting down, so we can now check if the crane needs to be
+		// stopped.
 
-	// If the crane is stopping, check if we can stop.
-	// We can stop when all terminals are abandoned or after a timeout.
-	// FYI: The crane controller will always take up one slot.
-	if crane.stopping.IsSet() &&
-		(crane.terminalCount() <= 1 ||
-			time.Now().Add(-maxCraneStoppingTime).After(crane.NetState.MarkedStoppingAt())) {
-		// Stop the crane in worker, so the caller can do some work.
-		module.StartWorker("retire crane", func(_ context.Context) error {
-			crane.Stop(nil)
-			return nil
-		})
+		// If the crane is stopping, check if we can stop.
+		// We can stop when all terminals are abandoned or after a timeout.
+		// FYI: The crane controller will always take up one slot.
+		if crane.stopping.IsSet() &&
+			(crane.terminalCount() <= 1 ||
+				time.Now().Add(-maxCraneStoppingDuration).After(crane.NetState.MarkedStoppingAt())) {
+			// Stop the crane in worker, so the caller can do some work.
+			module.StartWorker("retire crane", func(_ context.Context) error {
+				crane.Stop(nil)
+				return nil
+			})
+		}
 	}
 }
 
@@ -786,21 +794,29 @@ func (crane *Crane) Stop(err *terminal.Error) {
 	// Unregister crane.
 	unregisterCrane(crane)
 
-	// Stop controller.
-	if crane.Controller != nil {
-		crane.Controller.Abandon(err)
+	// Stop all terminals.
+	for _, t := range crane.allTerms() {
+		t.Abandon(err) // Async!
 	}
 
-	// Wait shortly in order for the controller end message to be sent.
-	time.Sleep(loadingMaxWaitDuration * 10)
+	// Stop controller.
+	if crane.Controller != nil {
+		crane.Controller.Abandon(err) // Async!
+	}
+
+	// Wait shortly for all terminals to finish abandoning.
+	waitStep := 50 * time.Millisecond
+	for i := time.Duration(0); i < maxCraneStopDuration; i += waitStep {
+		// Check if all terminals are done.
+		if crane.terminalCount() == 0 {
+			break
+		}
+
+		time.Sleep(waitStep)
+	}
 
 	// Close connection.
 	crane.ship.Sink()
-
-	// Stop all terminals.
-	for _, t := range crane.allTerms() {
-		t.Abandon(err)
-	}
 
 	// Cancel crane context.
 	crane.cancelCtx()

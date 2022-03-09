@@ -142,9 +142,9 @@ func (t *TestTerminal) Flush() {
 	t.DuplexFlowQueue.Flush()
 }
 
-// Abandon abandons the terminal.
-func (t *TestTerminal) Abandon(err *Error) {
-	if t.Abandoned.SetToIf(false, true) {
+// Stop stops the terminal.
+func (t *TestTerminal) Stop(err *Error) {
+	if t.Abandoning.SetToIf(false, true) {
 		switch err {
 		case nil:
 			// nil means that the Terminal is being shutdown by the owner.
@@ -155,7 +155,7 @@ func (t *TestTerminal) Abandon(err *Error) {
 		}
 
 		// End all operations and stop all connected workers.
-		t.Shutdown(nil, true)
+		t.StartAbandonProcedure(err, true, nil)
 	}
 }
 
