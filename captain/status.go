@@ -79,3 +79,59 @@ func pushSPNStatusUpdate() {
 	spnStatus.UpdateMeta()
 	spnStatusPushFunc(spnStatus)
 }
+
+// AddToDebugInfo adds the SPN status to the given debug.Info.
+func AddToDebugInfo(di *debug.Info) {
+	spnStatus.Lock()
+	defer spnStatus.Unlock()
+
+	// Check if SPN module is enabled.
+	var moduleStatus string
+	spnEnabled := config.GetAsBool(CfgOptionEnableSPNKey, false)
+	if spnEnabled() {
+		moduleStatus = "enabled"
+	} else {
+		moduleStatus = "disabled"
+	}
+
+	// Collect status data.
+	lines := make([]string, 0, 20)
+	lines = append(lines, fmt.Sprintf("HomeHubID:    %v", spnStatus.HomeHubID))
+	lines = append(lines, fmt.Sprintf("HomeHubName:  %v", spnStatus.HomeHubName))
+	lines = append(lines, fmt.Sprintf("HomeHubIP:    %v", spnStatus.ConnectedIP))
+	lines = append(lines, fmt.Sprintf("Transport:    %v", spnStatus.ConnectedTransport))
+	if spnStatus.ConnectedSince != nil {
+		lines = append(lines, fmt.Sprintf("Connected:    %v ago", time.Since(*spnStatus.ConnectedSince).Round(time.Minute)))
+	}
+	lines = append(lines, "---")
+	lines = append(lines, fmt.Sprintf("Client:       %v", conf.Client()))
+	lines = append(lines, fmt.Sprintf("PublicHub:    %v", conf.PublicHub()))
+	lines = append(lines, fmt.Sprintf("HubHasIPv4:   %v", conf.HubHasIPv4()))
+	lines = append(lines, fmt.Sprintf("HubHasIPv6:   %v", conf.HubHasIPv6()))
+
+	// Collect status data of map.
+	if navigator.Main != nil {
+		lines = append(lines, "---")
+		mainMapStats := navigator.Main.Stats()
+		lines = append(lines, fmt.Sprintf("Map %s:", navigator.Main.Name))
+		lines = append(lines, fmt.Sprintf("Active Terminals: %d Hubs", mainMapStats.ActiveTerminals))
+		// Collect hub states.
+		mapStateSummary := make([]string, 0, len(mainMapStats.States))
+		for state, cnt := range mainMapStats.States {
+			if cnt > 0 {
+				mapStateSummary = append(mapStateSummary, fmt.Sprintf("State %s: %d Hubs", state, cnt))
+			}
+		}
+		sort.Strings(mapStateSummary)
+		for _, stateSum := range mapStateSummary {
+			lines = append(lines, stateSum)
+		}
+	}
+
+	// Add all data as section.
+	di.AddSection(
+		fmt.Sprintf("SPN: %s (module %s)", spnStatus.Status, moduleStatus),
+		debug.UseCodeSection|debug.AddContentLineBreaks,
+		lines...,
+	)
+}
