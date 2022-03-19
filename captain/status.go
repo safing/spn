@@ -1,11 +1,17 @@
 package captain
 
 import (
+	"fmt"
+	"sort"
 	"sync"
 	"time"
 
+	"github.com/safing/portbase/config"
 	"github.com/safing/portbase/database/record"
 	"github.com/safing/portbase/runtime"
+	"github.com/safing/portbase/utils/debug"
+	"github.com/safing/spn/conf"
+	"github.com/safing/spn/navigator"
 )
 
 // SPNStatus holds SPN status information.
@@ -15,6 +21,7 @@ type SPNStatus struct {
 
 	Status             SPNStatusName
 	HomeHubID          string
+	HomeHubName        string
 	ConnectedIP        string
 	ConnectedTransport string
 	ConnectedSince     *time.Time
@@ -45,14 +52,20 @@ func registerSPNStatusProvider() (err error) {
 	return
 }
 
-func resetSPNStatus(statusName SPNStatusName) {
+func resetSPNStatus(statusName SPNStatusName, overrideEvenIfConnected bool) {
 	// Lock for updating values.
 	spnStatus.Lock()
 	defer spnStatus.Unlock()
 
+	// Ignore when connected and not overriding
+	if !overrideEvenIfConnected && spnStatus.Status == StatusConnected {
+		return
+	}
+
 	// Reset status.
 	spnStatus.Status = statusName
 	spnStatus.HomeHubID = ""
+	spnStatus.HomeHubName = ""
 	spnStatus.ConnectedIP = ""
 	spnStatus.ConnectedTransport = ""
 	spnStatus.ConnectedSince = nil

@@ -85,7 +85,7 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Process login.
-	user, code, err := login(username, password)
+	user, code, err := Login(username, password)
 	if err != nil {
 		log.Warningf("access: failed to login: %s", err)
 		if code == 0 {
@@ -104,7 +104,7 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 
 func handleLogout(ar *api.Request) (msg string, err error) {
 	purge := ar.URL.Query().Get("purge") != ""
-	err = logout(false, purge)
+	err = Logout(false, purge)
 	switch {
 	case err != nil:
 		log.Warningf("access: failed to logout: %s", err)
@@ -128,7 +128,7 @@ func handleGetUserProfile(ar *api.Request) (r record.Record, err error) {
 
 	// Should we refresh the user profile?
 	if ar.URL.Query().Get("refresh") != "" {
-		user, _, err = getUserProfile()
+		user, _, err = UpdateUser()
 		if err != nil {
 			return nil, err
 		}

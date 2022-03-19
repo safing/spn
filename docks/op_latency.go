@@ -92,6 +92,51 @@ func NewLatencyTestOp(t terminal.OpTerminal) (*LatencyTestClientOp, *terminal.Er
 	return op, nil
 }
 
+// Ping sends a single ping and reports it's latency.
+func Ping(ctx context.Context, t terminal.OpTerminal, timeout time.Duration) (time.Duration, *terminal.Error) {
+	// Create and init.
+	op := &LatencyTestClientOp{
+		LatencyTestOp: LatencyTestOp{
+			t: t,
+		},
+		responses: make(chan *container.Container),
+		result:    make(chan *terminal.Error, 1),
+	}
+	op.LatencyTestOp.OpBase.Init()
+
+	// Make ping request.
+	pingRequest, err := op.createPingRequest()
+	if err != nil {
+		return 0, terminal.ErrInternalError.With("%w", err)
+	}
+
+	// Send ping.
+	tErr := t.OpInit(op, pingRequest)
+	if tErr != nil {
+		return 0, tErr
+	}
+	defer t.OpEnd(op, nil)
+
+	// Wait for response.
+	select {
+	case <-ctx.Done():
+		return 0, terminal.ErrCanceled
+	case <-time.After(timeout):
+		return 0, terminal.ErrTimeout
+	case data := <-op.responses:
+		// Check if the op ended.
+		if data == nil {
+			return 0, terminal.ErrStopping
+		}
+		// Handle response
+		tErr := op.handleResponse(data)
+		if tErr.IsError() {
+			return 0, tErr
+		}
+		return time.Since(op.lastPingSentAt), nil
+	}
+}
+
 func (op *LatencyTestClientOp) handler(ctx context.Context) error {
 	returnErr := terminal.ErrStopping
 	defer func() {

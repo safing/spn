@@ -53,6 +53,7 @@ type User struct {
 // MayUseSPN return whether the user may currently use the SPN.
 func (u *User) MayUseSPN() bool {
 	return u.State == UserStateApproved &&
+		u.Subscription != nil &&
 		time.Now().Before(u.Subscription.EndsAt)
 }
 

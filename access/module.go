@@ -97,12 +97,12 @@ func UpdateAccount(_ context.Context, task *modules.Task) error {
 		}
 	}()
 
-	_, _, err := getUserProfile()
+	_, _, err := UpdateUser()
 	if err != nil {
 		return fmt.Errorf("failed to update user profile: %w", err)
 	}
 
-	err = getTokens()
+	err = UpdateTokens()
 	if err != nil {
 		return fmt.Errorf("failed to get tokens: %w", err)
 	}
