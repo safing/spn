@@ -41,6 +41,7 @@ By default, the Portmaster tries to choose the nearest node as your Home Node in
 
 Reconnect to the SPN in order to apply new rules.`,
 		Help:           profile.SPNRulesHelp,
+		Sensitive:      true,
 		OptType:        config.OptTypeStringArray,
 		ExpertiseLevel: config.ExpertiseLevelExpert,
 		DefaultValue:   []string{},
@@ -70,6 +71,7 @@ By default, the Portmaster will exit DNS requests directly at your Home Node in 
 
 This setting mainly exists for when you need to simulate your presence in another location on a lower level too. This might be necessary to defeat more intelligent geo-blocking systems.`,
 		Help:            profile.SPNRulesHelp,
+		Sensitive:       true,
 		OptType:         config.OptTypeStringArray,
 		RequiresRestart: true,
 		ExpertiseLevel:  config.ExpertiseLevelExpert,
@@ -94,6 +96,7 @@ This setting mainly exists for when you need to simulate your presence in anothe
 		Name:         "Special Access Code",
 		Key:          cfgOptionSpecialAccessCodeKey,
 		Description:  "Special Access Codes grant access to the SPN for testing or evaluation purposes.",
+		Sensitive:    true,
 		OptType:      config.OptTypeString,
 		DefaultValue: cfgOptionSpecialAccessCodeDefault,
 		Annotations: config.Annotations{
