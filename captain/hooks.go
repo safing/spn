@@ -13,18 +13,15 @@ func initDockHooks() {
 }
 
 func handleCraneUpdate(crane *docks.Crane) {
-	// Do nothing if the connection is not public.
-	if !crane.Public() {
-		return
+	if conf.Client() && crane.Controller.Abandoning.IsSet() {
+		// Check connection to home hub.
+		triggerClientHealthCheck()
 	}
 
-	// Do nothing if we're not a public hub.
-	if !conf.PublicHub() {
-		return
+	if conf.PublicHub() && crane.Public() {
+		// Update Hub status.
+		updateConnectionStatus()
 	}
-
-	// Update Hub status.
-	updateConnectionStatus()
 }
 
 func updateConnectionStatus() {

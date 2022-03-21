@@ -95,12 +95,12 @@ func start() error {
 			return err
 		}
 
-		// Subscribe to updates of connections.
-		initDockHooks()
-
 		// Enable connect operation.
 		crew.EnableConnecting(publicIdentity.Hub)
 	}
+
+	// Subscribe to updates of connections.
+	initDockHooks()
 
 	// bootstrapping
 	if err := processBootstrapHubFlag(); err != nil {

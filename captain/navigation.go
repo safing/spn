@@ -23,11 +23,6 @@ const stopCraneAfterBeingUnsuggestedFor = 6 * time.Hour
 // ErrAllHomeHubsExcluded is returned when all available home hubs were excluded.
 var ErrAllHomeHubsExcluded = errors.New("all home hubs are excluded")
 
-var (
-	homeHubManagerNetworkChangedFlag = netenv.GetNetworkChangedFlag()
-	homeHubHealthCheckTickDuration   = 1 * time.Minute
-)
-
 func establishHomeHub(ctx context.Context) error {
 	// Get own IP.
 	locations, ok := netenv.GetInternetLocation()

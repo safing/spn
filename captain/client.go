@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/safing/spn/docks"
-
 	"github.com/tevino/abool"
 
 	"github.com/safing/portbase/database"
@@ -16,6 +14,8 @@ import (
 	"github.com/safing/portmaster/netenv"
 	"github.com/safing/portmaster/network/netutils"
 	"github.com/safing/spn/access"
+	"github.com/safing/spn/crew"
+	"github.com/safing/spn/docks"
 	"github.com/safing/spn/navigator"
 )
 
@@ -51,8 +51,10 @@ func ClientReady() bool {
 	return ready.IsSet()
 }
 
-type clientComponentFunc func(ctx context.Context) clientComponentResult
-type clientComponentResult uint8
+type (
+	clientComponentFunc   func(ctx context.Context) clientComponentResult
+	clientComponentResult uint8
+)
 
 const (
 	clientResultOk        clientComponentResult = iota // Continue and clean module status.
@@ -69,19 +71,15 @@ var (
 	clientHealthCheckTickDuration      = 1 * time.Minute
 	clientHealthCheckTimeout           = 5 * time.Second
 
-	clientStarters = []clientComponentFunc{
-		clientCheckNetworkReady,
-		clientCheckAccountAndTokens,
-		clientConnectToHomeHub,
-		clientSetActiveConnectionStatus,
-	}
-
-	clientMaintainers = []clientComponentFunc{
-		clientCheckHomeHubConnection,
-		clientCheckAccountAndTokens,
-		clientSetActiveConnectionStatus,
-	}
+	clientHealthCheckTrigger = make(chan struct{}, 1)
 )
+
+func triggerClientHealthCheck() {
+	select {
+	case clientHealthCheckTrigger <- struct{}{}:
+	default:
+	}
+}
 
 func clientManager(ctx context.Context) error {
 	defer func() {
@@ -90,6 +88,7 @@ func clientManager(ctx context.Context) error {
 		netenv.ConnectedToSPN.UnSet()
 		resetSPNStatus(StatusDisabled, true)
 		module.Resolve("")
+		clientStopHomeHub(ctx)
 	}()
 
 	module.Hint(
@@ -107,7 +106,6 @@ func clientManager(ctx context.Context) error {
 
 reconnect:
 	for {
-		// TODO: kill existing connection
 		if ready.SetToIf(true, false) {
 			netenv.ConnectedToSPN.UnSet()
 			log.Info("spn/captain: client not ready")
@@ -115,18 +113,13 @@ reconnect:
 		resetSPNStatus(StatusConnecting, true)
 
 		// Check everything and connect to the SPN.
-		for _, clientFunc := range clientStarters {
-			switch clientFunc(ctx) {
-			case clientResultOk:
-			// Continue
-			case clientResultRetry, clientResultReconnect:
-				// Wait for a short time to not loop too quickly.
-				time.Sleep(clientRetryConnectBackoffDuration)
-				continue reconnect
-			case clientResultShutdown:
-				return nil
-			}
-
+		for _, clientFunc := range []clientComponentFunc{
+			clientStopHomeHub,
+			clientCheckNetworkReady,
+			clientCheckAccountAndTokens,
+			clientConnectToHomeHub,
+			clientSetActiveConnectionStatus,
+		} {
 			switch clientFunc(ctx) {
 			case clientResultOk:
 				// Continue
@@ -143,17 +136,21 @@ reconnect:
 		ready.Set()
 		netenv.ConnectedToSPN.Set()
 
-		for {
-			// Back off before starting initial health checks.
-			select {
-			case <-time.After(clientInitialHealthCheckDelay):
-			case <-ctx.Done():
-				return nil
-			}
+		// Back off before starting initial health checks.
+		select {
+		case <-time.After(clientInitialHealthCheckDelay):
+		case <-ctx.Done():
+			return nil
+		}
 
+		for {
 			// Check health of the current SPN connection and monitor the user status.
 		maintainers:
-			for _, clientFunc := range clientMaintainers {
+			for _, clientFunc := range []clientComponentFunc{
+				clientCheckHomeHubConnection,
+				clientCheckAccountAndTokens,
+				clientSetActiveConnectionStatus,
+			} {
 				switch clientFunc(ctx) {
 				case clientResultOk:
 					// Continue
@@ -170,7 +167,8 @@ reconnect:
 			// Wait for signal to run maintenance again.
 			select {
 			case <-time.After(clientHealthCheckTickDuration):
-			// case <-failedConnectionHints: // FIXME: TODO
+			case <-clientHealthCheckTrigger:
+			case <-crew.ConnectErrors():
 			case <-clientNetworkChangedFlag.Signal():
 				clientNetworkChangedFlag.Refresh()
 			case <-ctx.Done():
@@ -204,7 +202,8 @@ func clientCheckAccountAndTokens(ctx context.Context) clientComponentResult {
 			"spn:failed-to-get-user",
 			"SPN Internal Error",
 			`Please restart Portmaster.`,
-			spnPageButton, // FIXME: put restart button here
+			// TODO: Add restart button.
+			// TODO: Use special UI restart action in order to reload UI on restart.
 		).AttachToModule(module)
 		resetSPNStatus(StatusFailed, true)
 		log.Errorf("spn/captain: client internal error: %s", err)
@@ -280,6 +279,25 @@ func clientCheckAccountAndTokens(ctx context.Context) clientComponentResult {
 		}
 	}
 
+	return clientResultOk
+}
+
+func clientStopHomeHub(ctx context.Context) clientComponentResult {
+	// Don't use the context in this function, as it will likely be canceled
+	// already and would disrupt any context usage in here.
+
+	// Get crane connecting to home.
+	home, _ := navigator.Main.GetHome()
+	if home == nil {
+		return clientResultOk
+	}
+	crane := docks.GetAssignedCrane(home.Hub.ID)
+	if crane == nil {
+		return clientResultOk
+	}
+
+	// Stop crane and all connected terminals.
+	crane.Stop(nil)
 	return clientResultOk
 }
 

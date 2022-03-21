@@ -123,9 +123,7 @@ func AddToDebugInfo(di *debug.Info) {
 			}
 		}
 		sort.Strings(mapStateSummary)
-		for _, stateSum := range mapStateSummary {
-			lines = append(lines, stateSum)
-		}
+		lines = append(lines, mapStateSummary...)
 	}
 
 	// Add all data as section.

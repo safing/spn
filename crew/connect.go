@@ -46,6 +46,19 @@ type Tunnel struct {
 }
 
 func (t *Tunnel) handle(ctx context.Context) (err error) {
+	// Check the status of the Home Hub.
+	home, homeTerminal := navigator.Main.GetHome()
+	if home == nil || homeTerminal == nil || homeTerminal.IsBeingAbandoned() {
+		reportConnectError(terminal.ErrUnknownError.With("home terminal is abandoned"))
+
+		t.connInfo.Lock()
+		defer t.connInfo.Unlock()
+		t.connInfo.Failed("SPN not ready for tunneling", "")
+		t.connInfo.Save()
+
+		return nil
+	}
+
 	// Find possible routes.
 	routes, err := navigator.Main.FindRoutes(
 		t.connInfo.Entity.IP,
@@ -79,8 +92,8 @@ func (t *Tunnel) handle(ctx context.Context) (err error) {
 
 	if err != nil {
 		log.Warningf("spn/crew: failed to establish route for %s - tried %d routes: %s", t.connInfo, tries+1, err)
+		reportConnectError(terminal.ErrUnknownError.With("failed to establish routes"))
 
-		// TODO: Clean this up.
 		t.connInfo.Lock()
 		defer t.connInfo.Unlock()
 		t.connInfo.Failed(fmt.Sprintf("failed to establish route - tried %d routes: %s", tries+1, err), "")
@@ -100,6 +113,7 @@ func (t *Tunnel) handle(ctx context.Context) (err error) {
 	_, tErr := NewConnectOp(dstTerminal, request, t.conn)
 	if tErr != nil {
 		tErr = tErr.Wrap("failed to initialize tunnel")
+		reportConnectError(tErr)
 
 		t.connInfo.Lock()
 		defer t.connInfo.Unlock()
