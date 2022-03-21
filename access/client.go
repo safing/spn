@@ -251,7 +251,7 @@ func Login(username, password string) (user *UserRecord, code int, err error) {
 	return user, resp.StatusCode, nil
 }
 
-// Logouts logs the user out of the SPN account.
+// Logout logs the user out of the SPN account.
 // Specify "shallow" to keep user data in order to display data in the
 // UI - preferably when logged out be the server.
 // Specify "purge" in order to fully delete all user account data, even
@@ -334,7 +334,7 @@ func Logout(shallow, purge bool) error {
 }
 
 // UpdateUser fetches the current user information from the server.
-func UpdateUser() (user *UserRecord, statusCode int, err error) { //nolint:unparam // Names are documentation.
+func UpdateUser() (user *UserRecord, statusCode int, err error) {
 	clientRequestLock.Lock()
 	defer clientRequestLock.Unlock()
 

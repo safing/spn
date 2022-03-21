@@ -334,7 +334,7 @@ func (crane *Crane) AbandonTerminal(id uint32, err *terminal.Error) {
 
 		// Call the terminal's abandon function.
 		t.Abandon(err)
-	} else {
+	} else { //nolint:gocritic
 		// When a crane terminal is abandoned, it calls crane.AbandonTerminal when
 		// finished. This time, the terminal won't be in the registry anymore and
 		// it finished shutting down, so we can now check if the crane needs to be

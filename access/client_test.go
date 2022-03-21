@@ -25,7 +25,7 @@ func TestClient(t *testing.T) {
 	clearUserCaches()
 	loginAndRefresh(t, false, 1)
 
-	err := logout(false, false)
+	err := Logout(false, false)
 	if err != nil {
 		t.Fatalf("failed to log out: %s", err)
 	}
@@ -33,7 +33,7 @@ func TestClient(t *testing.T) {
 
 	loginAndRefresh(t, true, 1)
 
-	err = logout(false, true)
+	err = Logout(false, true)
 	if err != nil {
 		t.Fatalf("failed to log out: %s", err)
 	}
@@ -46,7 +46,7 @@ func loginAndRefresh(t *testing.T, doLogin bool, refreshTimes int) {
 	t.Helper()
 
 	if doLogin {
-		_, _, err := login(testUsername, testPassword)
+		_, _, err := Login(testUsername, testPassword)
 		if err != nil {
 			t.Fatalf("login failed: %s", err)
 		}
@@ -64,7 +64,7 @@ func loginAndRefresh(t *testing.T, doLogin bool, refreshTimes int) {
 	}
 
 	for i := 0; i < refreshTimes; i++ {
-		user, _, err := getUserProfile()
+		user, _, err := UpdateUser()
 		if err != nil {
 			t.Fatalf("getting profile failed: %s", err)
 		}
