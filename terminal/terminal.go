@@ -92,10 +92,12 @@ type TerminalBase struct { //nolint:golint,maligned // Being explicit is helpful
 	// has started.
 	opts *TerminalOpts
 
-	// Abandoned indicates if the Terminal has been abandoned. Whoever abandoned
-	// the terminal already took care of notifying everyone, so a silent fail is
-	// normally the best response.
-	Abandoned *abool.AtomicBool
+	// Abandoning indicates if the Terminal is being abandoned. The main handlers
+	// will keep running until the context has been canceled by the abandon
+	// procedure.
+	// No new operations should be started.
+	// Whoever initiates the abandoning must also start the abandon procedure.
+	Abandoning *abool.AtomicBool
 }
 
 func createTerminalBase(
@@ -117,7 +119,7 @@ func createTerminalBase(
 		operations:      make(map[uint32]Operation),
 		nextOpID:        new(uint32),
 		opts:            initMsg,
-		Abandoned:       abool.New(),
+		Abandoning:      abool.New(),
 	}
 	t.idleTicker.Stop() // Stop ticking to disable timeout.
 	if remote {
@@ -175,31 +177,24 @@ func (t *TerminalBase) Handler(_ context.Context) error {
 	for {
 		select {
 		case <-t.ctx.Done():
+			// Call Abandon just in case.
+			// Normally, the only the StopProcedure function should cancel the context.
 			t.ext.Abandon(nil)
 			return nil // Controlled worker exit.
 
 		case <-t.idleTicker.C:
 			// If nothing happens for a while, end the session.
 			if atomic.AddUint32(t.idleCounter, 1) > timeoutTicks {
+				// Abandon the terminal and reset the counter.
 				t.ext.Abandon(ErrTimeout.With("no activity"))
-				return nil // Controlled worker exit.
+				atomic.StoreUint32(t.idleCounter, 0)
 			}
 
 		case c := <-t.ext.Receive():
 			if c.HoldsData() {
 				err := t.handleReceive(c)
-				if err != nil {
-					if !errors.Is(err, ErrStopping) {
-						t.ext.Abandon(err.Wrap("failed to handle"))
-					}
-					return nil // Controlled worker exit.
-				}
-				switch err {
-				case nil:
-					// Continue.
-				case ErrStopping:
-				default:
-					return nil // Controlled worker exit.
+				if err != nil && !errors.Is(err, ErrStopping) {
+					t.ext.Abandon(err.Wrap("failed to handle"))
 				}
 			}
 
@@ -218,12 +213,15 @@ func (t *TerminalBase) Sender(_ context.Context) error {
 	if t.opts.Encrypt {
 		select {
 		case <-t.ctx.Done():
+			// Call Abandon just in case.
+			// Normally, the only the StopProcedure function should cancel the context.
 			t.ext.Abandon(nil)
 			return nil // Controlled worker exit.
 		case <-t.encryptionReady:
 		}
 	}
 
+	// Be sure to call Stop even in case of sudden death.
 	defer t.ext.Abandon(ErrInternalError.With("sender died"))
 
 	msgBuffer := container.New()
@@ -258,17 +256,21 @@ func (t *TerminalBase) Sender(_ context.Context) error {
 		return nil
 	}
 
+handling:
 	for {
 		select {
 		case <-t.ctx.Done():
+			// Call Stop just in case.
+			// Normally, the only the StopProcedure function should cancel the context.
 			t.ext.Abandon(nil)
 			return nil // Controlled worker exit.
 
 		case <-t.idleTicker.C:
 			// If nothing happens for a while, end the session.
 			if atomic.AddUint32(t.idleCounter, 1) > timeoutTicks {
+				// Abandon the terminal and reset the counter.
 				t.ext.Abandon(ErrTimeout.With("no activity"))
-				return nil // Controlled worker exit.
+				atomic.StoreUint32(t.idleCounter, 0)
 			}
 
 		case c := <-recvOpMsgs():
@@ -330,7 +332,7 @@ func (t *TerminalBase) Sender(_ context.Context) error {
 				err := t.sendOpMsgs(msgBuffer)
 				if err != nil {
 					t.ext.Abandon(err.With("failed to send"))
-					return nil // Controlled worker exit.
+					continue handling
 				}
 			}
 
@@ -606,11 +608,18 @@ func (t *TerminalBase) addToOpMsgSendBuffer(
 	}
 }
 
-// Shutdown sends a stop message with the given error (if it is external) and
-// ends all operations with a nil error and finally cancels the terminal
-// context. This function is usually not called directly, but at the end of an
-// Abandon() implementation.
-func (t *TerminalBase) Shutdown(err *Error, sendError bool) {
+// StartAbandonProcedure sends a stop message with the given error if wanted, ends
+// all operations with a nil error, executes the given finalizeFunc and finally
+// cancels the terminal context. This function is usually not called directly,
+// but at the end of an Abandon() implementation.
+func (t *TerminalBase) StartAbandonProcedure(err *Error, sendError bool, finalizeFunc func()) {
+	module.StartWorker("terminal abandon procedure", func(_ context.Context) error {
+		t.handleAbandonProcedure(err, sendError, finalizeFunc)
+		return nil
+	})
+}
+
+func (t *TerminalBase) handleAbandonProcedure(err *Error, sendError bool, finalizeFunc func()) {
 	// End all operations.
 	for _, op := range t.allOps() {
 		t.OpEnd(op, nil)
@@ -638,6 +647,14 @@ func (t *TerminalBase) Shutdown(err *Error, sendError bool) {
 			log.Warningf("spn/terminal: terminal %s failed to send stop msg: %s", t.ext.FmtID(), tErr)
 		}
 	}
+
+	// Call specialized finalizing function.
+	if finalizeFunc != nil {
+		finalizeFunc()
+	}
+
+	// Flush all messages before stopping.
+	t.ext.Flush()
 
 	// Stop all other connected workers.
 	t.cancelCtx()

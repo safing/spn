@@ -49,7 +49,7 @@ type clientRequestOptions struct {
 func (cro *clientRequestOptions) logoutOnAuthErrorIfDesired() {
 	if cro.logoutOnAuthError {
 		module.StartWorker("logout user", func(_ context.Context) error {
-			return logout(true, false)
+			return Logout(true, false)
 		})
 	}
 }
@@ -176,7 +176,8 @@ func makeClientRequest(opts *clientRequestOptions) (resp *http.Response, err err
 	return resp, nil
 }
 
-func login(username, password string) (user *UserRecord, code int, err error) {
+// Login logs the user into the SPN account with the given username and password.
+func Login(username, password string) (user *UserRecord, code int, err error) {
 	clientRequestLock.Lock()
 	defer clientRequestLock.Unlock()
 
@@ -184,7 +185,7 @@ func login(username, password string) (user *UserRecord, code int, err error) {
 	previousUser, err := GetUser()
 	if err != nil {
 		if !errors.Is(err, database.ErrNotFound) {
-			log.Warningf("access: failed to get previous for re-login: %s", err)
+			log.Warningf("spn/access: failed to get previous for re-login: %s", err)
 		}
 		previousUser = nil
 	}
@@ -215,7 +216,7 @@ func login(username, password string) (user *UserRecord, code int, err error) {
 		if resp != nil && resp.StatusCode == account.StatusInvalidDevice {
 			// Try again without the previous device ID.
 			previousUser = nil
-			log.Info("access: retrying log in without re-using previous device ID")
+			log.Info("spn/access: retrying log in without re-using previous device ID")
 			resp, err = makeClientRequest(requestOptions) //nolint:bodyclose // Body is closed in function.
 		}
 		if err != nil {
@@ -246,11 +247,16 @@ func login(username, password string) (user *UserRecord, code int, err error) {
 	// Enable the SPN right after login.
 	enableSPN()
 
-	log.Infof("access: logged in as %q on device %q", user.Username, user.Device.Name)
+	log.Infof("spn/access: logged in as %q on device %q", user.Username, user.Device.Name)
 	return user, resp.StatusCode, nil
 }
 
-func logout(shallow, purge bool) error {
+// Logout logs the user out of the SPN account.
+// Specify "shallow" to keep user data in order to display data in the
+// UI - preferably when logged out be the server.
+// Specify "purge" in order to fully delete all user account data, even
+// the device ID so that logging in again will create a new device.
+func Logout(shallow, purge bool) error {
 	clientRequestLock.Lock()
 	defer clientRequestLock.Unlock()
 
@@ -294,7 +300,7 @@ func logout(shallow, purge bool) error {
 		defer user.Unlock()
 
 		if shallow {
-			// Shallow logout: User stays logged in in the UI to display status when
+			// Shallow logout: User stays logged in the UI to display status when
 			// logged out from the Portmaster or Customer Hub.
 			user.User.State = account.UserStateLoggedOut
 		} else {
@@ -327,7 +333,8 @@ func logout(shallow, purge bool) error {
 	return nil
 }
 
-func getUserProfile() (user *UserRecord, statusCode int, err error) { //nolint:unparam // Names are documentation.
+// UpdateUser fetches the current user information from the server.
+func UpdateUser() (user *UserRecord, statusCode int, err error) {
 	clientRequestLock.Lock()
 	defer clientRequestLock.Unlock()
 
@@ -365,7 +372,7 @@ func getUserProfile() (user *UserRecord, statusCode int, err error) { //nolint:u
 			log.Warningf("access: failed to save updated user profile: %s", err)
 		}
 
-		log.Infof("access: got user profile, updated existing")
+		log.Infof("spn/access: got user profile, updated existing")
 		return previousUser, resp.StatusCode, nil
 	}
 
@@ -380,11 +387,12 @@ func getUserProfile() (user *UserRecord, statusCode int, err error) { //nolint:u
 		log.Warningf("access: failed to save new user profile: %s", err)
 	}
 
-	log.Infof("access: got user profile, saved as new")
+	log.Infof("spn/access: got user profile, saved as new")
 	return newUser, resp.StatusCode, nil
 }
 
-func getTokens() error {
+// UpdateTokens fetches more tokens for handlers that need it.
+func UpdateTokens() error {
 	clientRequestLock.Lock()
 	defer clientRequestLock.Unlock()
 
@@ -450,7 +458,7 @@ func getTokens() error {
 	// Log new status.
 	regular, fallback := GetTokenAmount(ExpandAndConnectZones)
 	log.Infof(
-		"access: got new tokens, now at %d regular and %d fallback tokens for expand and connect",
+		"spn/access: got new tokens, now at %d regular and %d fallback tokens for expand and connect",
 		regular,
 		fallback,
 	)

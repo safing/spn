@@ -8,10 +8,8 @@ import (
 
 	"github.com/safing/portbase/log"
 	"github.com/safing/portbase/modules"
-	"github.com/safing/portbase/notifications"
 	"github.com/safing/portmaster/intel"
 	"github.com/safing/portmaster/netenv"
-	"github.com/safing/portmaster/network/netutils"
 	"github.com/safing/portmaster/profile/endpoints"
 	"github.com/safing/spn/access"
 	"github.com/safing/spn/docks"
@@ -24,115 +22,6 @@ const stopCraneAfterBeingUnsuggestedFor = 6 * time.Hour
 
 // ErrAllHomeHubsExcluded is returned when all available home hubs were excluded.
 var ErrAllHomeHubsExcluded = errors.New("all home hubs are excluded")
-
-func homeHubManager(ctx context.Context) (err error) {
-	defer ready.UnSet()
-	defer netenv.ConnectedToSPN.UnSet()
-
-managing:
-	for {
-		// Check if we are online enough for connecting.
-		switch netenv.GetOnlineStatus() { //nolint:exhaustive
-		case netenv.StatusOffline,
-			netenv.StatusLimited:
-			select {
-			case <-ctx.Done():
-				return nil
-			case <-time.After(1 * time.Second):
-				continue managing
-			}
-		}
-
-		home, homeTerminal := navigator.Main.GetHome()
-		if home == nil || homeTerminal == nil || homeTerminal.IsAbandoned() {
-			if ready.SetToIf(true, false) {
-				netenv.ConnectedToSPN.UnSet()
-				log.Info("spn/captain: client not ready")
-			}
-
-			resetSPNStatus(StatusConnecting)
-			err = establishHomeHub(ctx)
-			if err != nil {
-				log.Warningf("failed to establish connection to home hub: %s", err)
-				switch {
-				case errors.Is(err, ErrAllHomeHubsExcluded):
-					notifications.NotifyError(
-						"spn:all-home-hubs-excluded",
-						"All Home Nodes Excluded",
-						"Your current Home Node Rules exclude all available SPN Nodes. Please change your rules to allow for at least one available Home Node.",
-						notifications.Action{
-							Text: "Configure",
-							Type: notifications.ActionTypeOpenSetting,
-							Payload: &notifications.ActionTypeOpenSettingPayload{
-								Key: CfgOptionHomeHubPolicyKey,
-							},
-						},
-					).AttachToModule(module)
-				default:
-					notifications.NotifyWarn(
-						"spn:home-hub-failure",
-						"SPN Failed to Connect",
-						fmt.Sprintf("Failed to connect to a home hub: %s. The Portmaster will retry to connect automatically.", err),
-						spnSettingsButton,
-					).AttachToModule(module)
-				}
-				resetSPNStatus(StatusFailed)
-				select {
-				case <-ctx.Done():
-					return nil
-				case <-time.After(5 * time.Second):
-				}
-				continue managing
-			}
-
-			// success!
-			home, homeTerminal := navigator.Main.GetHome()
-			notifications.NotifyInfo(
-				"spn:connected-to-home-hub",
-				"Connected to SPN",
-				fmt.Sprintf("You are connected to the SPN at %s. This notification is persistent for awareness.", homeTerminal.RemoteAddr()),
-				spnSettingsButton,
-			).AttachToModule(module)
-			ready.Set()
-			netenv.ConnectedToSPN.Set()
-
-			// Update SPN Status with connection information.
-			func() {
-				// Lock for updating values.
-				spnStatus.Lock()
-				defer spnStatus.Unlock()
-
-				// Fill connection status data.
-				spnStatus.Status = StatusConnected
-				spnStatus.HomeHubID = home.Hub.ID
-
-				connectedIP, err := netutils.IPFromAddr(homeTerminal.RemoteAddr())
-				if err != nil {
-					spnStatus.ConnectedIP = homeTerminal.RemoteAddr().String()
-				} else {
-					spnStatus.ConnectedIP = connectedIP.String()
-				}
-				spnStatus.ConnectedTransport = homeTerminal.Transport().String()
-
-				now := time.Now()
-				spnStatus.ConnectedSince = &now
-
-				// Push new status.
-				pushSPNStatusUpdate()
-			}()
-
-			log.Infof("spn/captain: established new home %s", home.Hub)
-			log.Info("spn/captain: client is ready")
-		}
-
-		// Check again after a short break.
-		select {
-		case <-ctx.Done():
-			return nil
-		case <-time.After(1 * time.Second):
-		}
-	}
-}
 
 func establishHomeHub(ctx context.Context) error {
 	// Get own IP.
@@ -279,6 +168,9 @@ func connectToHomeHub(ctx context.Context, dst *hub.Hub) error {
 	if !ok {
 		return fmt.Errorf("failed to set home hub on map")
 	}
+
+	// Assign crane to home hub in order to query it later.
+	docks.AssignCrane(crane.ConnectedHub.ID, crane)
 
 	success = true
 	return nil

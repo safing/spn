@@ -146,7 +146,7 @@ func shouldRequestTokensHandler(_ token.Handler) {
 	accountUpdateTask.StartASAP()
 }
 
-// GetTokenAmount returns the amount of tokens for the given zone.
+// GetTokenAmount returns the amount of tokens for the given zones.
 func GetTokenAmount(zones []string) (regular, fallback int) {
 handlerLoop:
 	for _, zone := range zones {
@@ -165,6 +165,27 @@ handlerLoop:
 	}
 
 	return
+}
+
+// ShouldRequest returns whether tokens should be requested for the given zones.
+func ShouldRequest(zones []string) (shouldRequest bool) {
+handlerLoop:
+	for _, zone := range zones {
+		// Get handler and check if it should be used.
+		handler, ok := token.GetHandler(zone)
+		if !ok {
+			log.Warningf("access: use of non-registered zone %q", zone)
+			continue handlerLoop
+		}
+
+		// Go through all handlers every time as this will be the case anyway most
+		// of the time and will help us better catch zone misconfiguration.
+		if handler.ShouldRequest() {
+			shouldRequest = true
+		}
+	}
+
+	return shouldRequest
 }
 
 // GetToken returns a token of one of the given zones.

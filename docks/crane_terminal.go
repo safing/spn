@@ -130,18 +130,18 @@ func (t *CraneTerminal) Transport() *hub.Transport {
 	return t.crane.Transport()
 }
 
-// IsAbandoned returns whether the crane has been abandoned.
-func (t *CraneTerminal) IsAbandoned() bool {
-	return t.Abandoned.IsSet()
+// IsBeingAbandoned returns whether the terminal is being abandoned.
+func (t *CraneTerminal) IsBeingAbandoned() bool {
+	return t.Abandoning.IsSet()
 }
 
 // Abandon abandons the crane terminal.
 func (t *CraneTerminal) Abandon(err *terminal.Error) {
-	if t.Abandoned.SetToIf(false, true) {
+	if t.Abandoning.SetToIf(false, true) {
 		// Send stop msg and end all operations.
-		t.Shutdown(err, err.IsExternal())
-
-		// Abandon terminal.
-		t.crane.AbandonTerminal(t.ID(), err)
+		t.StartAbandonProcedure(err, err.IsExternal(), func() {
+			// Abandon terminal.
+			t.crane.AbandonTerminal(t.ID(), err)
+		})
 	}
 }

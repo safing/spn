@@ -309,6 +309,10 @@ func (op *ConnectOp) connectedType() string {
 
 // End ends the operation.
 func (op *ConnectOp) End(err *terminal.Error) {
+	if err.IsError() {
+		reportConnectError(err)
+	}
+
 	// Send all data before closing.
 	op.DuplexFlowQueue.Flush()
 

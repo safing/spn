@@ -8,9 +8,10 @@ import (
 
 // MapStats holds generic map statistics.
 type MapStats struct {
-	Name   string
-	States map[PinState]int
-	Lanes  map[int]int
+	Name            string
+	States          map[PinState]int
+	Lanes           map[int]int
+	ActiveTerminals int
 }
 
 // Stats collects and returns statistics from the map.
@@ -30,6 +31,11 @@ func (m *Map) Stats() *MapStats {
 
 	// Iterate over all Pins to collect data.
 	for _, pin := range m.all {
+		// Count active terminals.
+		if pin.HasActiveTerminal() {
+			stats.ActiveTerminals++
+		}
+
 		// Check all states.
 		for _, state := range allStates {
 			if pin.State.has(state) {
@@ -56,7 +62,7 @@ func (ms *MapStats) String() string {
 	fmt.Fprintf(&builder, "Stats for Map %s:\n", ms.Name)
 
 	// Write State Stats
-	stateSummary := make([]string, 0, len(ms.Lanes))
+	stateSummary := make([]string, 0, len(ms.States))
 	for state, cnt := range ms.States {
 		stateSummary = append(stateSummary, fmt.Sprintf("State %s: %d Hubs", state, cnt))
 	}

@@ -193,6 +193,7 @@ var (
 
 	ErrStopping    = registerError(2, errors.New("stopping"))
 	ErrExplicitAck = registerError(3, errors.New("explicit ack"))
+	ErrNoActivity  = registerError(4, errors.New("no activity"))
 
 	// Errors IDs 8 and up are for regular errors.
 

@@ -29,7 +29,6 @@ type UserRecord struct {
 
 	*account.User
 
-	MayUseSPN  bool
 	LoggedInAt *time.Time
 }
 
@@ -138,14 +137,6 @@ func GetUser() (*UserRecord, error) {
 
 // Save saves the User.
 func (user *UserRecord) Save() error {
-	// Update automatic fields.
-	func() {
-		user.Lock()
-		defer user.Unlock()
-
-		user.MayUseSPN = user.User.MayUseSPN()
-	}()
-
 	// Update cache.
 	accountCacheLock.Lock()
 	defer accountCacheLock.Unlock()

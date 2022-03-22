@@ -27,6 +27,11 @@ func EstablishCrane(ctx context.Context, dst *hub.Hub) (*docks.Crane, error) {
 		return nil, fmt.Errorf("failed to launch ship: %w", err)
 	}
 
+	// On pure clients, mark all ships as public in order to show unmasked data in logs.
+	if conf.Client() && !conf.PublicHub() {
+		ship.MarkPublic()
+	}
+
 	crane, err := docks.NewCrane(context.Background(), ship, dst, publicIdentity)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create crane: %w", err)

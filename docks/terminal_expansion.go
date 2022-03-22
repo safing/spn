@@ -118,7 +118,7 @@ func (t *ExpansionTerminal) Abandon(err *terminal.Error) {
 }
 
 func (t *ExpansionTerminal) stop(err *terminal.Error) {
-	if t.Abandoned.SetToIf(false, true) {
+	if t.Abandoning.SetToIf(false, true) {
 		switch {
 		case err == nil:
 			log.Debugf("spn/docks: expansion terminal %s is being abandoned", t.FmtID())
@@ -129,21 +129,21 @@ func (t *ExpansionTerminal) stop(err *terminal.Error) {
 		}
 
 		// End all operations.
-		t.Shutdown(nil, false)
+		t.StartAbandonProcedure(nil, false, func() {
+			// Send stop message.
+			t.relayOp.OpEnd(t, nil)
 
-		// Send stop message.
-		t.relayOp.OpEnd(t, nil)
-
-		// Trigger update of connected Pin.
-		if t.changeNotifyFuncReady.IsSet() {
-			t.changeNotifyFunc()
-		}
+			// Trigger update of connected Pin.
+			if t.changeNotifyFuncReady.IsSet() {
+				t.changeNotifyFunc()
+			}
+		})
 	}
 }
 
-// IsAbandoned returns whether the terminal has been abandoned.
-func (t *ExpansionTerminal) IsAbandoned() bool {
-	return t.Abandoned.IsSet()
+// IsBeingAbandoned returns whether the terminal is being abandoned.
+func (t *ExpansionTerminal) IsBeingAbandoned() bool {
+	return t.Abandoning.IsSet()
 }
 
 // SetChangeNotifyFunc sets a callback function that is called when the terminal state changes.
