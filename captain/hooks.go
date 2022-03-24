@@ -8,8 +8,12 @@ import (
 	"github.com/safing/spn/docks"
 )
 
-func initDockHooks() {
+func startDockHooks() {
 	docks.RegisterCraneUpdateHook(handleCraneUpdate)
+}
+
+func stopDockHooks() {
+	docks.ResetCraneUpdateHook()
 }
 
 func handleCraneUpdate(crane *docks.Crane) {
