@@ -135,6 +135,7 @@ func connectToHomeHub(ctx context.Context, dst *hub.Hub) error {
 	select {
 	case <-gossipQuery.ctx.Done():
 	case <-ctx.Done():
+		return context.Canceled
 	}
 
 	// Create communication terminal.

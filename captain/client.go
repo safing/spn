@@ -102,10 +102,22 @@ func clientManager(ctx context.Context) error {
 	// redirected to a closed port.
 	// We also can't add the nameserver as a module dependency, as the nameserver
 	// is not part of the server.
-	time.Sleep(1 * time.Second)
+	select {
+	case <-time.After(1 * time.Second):
+	case <-ctx.Done():
+		return nil
+	}
 
 reconnect:
 	for {
+		// Check if we are shutting down.
+		select {
+		case <-ctx.Done():
+			return nil
+		default:
+		}
+
+		// Reset SPN status.
 		if ready.SetToIf(true, false) {
 			netenv.ConnectedToSPN.UnSet()
 			log.Info("spn/captain: client not ready")
@@ -125,8 +137,12 @@ reconnect:
 				// Continue
 			case clientResultRetry, clientResultReconnect:
 				// Wait for a short time to not loop too quickly.
-				time.Sleep(clientRetryConnectBackoffDuration)
-				continue reconnect
+				select {
+				case <-time.After(clientRetryConnectBackoffDuration):
+					continue reconnect
+				case <-ctx.Done():
+					return nil
+				}
 			case clientResultShutdown:
 				return nil
 			}
