@@ -1,30 +1,42 @@
 package docks
 
 import (
-	"github.com/tevino/abool"
+	"sync"
 
 	"github.com/safing/portbase/log"
 )
 
 var (
-	craneUpdateHook        func(crane *Crane)
-	craneUpdateHookEnabled = abool.New()
-	craneUpdateHookActive  = abool.New()
+	craneUpdateHook     func(crane *Crane)
+	craneUpdateHookLock sync.Mutex
 )
 
 // RegisterCraneUpdateHook allows the captain to hook into receiving updates for cranes.
 func RegisterCraneUpdateHook(fn func(crane *Crane)) {
-	if craneUpdateHookEnabled.SetToIf(false, true) {
+	craneUpdateHookLock.Lock()
+	defer craneUpdateHookLock.Unlock()
+
+	if craneUpdateHook == nil {
 		craneUpdateHook = fn
-		craneUpdateHookActive.Set()
 	} else {
 		log.Error("spn/docks: crane update hook already registered")
 	}
 }
 
+// ResetCraneUpdateHook resets the hook for receiving updates for cranes.
+func ResetCraneUpdateHook() {
+	craneUpdateHookLock.Lock()
+	defer craneUpdateHookLock.Unlock()
+
+	craneUpdateHook = nil
+}
+
 // NotifyUpdate calls the registers crane update hook function.
 func (crane *Crane) NotifyUpdate() {
-	if craneUpdateHookActive.IsSet() {
+	craneUpdateHookLock.Lock()
+	defer craneUpdateHookLock.Unlock()
+
+	if craneUpdateHook != nil {
 		craneUpdateHook(crane)
 	}
 }

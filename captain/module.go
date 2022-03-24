@@ -99,8 +99,8 @@ func start() error {
 		crew.EnableConnecting(publicIdentity.Hub)
 	}
 
-	// Subscribe to updates of connections.
-	initDockHooks()
+	// Subscribe to updates of cranes.
+	startDockHooks()
 
 	// bootstrapping
 	if err := processBootstrapHubFlag(); err != nil {
@@ -128,6 +128,9 @@ func start() error {
 func stop() error {
 	// Reset intel resource so that it is loaded again when starting.
 	resetSPNIntel()
+
+	// Unregister crane update hook.
+	stopDockHooks()
 
 	// Send shutdown status message.
 	if conf.PublicHub() {
