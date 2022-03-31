@@ -15,6 +15,9 @@ var (
 
 	// ErrEmptyMap is returned when the Map is empty.
 	ErrEmptyMap = errors.New("map is empty")
+
+	// ErrHubNotFound is returned when the Hub was not found on the Map.
+	ErrHubNotFound = errors.New("hub not found")
 )
 
 var (
