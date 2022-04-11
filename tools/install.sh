@@ -32,6 +32,9 @@ apply_defaults() {
         INSTALLSYSTEMD=${INSTALLSYSTEMD:-no}
         ENABLENOW=${ENABLENOW:-no}
     fi
+
+    # The hostname may be freshly set, ensure the ENV variable is correct.
+    export HOSTNAME=$(hostname)
 }
 
 command_exists() {
@@ -90,24 +93,27 @@ download_file() {
     fi
 }
 
-setup_hub() {
+ensure_install_dir() {
     log "Creating ${INSTALLDIR}"
     mkdir -p ${INSTALLDIR}
-
-    download_pmstart
 }
 
 download_pmstart() {
     log "Downloading portmaster-start ..."
     local dest="${INSTALLDIR}/portmaster-start"
     if [ -f "${dest}" ]; then
-        warn "Overwritting existing portmaster-start at ${dest}"
+        warn "Overwriting existing portmaster-start at ${dest}"
     fi
 
     download_file ${PMSTART} ${dest}
 
     log "Changing permissions"
     chmod a+x ${dest}
+}
+
+download_updates() {
+    log "Downloading updates ..."
+    ${INSTALLDIR}/portmaster-start --data=${INSTALLDIR} update
 }
 
 setup_systemd() {
@@ -122,7 +128,7 @@ setup_systemd() {
     fi
 
     if [ -f "${SYSTEMDINSTALLPATH}" ]; then
-        warn "Overwritting existing unit path"
+        warn "Overwriting existing unit path"
     fi
 
     cat >${SYSTEMDINSTALLPATH} <<EOT
@@ -170,12 +176,24 @@ EOT
 
 }
 
+ask_config() {
+    if [ "${HOSTNAME}" = "" ]; then
+        log "Please enter hostname:"
+        read -p "> " HOSTNAME
+    fi
+    if [ "${METRICS_COMMENT}" = "" ]; then
+        log "Please enter metrics comment:"
+        read -p "> " METRICS_COMMENT
+    fi
+}
+
 write_config_file() {
     cat >${1} <<EOT
 {
   "core": {
     "metrics": {
       "instance": "$HOSTNAME",
+      "comment": "$METRICS_COMMENT",
       "push": "$PUSHMETRICS"
     }
   },
@@ -292,10 +310,13 @@ EOT
 
     # prepare config
     apply_defaults
+    ask_config
     confirm_config
 
     # Setup hub
-    setup_hub
+    ensure_install_dir
+    download_pmstart
+    download_updates
     write_config_file "${INSTALLDIR}/config.json"
 
     # setup systemd
