@@ -172,48 +172,53 @@ func (crane *Crane) IsStopping() bool {
 	return crane.stopping.IsSet()
 }
 
+// MarkStoppingRequested marks the crane as stopping requested.
+func (crane *Crane) MarkStoppingRequested() {
+	crane.NetState.lock.Lock()
+	defer crane.NetState.lock.Unlock()
+
+	if !crane.NetState.stoppingRequested {
+		crane.NetState.stoppingRequested = true
+		crane.startSyncStateOp()
+	}
+}
+
 // MarkStopping marks the crane as stopping.
 func (crane *Crane) MarkStopping() (stopping bool) {
-	// Can only stop owned public cranes.
-	if !crane.Public() || !crane.IsMine() {
+	// Can only stop owned cranes.
+	if !crane.IsMine() {
 		return false
-	}
-
-	// Update stopping timestamp before the flag to avoid a race condition.
-	if !crane.IsStopping() {
-		crane.NetState.UpdateMarkedStoppingAt()
 	}
 
 	if !crane.stopping.SetToIf(false, true) {
 		return false
 	}
 
-	module.StartWorker("sync crane state", func(ctx context.Context) error {
-		tErr := crane.Controller.SyncState(ctx)
-		if !tErr.IsOK() {
-			return tErr
-		}
+	crane.NetState.lock.Lock()
+	defer crane.NetState.lock.Unlock()
+	crane.NetState.markedStoppingAt = time.Now()
 
-		return nil
-	})
+	crane.startSyncStateOp()
 	return true
 }
 
 // AbortStopping aborts the stopping.
 func (crane *Crane) AbortStopping() (aborted bool) {
-	// Can only stop owned public cranes.
-	if !crane.Public() || !crane.IsMine() {
-		return false
+	aborted = crane.stopping.SetToIf(true, false)
+
+	crane.NetState.lock.Lock()
+	defer crane.NetState.lock.Unlock()
+
+	abortedStoppingRequest := crane.NetState.stoppingRequested
+	crane.NetState.stoppingRequested = false
+	crane.NetState.markedStoppingAt = time.Time{}
+
+	// Sync if any state changed.
+	if aborted || abortedStoppingRequest {
+		crane.startSyncStateOp()
 	}
 
-	if !crane.stopping.SetToIf(true, false) {
-		return false
-	}
-
-	module.StartWorker("sync crane state", func(ctx context.Context) error {
-		return crane.Controller.SyncState(ctx)
-	})
-	return true
+	return aborted
 }
 
 // Authenticated returns whether the other side of the crane has authenticated
@@ -344,8 +349,7 @@ func (crane *Crane) AbandonTerminal(id uint32, err *terminal.Error) {
 		// We can stop when all terminals are abandoned or after a timeout.
 		// FYI: The crane controller will always take up one slot.
 		if crane.stopping.IsSet() &&
-			(crane.terminalCount() <= 1 ||
-				time.Now().Add(-maxCraneStoppingDuration).After(crane.NetState.MarkedStoppingAt())) {
+			crane.terminalCount() <= 1 {
 			// Stop the crane in worker, so the caller can do some work.
 			module.StartWorker("retire crane", func(_ context.Context) error {
 				crane.Stop(nil)

@@ -252,20 +252,19 @@ optimize:
 	if result.StopOthers {
 		for _, crane := range docks.GetAllAssignedCranes() {
 			switch {
-			case !crane.IsMine():
-				// Skip cranes built by others.
-			case crane.Stopped() || crane.IsStopping():
-				// Skip cranes that are stopped or stopping.
-			case crane.NetState.LastSuggestedAt().After(
-				time.Now().Add(-stopCraneAfterBeingUnsuggestedFor),
-			):
-				// Skip cranes that were recently suggested.
-			default:
-				// Mark crane as stopping.
-				if crane.MarkStopping() {
-					log.Infof("spn/captain: retiring %s, marked as stopping", crane)
-					crane.NotifyUpdate()
+			case crane.Stopped():
+				// Crane already stopped.
+			case crane.IsStopping():
+				// Crane is stopping, forcibly stop if mine and suggested.
+				if crane.IsMine() && crane.NetState.StopSuggested() {
+					crane.Stop(nil)
 				}
+			case crane.IsMine() && crane.NetState.StoppingSuggested():
+				// Mark as stopping if mine and suggested.
+				crane.MarkStopping()
+			case crane.NetState.RequestStoppingSuggested(stopCraneAfterBeingUnsuggestedFor):
+				// Mark as stopping requested.
+				crane.MarkStoppingRequested()
 			}
 		}
 	}

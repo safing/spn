@@ -16,6 +16,10 @@ type NetworkOptimizationState struct {
 	// lastSuggestedAt holds the time when the connection to the connected Hub was last suggested by the network optimization.
 	lastSuggestedAt time.Time
 
+	// stoppingRequested signifies whether stopping this lane is requested.
+	stoppingRequested bool
+	// stoppingRequestedByPeer signifies whether stopping this lane is requested by the peer.
+	stoppingRequestedByPeer bool
 	// markedStoppingAt holds the time when the crane was last marked as stopping.
 	markedStoppingAt time.Time
 
@@ -46,28 +50,40 @@ func (netState *NetworkOptimizationState) UpdateLastSuggestedAt() {
 	netState.lastSuggestedAt = time.Now()
 }
 
-// LastSuggestedAt returns when the lane was last suggested.
-func (netState *NetworkOptimizationState) LastSuggestedAt() time.Time {
+// StoppingState returns when the stopping state.
+func (netState *NetworkOptimizationState) StoppingState() (requested, requestedByPeer bool, markedAt time.Time) {
 	netState.lock.Lock()
 	defer netState.lock.Unlock()
 
-	return netState.lastSuggestedAt
+	return netState.stoppingRequested, netState.stoppingRequestedByPeer, netState.markedStoppingAt
 }
 
-// UpdateMarkedStoppingAt setse when the lane was last marked as stopping to the current time.
-func (netState *NetworkOptimizationState) UpdateMarkedStoppingAt() {
+// RequestStoppingSuggested returns whether the crane should request stopping.
+func (netState *NetworkOptimizationState) RequestStoppingSuggested(maxNotSuggestedDuration time.Duration) bool {
 	netState.lock.Lock()
 	defer netState.lock.Unlock()
 
-	netState.markedStoppingAt = time.Now()
+	return time.Now().Add(-maxNotSuggestedDuration).After(netState.lastSuggestedAt)
 }
 
-// MarkedStoppingAt returns when the lane was last marked as stopping.
-func (netState *NetworkOptimizationState) MarkedStoppingAt() time.Time {
+// StoppingSuggested returns whether the crane should be marked as stopping.
+func (netState *NetworkOptimizationState) StoppingSuggested() bool {
 	netState.lock.Lock()
 	defer netState.lock.Unlock()
 
-	return netState.markedStoppingAt
+	return netState.stoppingRequested &&
+		netState.stoppingRequestedByPeer
+}
+
+// StopSuggested returns whether the crane should be stopped.
+func (netState *NetworkOptimizationState) StopSuggested() bool {
+	netState.lock.Lock()
+	defer netState.lock.Unlock()
+
+	return netState.stoppingRequested &&
+		netState.stoppingRequestedByPeer &&
+		!netState.markedStoppingAt.IsZero() &&
+		time.Now().Add(-maxCraneStoppingDuration).After(netState.markedStoppingAt)
 }
 
 // ReportTraffic adds the reported transferred data to the traffic stats.

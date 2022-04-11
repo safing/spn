@@ -227,7 +227,7 @@ handling:
 			if err != nil {
 				return err
 			}
-			log.Debugf("spn/docks: %s sent hub verification", crane)
+			log.Infof("spn/docks: %s sent hub verification", crane)
 
 		case CraneMsgTypeStartUnencrypted:
 			initMsg = request
