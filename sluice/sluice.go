@@ -57,7 +57,7 @@ func StartSluice(network, address string) {
 func (s *Sluice) AwaitRequest(r *Request) {
 	// Set default expiry.
 	if r.Expires.IsZero() {
-		r.Expires = time.Now().Add(time.Minute)
+		r.Expires = time.Now().Add(defaultSluiceTTL)
 	}
 
 	s.lock.Lock()
