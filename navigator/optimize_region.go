@@ -59,17 +59,17 @@ func (m *Map) optimizeForDistanceConstraintInRegion(result *OptimizationResult, 
 	// Add approach.
 	result.addApproach(fmt.Sprintf("Satisfy max hop constraint of %d within the region.", region.internalMaxHops))
 
-	for i := 0; i < max; i++ {
-		// Sort by lowest cost.
-		sort.Sort(sortBySuggestedHopDistanceInRegionAndLowestMeasuredCost(region.regardedPins))
+	// Sort by lowest cost.
+	sort.Sort(sortBySuggestedHopDistanceInRegionAndLowestMeasuredCost(region.regardedPins))
 
+	for i := 0; i < max && i < len(region.regardedPins); i++ {
 		// Return when all regarded Pins are within the distance constraint.
-		if region.regardedPins[0].analysis.SuggestedHopDistanceInRegion <= region.internalMaxHops {
+		if region.regardedPins[i].analysis.SuggestedHopDistanceInRegion <= region.internalMaxHops {
 			return
 		}
 
 		// If not, suggest a connection to the best match.
-		result.addSuggested("satisfy regional hop constraint", region.regardedPins[0])
+		result.addSuggested("satisfy regional hop constraint", region.regardedPins[i])
 	}
 }
 
