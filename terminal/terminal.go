@@ -461,7 +461,7 @@ func (t *TerminalBase) handleReceive(c *container.Container) *Error {
 
 	// Handle operation messages.
 	for c.HoldsData() {
-		// Get next messagt length.
+		// Get next message length.
 		msgLength, err := c.GetNextN32()
 		if err != nil {
 			return ErrMalformedData.With("failed to get operation msg length: %w", err)
@@ -476,7 +476,7 @@ func (t *TerminalBase) handleReceive(c *container.Container) *Error {
 		// Get op msg data.
 		msgData, err := c.GetAsContainer(int(msgLength))
 		if err != nil {
-			return ErrMalformedData.With("failed to get operation msg data: %w", err)
+			return ErrMalformedData.With("failed to get operation msg data (%d bytes): %w", msgLength, err)
 		}
 
 		// Handle op msg.
