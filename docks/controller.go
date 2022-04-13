@@ -93,7 +93,15 @@ func (controller *CraneControllerTerminal) Flush() {
 func (controller *CraneControllerTerminal) Abandon(err *terminal.Error) {
 	if controller.Abandoning.SetToIf(false, true) {
 		// Send stop msg and end all operations.
-		controller.StartAbandonProcedure(err, !err.IsExternal(), func() {
+		controller.StartAbandonProcedure(err, false, func() {
+			// Send error manually, as terminal base packs it into another data msg.
+			// TODO: Send via terminal again when DFQ is merged.
+			if !err.IsExternal() {
+				stopMsg := container.New(err.Pack())
+				terminal.MakeMsg(stopMsg, controller.ID(), terminal.MsgTypeStop)
+				controller.Crane.submitImportantTerminalMsg(stopMsg)
+			}
+
 			// Abandon terminal.
 			controller.Crane.AbandonTerminal(0, err)
 

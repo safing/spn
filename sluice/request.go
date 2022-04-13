@@ -10,6 +10,10 @@ import (
 	"github.com/safing/portmaster/network/packet"
 )
 
+const (
+	defaultSluiceTTL = 5 * time.Minute
+)
+
 var (
 	// ErrUnsupported is returned when a protocol is not supported.
 	ErrUnsupported = errors.New("unsupported protocol")
@@ -43,6 +47,7 @@ func AwaitRequest(connInfo *network.Connection, callbackFn RequestCallbackFunc) 
 	sluice.AwaitRequest(&Request{
 		ConnInfo:   connInfo,
 		CallbackFn: callbackFn,
+		Expires:    time.Now().Add(defaultSluiceTTL),
 	})
 	return nil
 }

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"sort"
 	"strconv"
@@ -197,7 +198,7 @@ func handleMapOptimizationTableRequest(ar *api.Request) (data []byte, err error)
 	// Build table of suggested connections.
 	buf.WriteString("\nSuggested Connections:\n")
 	tabWriter := tabwriter.NewWriter(buf, 8, 4, 3, ' ', 0)
-	fmt.Fprint(tabWriter, "Hub Name\tReason\tDuplicate\tCountry\tRegion\tLatency\tCapacity\tCost\tGeo Prox.\tHub ID\tLifetime Usage\tPeriod Usage\tProt\tMine\n")
+	fmt.Fprint(tabWriter, "Hub Name\tReason\tDuplicate\tCountry\tRegion\tLatency\tCapacity\tCost\tGeo Prox.\tHub ID\tLifetime Usage\tPeriod Usage\tProt\tStatus\n")
 	for _, suggested := range result.SuggestedConnections {
 		var dupe string
 		if suggested.Duplicate {
@@ -242,18 +243,32 @@ func addUsageStatsToTable(crane *docks.Crane, tabWriter *tabwriter.Writer) {
 	ltIn, ltOut, ltStart, pIn, pOut, pStart := crane.NetState.GetTrafficStats()
 	ltDuration := time.Since(ltStart)
 	pDuration := time.Since(pStart)
-	var mine string
-	switch {
-	case crane.IsMine() && crane.IsStopping():
-		mine = fmt.Sprintf("yes (stopping since %s)",
-			time.Since(crane.NetState.MarkedStoppingAt().Truncate(time.Minute)))
-	case crane.IsMine():
-		mine = "yes"
-	case !crane.IsMine() && crane.IsStopping():
-		mine = fmt.Sprintf("(stopping since %s)",
-			time.Since(crane.NetState.MarkedStoppingAt().Truncate(time.Minute)))
-	case !crane.IsMine():
-		mine = ""
+
+	// Build ownership and stopping info.
+	var status string
+	isMine := crane.IsMine()
+	isStopping := crane.IsStopping()
+	stoppingRequested, stoppingRequestedByPeer, markedStoppingAt := crane.NetState.StoppingState()
+	if isMine {
+		status = "mine"
+	}
+	if isStopping || stoppingRequested || stoppingRequestedByPeer {
+		if isMine {
+			status += " - "
+		}
+		status += "stopping "
+		if stoppingRequested {
+			status += "<r"
+		}
+		if isStopping {
+			status += "!"
+		}
+		if stoppingRequestedByPeer {
+			status += "r>"
+		}
+		if isStopping && !markedStoppingAt.IsZero() {
+			status += " since " + markedStoppingAt.Truncate(time.Minute).String()
+		}
 	}
 
 	fmt.Fprintf(tabWriter,
@@ -267,7 +282,7 @@ func addUsageStatsToTable(crane *docks.Crane, tabWriter *tabwriter.Writer) {
 		float64(pOut)/float64(pIn+pOut)*100,
 		pDuration.Truncate(time.Second),
 		crane.Transport().Protocol,
-		mine,
+		status,
 	)
 }
 
@@ -308,7 +323,7 @@ func handleMapMeasurementsTableRequest(ar *api.Request) (data []byte, err error)
 	// Build table and return.
 	buf := bytes.NewBuffer(nil)
 	tabWriter := tabwriter.NewWriter(buf, 8, 4, 3, ' ', 0)
-	fmt.Fprint(tabWriter, "Hub Name\tCountry\tRegion\tLatency\tCapacity\tCost\tGeo Prox.\tHub ID\tLifetime Usage\tPeriod Usage\tProt\tMine\n")
+	fmt.Fprint(tabWriter, "Hub Name\tCountry\tRegion\tLatency\tCapacity\tCost\tGeo Prox.\tHub ID\tLifetime Usage\tPeriod Usage\tProt\tStatus\n")
 	for _, pin := range list {
 		// Only print regarded Hubs.
 		if !matcher(pin) {
@@ -392,10 +407,8 @@ func handleMapGraphRequest(w http.ResponseWriter, hr *http.Request) {
 
 	// Build graph.
 	graph := gographviz.NewGraph()
-	_ = graph.AddAttr("", "ranksep", "0.2")
-	_ = graph.AddAttr("", "nodesep", "0.5")
+	_ = graph.AddAttr("", "overlap", "scale")
 	_ = graph.AddAttr("", "center", "true")
-	_ = graph.AddAttr("", "rankdir", "LR")
 	_ = graph.AddAttr("", "ratio", "fill")
 	for _, pin := range m.sortedPins(true) {
 		_ = graph.AddNode("", pin.Hub.ID, map[string]string{
@@ -405,20 +418,18 @@ func handleMapGraphRequest(w http.ResponseWriter, hr *http.Request) {
 			"fillcolor": graphNodeColor(pin),
 			"shape":     "circle",
 			"style":     "filled",
-			"fontsize":  "12",
-			"penwidth":  "2",
+			"fontsize":  "20",
+			"penwidth":  "4",
 			"margin":    "0",
 		})
 		for _, lane := range pin.ConnectedTo {
 			if graph.IsNode(lane.Pin.Hub.ID) && pin.State != StateNone {
 				// Create attributes.
 				edgeOptions := map[string]string{
-					"tooltip": graphEdgeTooltip(lane),
-					"color":   graphEdgeColor(pin, lane.Pin, lane),
-					"len":     strconv.Itoa(int(lane.Latency / time.Millisecond)),
-				}
-				if edgeOptions["color"] == graphColorHomeAndConnected {
-					edgeOptions["penwidth"] = "2"
+					"tooltip":  graphEdgeTooltip(pin, lane.Pin, lane),
+					"color":    graphEdgeColor(pin, lane.Pin, lane),
+					"len":      fmt.Sprintf("%f", lane.Latency.Seconds()*200),
+					"penwidth": fmt.Sprintf("%f", math.Sqrt(float64(lane.Capacity)/1000000)*2),
 				}
 				// Add edge.
 				_ = graph.AddEdge(pin.Hub.ID, lane.Pin.Hub.ID, false, edgeOptions)
@@ -438,11 +449,11 @@ func handleMapGraphRequest(w http.ResponseWriter, hr *http.Request) {
 			`<!DOCTYPE html><html><meta charset="utf-8"><body style="margin:0;padding:0;">
 <style>#graph svg {height: 99.5vh; width: 99.5vw;}</style>
 <div id="graph"></div>
-<script src="https://cdn.jsdelivr.net/npm/@hpcc-js/wasm@1.11.0/dist/index.min.js" integrity="sha256-ddqQRurJoGHtZfPh6lth44TYGG5dHRxgHJjnqeOVN2Y=" crossorigin="anonymous"></script>
-<script src="https://cdn.jsdelivr.net/npm/d3@7.0.1/dist/d3.min.js" integrity="sha256-rw249VxIkeE54bKM2Cl2L7BIwIeVYNfFOaJ8it1ODvo=" crossorigin="anonymous"></script>
-<script src="https://cdn.jsdelivr.net/npm/d3-graphviz@4.0.0/build/d3-graphviz.min.js" integrity="sha256-i+M3EvUd72UcF7LuKZm4eACil5o5qIibtX85JyxD5fQ=" crossorigin="anonymous"></script>
+<script src="/assets/vendor/js/hpcc-js-wasm-1.13.0/index.min.js"></script>
+<script src="/assets/vendor/js/d3-7.3.0/d3.min.js"></script>
+<script src="/assets/vendor/js/d3-graphviz-4.1.0/d3-graphviz.min.js"></script>
 <script>
-d3.select("#graph").graphviz(useWorker=false).renderDot(%s%s%s);
+d3.select("#graph").graphviz(useWorker=false).engine("neato").renderDot(%s%s%s);
 </script>
 </body></html>`,
 			"`", graph.String(), "`",
@@ -493,14 +504,26 @@ func graphNodeTooltip(pin *Pin) string {
 	var v4Info, v6Info string
 	if pin.Hub.Info.IPv4 != nil {
 		if pin.LocationV4 != nil {
-			v4Info = fmt.Sprintf("%s (%s)", pin.Hub.Info.IPv4.String(), pin.LocationV4.Country.ISOCode)
+			v4Info = fmt.Sprintf(
+				"%s (%s AS%d %s)",
+				pin.Hub.Info.IPv4.String(),
+				pin.LocationV4.Country.ISOCode,
+				pin.LocationV4.AutonomousSystemNumber,
+				pin.LocationV4.AutonomousSystemOrganization,
+			)
 		} else {
 			v4Info = pin.Hub.Info.IPv4.String()
 		}
 	}
 	if pin.Hub.Info.IPv6 != nil {
 		if pin.LocationV6 != nil {
-			v6Info = fmt.Sprintf("%s (%s)", pin.Hub.Info.IPv6.String(), pin.LocationV6.Country.ISOCode)
+			v6Info = fmt.Sprintf(
+				"%s (%s AS%d %s)",
+				pin.Hub.Info.IPv6.String(),
+				pin.LocationV6.Country.ISOCode,
+				pin.LocationV6.AutonomousSystemNumber,
+				pin.LocationV6.AutonomousSystemOrganization,
+			)
 		} else {
 			v6Info = pin.Hub.Info.IPv6.String()
 		}
@@ -524,11 +547,13 @@ Cost: %.2f"`,
 	)
 }
 
-func graphEdgeTooltip(lane *Lane) string {
+func graphEdgeTooltip(from, to *Pin, lane *Lane) string {
 	return fmt.Sprintf(
-		`"Latency: %s
+		`"%s <> %s
+Latency: %s
 Capacity: %.2f Mbit/s
 Cost: %.2f"`,
+		from.Hub.Info.Name, to.Hub.Info.Name,
 		lane.Latency,
 		float64(lane.Capacity)/1000000,
 		lane.Cost,

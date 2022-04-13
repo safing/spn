@@ -6,6 +6,7 @@ import (
 
 	"github.com/safing/portbase/container"
 	"github.com/safing/portbase/formats/dsd"
+	"github.com/safing/spn/conf"
 	"github.com/safing/spn/terminal"
 )
 
@@ -21,7 +22,8 @@ type SyncStateOp struct {
 
 // SyncStateMessage holds the sync data.
 type SyncStateMessage struct {
-	Stopping bool
+	Stopping        bool
+	RequestStopping bool
 }
 
 // Type returns the type ID.
@@ -37,10 +39,22 @@ func init() {
 	})
 }
 
+// startSyncStateOp starts a worker that runs the sync state operation.
+func (crane *Crane) startSyncStateOp() {
+	module.StartWorker("sync crane state", func(ctx context.Context) error {
+		tErr := crane.Controller.SyncState(ctx)
+		if tErr.IsError() {
+			return tErr
+		}
+
+		return nil
+	})
+}
+
 // SyncState runs a sync state operation.
 func (controller *CraneControllerTerminal) SyncState(ctx context.Context) *terminal.Error {
-	// Check if we own the crane and it is public.
-	if !controller.Crane.IsMine() || !controller.Crane.Public() {
+	// Check if we are a public Hub, whether we own the crane and whether the lane is public too.
+	if !conf.PublicHub() || !controller.Crane.Public() {
 		return nil
 	}
 
@@ -51,9 +65,19 @@ func (controller *CraneControllerTerminal) SyncState(ctx context.Context) *termi
 	}
 	op.OpBase.Init()
 
+	// Get optimization states.
+	requestStopping := false
+	func() {
+		controller.Crane.NetState.lock.Lock()
+		defer controller.Crane.NetState.lock.Unlock()
+
+		requestStopping = controller.Crane.NetState.stoppingRequested
+	}()
+
 	// Create sync message.
 	msg := &SyncStateMessage{
-		Stopping: controller.Crane.stopping.IsSet(),
+		Stopping:        controller.Crane.stopping.IsSet(),
+		RequestStopping: requestStopping,
 	}
 	data, err := dsd.Dump(msg, dsd.CBOR)
 	if err != nil {
@@ -88,9 +112,9 @@ func runSyncStateOp(t terminal.OpTerminal, opID uint32, data *container.Containe
 		return nil, terminal.ErrIncorrectUsage.With("can only be used with a crane controller")
 	}
 
-	// Check if we don't own the crane, but it is public.
-	if controller.Crane.IsMine() || !controller.Crane.Public() {
-		return nil, terminal.ErrPermissinDenied.With("only public lane owner may change the crane status")
+	// Check if we are a public Hub and whether the lane is public too.
+	if !conf.PublicHub() || !controller.Crane.Public() {
+		return nil, terminal.ErrPermissinDenied.With("only public lanes can sync crane status")
 	}
 
 	// Load message.
@@ -100,21 +124,31 @@ func runSyncStateOp(t terminal.OpTerminal, opID uint32, data *container.Containe
 		return nil, terminal.ErrMalformedData.With("failed to load sync state message: %w", err)
 	}
 
-	// Apply sync state.
-	var changed bool
-	if syncState.Stopping {
-		if controller.Crane.stopping.SetToIf(false, true) {
-			changed = true
-		}
-	} else {
-		if controller.Crane.stopping.SetToIf(true, false) {
-			changed = true
-		}
-	}
+	// Apply optimization state.
+	controller.Crane.NetState.lock.Lock()
+	defer controller.Crane.NetState.lock.Unlock()
+	controller.Crane.NetState.stoppingRequestedByPeer = syncState.RequestStopping
 
-	// Notify of change.
-	if changed {
-		controller.Crane.NotifyUpdate()
+	// Apply crane state only when we don't own the crane.
+	if !controller.Crane.IsMine() {
+		// Apply sync state.
+		var changed bool
+		if syncState.Stopping {
+			if controller.Crane.stopping.SetToIf(false, true) {
+				controller.Crane.NetState.markedStoppingAt = time.Now()
+				changed = true
+			}
+		} else {
+			if controller.Crane.stopping.SetToIf(true, false) {
+				controller.Crane.NetState.markedStoppingAt = time.Time{}
+				changed = true
+			}
+		}
+
+		// Notify of change.
+		if changed {
+			controller.Crane.NotifyUpdate()
+		}
 	}
 
 	return nil, nil
