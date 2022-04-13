@@ -8,7 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/safing/portmaster/network/packet"
+	"github.com/safing/portmaster/intel"
+	"github.com/safing/portmaster/network"
 	"github.com/safing/spn/cabin"
 	"github.com/safing/spn/conf"
 	"github.com/safing/spn/terminal"
@@ -49,13 +50,18 @@ func TestConnectOp(t *testing.T) {
 
 	for i := 0; i < 10; i++ {
 		appConn, sluiceConn := net.Pipe()
-		_, tErr := NewConnectOp(a, &ConnectRequest{
-			Domain:    "orf.at",
-			IP:        net.IPv4(194, 232, 104, 142),
-			Protocol:  packet.TCP,
-			Port:      80,
-			QueueSize: 100,
-		}, sluiceConn)
+		_, tErr := NewConnectOp(&Tunnel{
+			connInfo: &network.Connection{
+				Entity: &intel.Entity{
+					Protocol: 6,
+					Port:     80,
+					Domain:   "orf.at.",
+					IP:       net.IPv4(194, 232, 104, 142),
+				},
+			},
+			conn:        sluiceConn,
+			dstTerminal: a,
+		})
 		if tErr != nil {
 			t.Fatalf("failed to start connect op: %s", tErr)
 		}

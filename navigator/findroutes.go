@@ -63,6 +63,30 @@ func (m *Map) FindRoutes(ip net.IP, opts *Options, maxRoutes int) (*Routes, erro
 	return m.findRoutes(nearby, opts, maxRoutes)
 }
 
+// FindRouteToHub finds possible routes to the given Hub, with the given options.
+func (m *Map) FindRouteToHub(hubID string, opts *Options, maxRoutes int) (*Routes, error) {
+	m.Lock()
+	defer m.Unlock()
+
+	// Get Pin.
+	pin, ok := m.all[hubID]
+	if !ok {
+		return nil, ErrHubNotFound
+	}
+
+	// Create a nearby with a single Pin.
+	nearby := &nearbyPins{
+		pins: []*nearbyPin{
+			{
+				pin: pin,
+			},
+		},
+	}
+
+	// Find a route to the given Hub.
+	return m.findRoutes(nearby, opts, maxRoutes)
+}
+
 func (m *Map) findRoutes(dsts *nearbyPins, opts *Options, maxRoutes int) (*Routes, error) {
 	if m.home == nil {
 		return nil, ErrHomeHubUnset

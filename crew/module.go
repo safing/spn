@@ -1,6 +1,8 @@
 package crew
 
 import (
+	"time"
+
 	"github.com/safing/portbase/modules"
 	"github.com/safing/spn/terminal"
 )
@@ -8,11 +10,20 @@ import (
 var module *modules.Module
 
 func init() {
-	module = modules.Register("crew", nil, start, nil, "navigator", "intel", "cabin")
+	module = modules.Register("crew", nil, start, stop, "navigator", "intel", "cabin")
 }
 
 func start() error {
+	module.NewTask("sticky cleaner", cleanStickyHubs).
+		Repeat(10 * time.Minute)
+
 	return registerMetrics()
+}
+
+func stop() error {
+	clearStickyHubs()
+
+	return nil
 }
 
 var connectErrors = make(chan *terminal.Error, 10)

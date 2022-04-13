@@ -39,8 +39,9 @@ type ConnectOp struct {
 
 	t       terminal.OpTerminal
 	conn    net.Conn
-	entry   bool
 	request *ConnectRequest
+	entry   bool
+	tunnel  *Tunnel
 }
 
 // Type returns the type ID.
@@ -83,7 +84,15 @@ func init() {
 }
 
 // NewConnectOp starts a new connect operation.
-func NewConnectOp(t terminal.OpTerminal, request *ConnectRequest, conn net.Conn) (*ConnectOp, *terminal.Error) {
+func NewConnectOp(tunnel *Tunnel) (*ConnectOp, *terminal.Error) {
+	// Create request.
+	request := &ConnectRequest{
+		Domain:   tunnel.connInfo.Entity.Domain,
+		IP:       tunnel.connInfo.Entity.IP,
+		Protocol: packet.IPProtocol(tunnel.connInfo.Entity.Protocol),
+		Port:     tunnel.connInfo.Entity.Port,
+	}
+
 	// Set defaults.
 	if request.QueueSize == 0 {
 		request.QueueSize = terminal.DefaultQueueSize
@@ -91,10 +100,11 @@ func NewConnectOp(t terminal.OpTerminal, request *ConnectRequest, conn net.Conn)
 
 	// Create new op.
 	op := &ConnectOp{
-		t:       t,
-		conn:    conn,
-		entry:   true,
+		t:       tunnel.dstTerminal,
+		conn:    tunnel.conn,
 		request: request,
+		entry:   true,
+		tunnel:  tunnel,
 	}
 	op.OpBase.Init()
 	op.ctx, op.cancelCtx = context.WithCancel(context.Background())
@@ -107,7 +117,7 @@ func NewConnectOp(t terminal.OpTerminal, request *ConnectRequest, conn net.Conn)
 	}
 
 	// Initialize.
-	tErr := t.OpInit(op, container.New(data))
+	tErr := op.t.OpInit(op, container.New(data))
 	if err != nil {
 		return nil, tErr
 	}
@@ -119,6 +129,8 @@ func NewConnectOp(t terminal.OpTerminal, request *ConnectRequest, conn net.Conn)
 	module.StartWorker("connect op conn reader", op.connReader)
 	module.StartWorker("connect op conn writer", op.connWriter)
 	module.StartWorker("connect op flow handler", op.DuplexFlowQueue.FlowHandler)
+
+	log.Infof("spn/crew: connected to %s via %s", request, tunnel.dstPin.Hub)
 	return op, nil
 }
 
@@ -273,7 +285,14 @@ writing:
 
 		// Submit metrics.
 		connectOpOutgoingBytes.Add(len(data))
-		atomic.AddUint64(op.outgoingTraffic, uint64(len(data)))
+		out := atomic.AddUint64(op.outgoingTraffic, uint64(len(data)))
+
+		// If on client and the first data was received, sticky the destination to the Hub.
+		if op.entry && // On clients only.
+			out == uint64(len(data)) && // Only on first packet received.
+			!op.tunnel.stickied {
+			op.tunnel.stickDestinationToHub()
+		}
 
 		// Send all given data.
 		for {
@@ -318,6 +337,15 @@ func (op *ConnectOp) End(err *terminal.Error) {
 
 	// Cancel workers.
 	op.cancelCtx()
+
+	// Avoid connecting to destination via this Hub if the was a connection
+	// error and no data was received.
+	if op.entry && // On clients only.
+		err.IsError() &&
+		err.Is(terminal.ErrConnectionError) &&
+		atomic.LoadUint64(op.outgoingTraffic) == 0 { // Only if not data was received.
+		op.tunnel.avoidDestinationHub()
+	}
 }
 
 // Abandon ends the operation.
