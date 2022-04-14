@@ -39,7 +39,7 @@ func StartSluice(network, address string) {
 	case "tcp4", "tcp6":
 		s.createListener = net.Listen
 	case "udp4", "udp6":
-		s.createListener = ListenPacket
+		s.createListener = ListenUDP
 	default:
 		log.Errorf("spn/sluice: cannot start sluice for %s: unsupported network", network)
 		return
