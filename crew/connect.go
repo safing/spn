@@ -170,20 +170,32 @@ func (t *Tunnel) establish() (err error) {
 		}
 	}
 
-	// Try routes until one succeeds.
-	for tries, route := range routes.All {
-		dstPin, dstTerminal, err := establishRoute(route)
-		if err == nil {
-			t.dstPin = dstPin
-			t.dstTerminal = dstTerminal
-			t.route = route
-			t.failedTries = tries
-			break
-		}
+	// Check if routes are okay (again).
+	if len(routes.All) == 0 {
+		return fmt.Errorf("failed to find any routes to %s", t.connInfo.Entity.IP)
 	}
-	navigator.Main.PushPinChanges()
 
-	return nil
+	// Try routes until one succeeds.
+	var dstPin *navigator.Pin
+	var dstTerminal terminal.OpTerminal
+	for tries, route := range routes.All {
+		dstPin, dstTerminal, err = establishRoute(route)
+		if err != nil {
+			continue
+		}
+
+		// Assign route data to tunnel.
+		t.dstPin = dstPin
+		t.dstTerminal = dstTerminal
+		t.route = route
+		t.failedTries = tries
+
+		// Push changes to Pins and return.
+		navigator.Main.PushPinChanges()
+		return nil
+	}
+
+	return fmt.Errorf("failed to establish a route to %s: %w", t.connInfo.Entity.IP, err)
 }
 
 type hopCheck struct {
