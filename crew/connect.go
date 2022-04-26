@@ -36,7 +36,7 @@ func HandleSluiceRequest(connInfo *network.Connection, conn net.Conn) {
 		connInfo: connInfo,
 		conn:     conn,
 	}
-	module.StartWorker("tunnel handler", t.connect)
+	module.StartWorker("tunnel handler", t.connectWorker)
 }
 
 // Tunnel represents the local information and endpoint of a data tunnel.
@@ -51,7 +51,7 @@ type Tunnel struct {
 	stickied    bool
 }
 
-func (t *Tunnel) connect(ctx context.Context) (err error) {
+func (t *Tunnel) connectWorker(ctx context.Context) (err error) {
 	// Get tracing logger.
 	ctx, tracer := log.AddTracer(ctx)
 	defer tracer.Submit()
@@ -187,7 +187,7 @@ func (t *Tunnel) establish(ctx context.Context) (err error) {
 
 	// Check if routes are okay (again).
 	if len(routes.All) == 0 {
-		return fmt.Errorf("failed to find any routes to %s", t.connInfo.Entity.IP)
+		return fmt.Errorf("no routes to %s", t.connInfo.Entity.IP)
 	}
 
 	// Try routes until one succeeds.
