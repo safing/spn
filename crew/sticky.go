@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/safing/portbase/log"
 	"github.com/safing/portbase/modules"
 	"github.com/safing/portmaster/network"
 	"github.com/safing/spn/navigator"
@@ -64,6 +65,7 @@ func (t *Tunnel) stickDestinationToHub() {
 		Route:    t.route,
 		LastSeen: time.Now(),
 	}
+	log.Infof("spn/crew: sticking %s to %s", t.connInfo.Entity.IP, t.dstPin.Hub)
 
 	// Stick to Domain, if present.
 	if t.connInfo.Entity.Domain != "" {
@@ -72,6 +74,7 @@ func (t *Tunnel) stickDestinationToHub() {
 			Route:    t.route,
 			LastSeen: time.Now(),
 		}
+		log.Infof("spn/crew: sticking %s to %s", t.connInfo.Entity.Domain, t.dstPin.Hub)
 	}
 }
 
@@ -85,6 +88,7 @@ func (t *Tunnel) avoidDestinationHub() {
 		LastSeen: time.Now(),
 		Avoid:    true,
 	}
+	log.Warningf("spn/crew: avoiding %s for %s", t.dstPin.Hub, t.connInfo.Entity.IP)
 }
 
 func cleanStickyHubs(ctx context.Context, task *modules.Task) error {

@@ -36,7 +36,7 @@ func HandleSluiceRequest(connInfo *network.Connection, conn net.Conn) {
 		connInfo: connInfo,
 		conn:     conn,
 	}
-	module.StartWorker("tunnel handler", t.connect)
+	module.StartWorker("tunnel handler", t.connectWorker)
 }
 
 // Tunnel represents the local information and endpoint of a data tunnel.
@@ -51,7 +51,11 @@ type Tunnel struct {
 	stickied    bool
 }
 
-func (t *Tunnel) connect(ctx context.Context) (err error) {
+func (t *Tunnel) connectWorker(ctx context.Context) (err error) {
+	// Get tracing logger.
+	ctx, tracer := log.AddTracer(ctx)
+	defer tracer.Submit()
+
 	// Check the status of the Home Hub.
 	home, homeTerminal := navigator.Main.GetHome()
 	if home == nil || homeTerminal == nil || homeTerminal.IsBeingAbandoned() {
@@ -62,11 +66,12 @@ func (t *Tunnel) connect(ctx context.Context) (err error) {
 		t.connInfo.Failed("SPN not ready for tunneling", "")
 		t.connInfo.Save()
 
+		tracer.Infof("spn/crew: not tunneling %s, as the SPN is not ready", t.connInfo)
 		return nil
 	}
 
 	// Create path through the SPN.
-	err = t.establish()
+	err = t.establish(ctx)
 	if err != nil {
 		log.Warningf("spn/crew: failed to establish route for %s: %s", t.connInfo, err)
 
@@ -76,6 +81,7 @@ func (t *Tunnel) connect(ctx context.Context) (err error) {
 		t.connInfo.Failed(fmt.Sprintf("failed to establish route: %s", err), "")
 		t.connInfo.Save()
 
+		tracer.Warningf("spn/crew: failed to establish route for %s: %s", t.connInfo, err)
 		return nil
 	}
 
@@ -91,6 +97,7 @@ func (t *Tunnel) connect(ctx context.Context) (err error) {
 		t.connInfo.Save()
 
 		// TODO: try with another route?
+		tracer.Warningf("spn/crew: failed to initialize tunnel for %s: %s", t.connInfo, err)
 		return tErr
 	}
 
@@ -99,10 +106,11 @@ func (t *Tunnel) connect(ctx context.Context) (err error) {
 	addTunnelContextToConnection(t.connInfo, t.route)
 	t.connInfo.Save()
 
+	tracer.Infof("spn/crew: connected %s via %s", t.connInfo, t.dstPin.Hub)
 	return nil
 }
 
-func (t *Tunnel) establish() (err error) {
+func (t *Tunnel) establish(ctx context.Context) (err error) {
 	var routes *navigator.Routes
 
 	// Check if the destination sticks to a Hub.
@@ -112,6 +120,8 @@ func (t *Tunnel) establish() (err error) {
 		// Continue.
 
 	case sticksTo.Avoid:
+		log.Tracer(ctx).Tracef("spn/crew: avoiding %s", sticksTo.Pin.Hub)
+
 		// Build avoid policy.
 		avoidPolicy := make([]endpoints.Endpoint, 0, 2)
 		// Exclude countries of the hub to be avoided.
@@ -122,18 +132,22 @@ func (t *Tunnel) establish() (err error) {
 			avoidPolicy = append(avoidPolicy, &endpoints.EndpointCountry{
 				Country: sticksTo.Pin.LocationV4.Country.ISOCode,
 			})
+			log.Tracer(ctx).Tracef("spn/crew: avoiding country %s via IPv4 location", sticksTo.Pin.LocationV4.Country.ISOCode)
 		}
 		if sticksTo.Pin.LocationV6 != nil &&
 			sticksTo.Pin.LocationV6.Country.ISOCode != "" {
 			avoidPolicy = append(avoidPolicy, &endpoints.EndpointCountry{
 				Country: sticksTo.Pin.LocationV6.Country.ISOCode,
 			})
+			log.Tracer(ctx).Tracef("spn/crew: avoiding country %s via IPv6 location", sticksTo.Pin.LocationV6.Country.ISOCode)
 		}
 
 		// Append to policies
 		t.connInfo.TunnelOpts.HubPolicies = append(t.connInfo.TunnelOpts.HubPolicies, avoidPolicy)
 
 	default:
+		log.Tracer(ctx).Tracef("spn/crew: using stickied %s", sticksTo.Pin.Hub)
+
 		// Check if the stickied Hub has an active terminal.
 		dstTerminal := sticksTo.Pin.GetActiveTerminal()
 		if dstTerminal != nil {
@@ -151,7 +165,7 @@ func (t *Tunnel) establish() (err error) {
 			10,
 		)
 		if err != nil {
-			log.Debugf("spn/crew: failed to find route to stickied %s for %s: %s", sticksTo.Pin.Hub, t.connInfo, err)
+			log.Tracer(ctx).Tracef("spn/crew: failed to find route to stickied %s: %s", sticksTo.Pin.Hub, err)
 			routes = nil
 		} else {
 			t.stickied = true
@@ -160,6 +174,7 @@ func (t *Tunnel) establish() (err error) {
 
 	// Find possible routes to destination.
 	if routes == nil {
+		log.Tracer(ctx).Trace("spn/crew: finding routes...")
 		routes, err = navigator.Main.FindRoutes(
 			t.connInfo.Entity.IP,
 			t.connInfo.TunnelOpts,
@@ -170,20 +185,33 @@ func (t *Tunnel) establish() (err error) {
 		}
 	}
 
-	// Try routes until one succeeds.
-	for tries, route := range routes.All {
-		dstPin, dstTerminal, err := establishRoute(route)
-		if err == nil {
-			t.dstPin = dstPin
-			t.dstTerminal = dstTerminal
-			t.route = route
-			t.failedTries = tries
-			break
-		}
+	// Check if routes are okay (again).
+	if len(routes.All) == 0 {
+		return fmt.Errorf("no routes to %s", t.connInfo.Entity.IP)
 	}
-	navigator.Main.PushPinChanges()
 
-	return nil
+	// Try routes until one succeeds.
+	log.Tracer(ctx).Trace("spn/crew: establishing route...")
+	var dstPin *navigator.Pin
+	var dstTerminal terminal.OpTerminal
+	for tries, route := range routes.All {
+		dstPin, dstTerminal, err = establishRoute(route)
+		if err != nil {
+			continue
+		}
+
+		// Assign route data to tunnel.
+		t.dstPin = dstPin
+		t.dstTerminal = dstTerminal
+		t.route = route
+		t.failedTries = tries
+
+		// Push changes to Pins and return.
+		navigator.Main.PushPinChanges()
+		return nil
+	}
+
+	return fmt.Errorf("failed to establish a route to %s: %w", t.connInfo.Entity.IP, err)
 }
 
 type hopCheck struct {
