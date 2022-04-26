@@ -3,6 +3,7 @@ package navigator
 import (
 	"context"
 
+	"github.com/safing/portbase/log"
 	"github.com/safing/portmaster/intel"
 	"github.com/safing/portmaster/profile/endpoints"
 	"github.com/safing/spn/hub"
@@ -96,7 +97,7 @@ func (o *Options) HubPoliciesAreSet() bool {
 }
 
 // Matcher generates a PinMatcher based on the Options.
-func (o *Options) Matcher(hubType HubType, intel *hub.Intel) PinMatcher {
+func (o *Options) Matcher(hubType HubType, hubIntel *hub.Intel) PinMatcher {
 	// Compile states to regard and disregard.
 	regard := o.Regard
 	disregard := o.Disregard
@@ -128,14 +129,14 @@ func (o *Options) Matcher(hubType HubType, intel *hub.Intel) PinMatcher {
 
 	// Add intel policies.
 	hubPolicies := o.HubPolicies
-	if intel != nil && intel.Parsed() != nil {
+	if hubIntel != nil && hubIntel.Parsed() != nil {
 		switch hubType {
 		case HomeHub:
-			hubPolicies = append(hubPolicies, intel.Parsed().HubAdvisory, intel.Parsed().HomeHubAdvisory)
+			hubPolicies = append(hubPolicies, hubIntel.Parsed().HubAdvisory, hubIntel.Parsed().HomeHubAdvisory)
 		case TransitHub:
-			hubPolicies = append(hubPolicies, intel.Parsed().HubAdvisory)
+			hubPolicies = append(hubPolicies, hubIntel.Parsed().HubAdvisory)
 		case DestinationHub:
-			hubPolicies = append(hubPolicies, intel.Parsed().HubAdvisory, intel.Parsed().DestinationHubAdvisory)
+			hubPolicies = append(hubPolicies, hubIntel.Parsed().HubAdvisory, hubIntel.Parsed().DestinationHubAdvisory)
 		}
 	}
 
@@ -150,14 +151,30 @@ func (o *Options) Matcher(hubType HubType, intel *hub.Intel) PinMatcher {
 		}
 
 		// Check policies.
+	policyCheck:
 		for _, policy := range hubPolicies {
-			switch {
-			case endpointListMatch(policy, pin.EntityV4) == endpoints.Denied:
-				// Hub is denied by policy with its IPv4 entity.
+			// Check if policy is set.
+			if !policy.IsSet() {
+				continue
+			}
+
+			// Check if policy matches.
+			result, reason := policy.MatchMulti(context.TODO(), pin.EntityV4, pin.EntityV6)
+			switch result {
+			case endpoints.NoMatch:
+				// Continue with check.
+			case endpoints.MatchError:
+				log.Warningf("spn/navigator: failed to match policy: %s", reason)
+				// Continue with check for now.
+				// TODO: Rethink how to do this. If eg. the geoip database has a
+				// problem, then no Hub will match. For now, just continue to the
+				// next rule set. Not optimal, but fail safe.
+			case endpoints.Denied:
+				// Explicitly denied, abort immediately.
 				return false
-			case endpointListMatch(policy, pin.EntityV6) == endpoints.Denied:
-				// Hub is denied by policy with its IPv6 entity.
-				return false
+			case endpoints.Permitted:
+				// Explicitly allowed, abort check and continue.
+				break policyCheck
 			}
 		}
 

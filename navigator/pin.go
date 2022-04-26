@@ -2,6 +2,7 @@ package navigator
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/tevino/abool"
@@ -108,8 +109,16 @@ func (pin *Pin) String() string {
 
 // updateLocationData fetches the necessary location data in order to correctly map out the Pin.
 func (pin *Pin) updateLocationData() {
+	// TODO: We are currently assigning the Hub ID to the entity domain to
+	// support matching a Hub by its ID. The issue here is that the domain
+	// rules are lower-cased, so we have to lower-case the ID here too.
+	// This is not optimal from a security perspective, but there are still
+	// enough bits left that this cannot be easily exploited.
+
 	if pin.Hub.Info.IPv4 != nil {
-		pin.EntityV4 = &intel.Entity{}
+		pin.EntityV4 = &intel.Entity{
+			Domain: strings.ToLower(pin.Hub.ID) + ".",
+		}
 		pin.EntityV4.SetIP(pin.Hub.Info.IPv4)
 
 		var ok bool
@@ -124,7 +133,9 @@ func (pin *Pin) updateLocationData() {
 	}
 
 	if pin.Hub.Info.IPv6 != nil {
-		pin.EntityV6 = &intel.Entity{}
+		pin.EntityV6 = &intel.Entity{
+			Domain: strings.ToLower(pin.Hub.ID) + ".",
+		}
 		pin.EntityV6.SetIP(pin.Hub.Info.IPv6)
 
 		var ok bool
