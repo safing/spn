@@ -27,8 +27,10 @@ func TestEffectiveBandwidth(t *testing.T) { //nolint:paralleltest // Run alone.
 	// Create test terminal pair.
 	a, b, err := terminal.NewSimpleTestTerminalPair(
 		bwTestDelay,
+		int(bwTestQueueSize),
 		&terminal.TerminalOpts{
-			QueueSize: bwTestQueueSize,
+			FlowControl:     terminal.FlowControlDFQ,
+			FlowControlSize: bwTestQueueSize,
 		},
 	)
 	if err != nil {
@@ -80,7 +82,7 @@ func TestEffectiveBandwidth(t *testing.T) { //nolint:paralleltest // Run alone.
 	t.Logf("expected capacity: %f bit/s", expectedBitsPerSecond)
 
 	// Check if measured bandwidth is within parameters.
-	if float64(op.testResult) > expectedBitsPerSecond*1.1 {
+	if float64(op.testResult) > expectedBitsPerSecond*1.6 {
 		t.Fatal("measured capacity too high")
 	}
 	// TODO: Check if we can raise this to at least 90%.

@@ -48,7 +48,7 @@ var (
 )
 
 // Crane is the primary duplexer and connection manager.
-type Crane struct {
+type Crane struct { //nolint:maligned // TODO
 	// ID is the ID of the Crane.
 	ID string
 	// opts holds options.
@@ -359,17 +359,21 @@ func (crane *Crane) AbandonTerminal(id uint32, err *terminal.Error) {
 	}
 }
 
-func (crane *Crane) submitImportantTerminalMsg(c *container.Container) {
+func (crane *Crane) submitImportantTerminalMsg(c *container.Container) *terminal.Error {
 	select {
 	case crane.importantMsgs <- c:
+		return nil
 	case <-crane.ctx.Done():
+		return terminal.ErrCanceled
 	}
 }
 
-func (crane *Crane) submitTerminalMsg(c *container.Container) {
+func (crane *Crane) submitTerminalMsg(c *container.Container) *terminal.Error {
 	select {
 	case crane.terminalMsgs <- c:
+		return nil
 	case <-crane.ctx.Done():
+		return terminal.ErrCanceled
 	}
 }
 

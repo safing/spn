@@ -16,7 +16,6 @@ import (
 // ExpansionTerminal is used for expanding to another Hub.
 type ExpansionTerminal struct {
 	*terminal.TerminalBase
-	*terminal.DuplexFlowQueue
 
 	opID         uint32
 	relayOp      terminal.OpTerminal
@@ -30,22 +29,34 @@ type ExpansionTerminal struct {
 func ExpandTo(t terminal.OpTerminal, routeTo string, encryptFor *hub.Hub) (*ExpansionTerminal, *terminal.Error) {
 	// Create expansion terminal.
 	opts := &terminal.TerminalOpts{
-		Version:   1,
-		QueueSize: terminal.DefaultQueueSize,
-	}
-	tBase, initData, tErr := terminal.NewLocalBaseTerminal(context.Background(), 0, t.FmtID(), encryptFor, opts)
-	if tErr != nil {
-		return nil, tErr.Wrap("failed to create expansion terminal base")
+		Version:         1,
+		Padding:         8,
+		FlowControl:     terminal.FlowControlNone,
+		FlowControlSize: terminal.DefaultQueueSize,
+		Encrypt:         encryptFor != nil,
 	}
 	expansion := &ExpansionTerminal{
-		TerminalBase:          tBase,
 		relayOp:               t,
 		relayOpEnded:          abool.New(),
 		changeNotifyFuncReady: abool.New(),
 	}
-	expansion.TerminalBase.SetTerminalExtension(expansion)
-	expansion.TerminalBase.SetTimeout(expansionClientTimeout)
-	expansion.DuplexFlowQueue = terminal.NewDuplexFlowQueue(expansion, opts.QueueSize, expansion.submitUpstream)
+
+	// Create base terminal for expansion.
+	tBase, initData, tErr := terminal.NewLocalBaseTerminal(
+		context.Background(),
+		0,
+		t.FmtID(),
+		encryptFor,
+		opts,
+		expansion.submitUpstream,
+		false,
+	)
+	if tErr != nil {
+		return nil, tErr.Wrap("failed to create expansion terminal base")
+	}
+	tBase.SetTerminalExtension(expansion)
+	tBase.SetTimeout(expansionClientTimeout)
+	expansion.TerminalBase = tBase
 
 	// Create setup message.
 	opMsg := container.New()
@@ -58,29 +69,18 @@ func ExpandTo(t terminal.OpTerminal, routeTo string, encryptFor *hub.Hub) (*Expa
 		return nil, tErr.Wrap("failed to init expansion")
 	}
 
-	module.StartWorker("expansion terminal handler handler", expansion.Handler)
-	module.StartWorker("expansion terminal handler sender", expansion.Sender)
-	module.StartWorker("expansion terminal flow handler", expansion.FlowHandler)
+	// Start Workers.
+	tBase.StartWorkers(module, "expansion terminal")
 
 	return expansion, nil
 }
 
-// Deliver delivers a message to the next local stage.
-func (t *ExpansionTerminal) Deliver(c *container.Container) *terminal.Error {
-	return t.DuplexFlowQueue.Deliver(c)
-}
-
-// Flush flushes the terminal and flow queue.
-func (t *ExpansionTerminal) Flush() {
-	t.TerminalBase.Flush()
-	t.DuplexFlowQueue.Flush()
-}
-
-func (t *ExpansionTerminal) submitUpstream(c *container.Container) {
+func (t *ExpansionTerminal) submitUpstream(c *container.Container) *terminal.Error {
 	err := t.relayOp.OpSend(t, c)
 	if err != nil {
 		t.relayOp.OpEnd(t, err.Wrap("failed to send relay op msg"))
 	}
+	return err
 }
 
 // ID returns the operation ID.
@@ -101,7 +101,7 @@ func (t *ExpansionTerminal) Type() string {
 // HasEnded returns whether the operation has ended.
 func (t *ExpansionTerminal) HasEnded(end bool) bool {
 	if end {
-		// Return false if we just only it to ended.
+		// Return false if we just only set it to ended.
 		return !t.relayOpEnded.SetToIf(false, true)
 	}
 	return t.relayOpEnded.IsSet()

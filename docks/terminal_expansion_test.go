@@ -21,20 +21,66 @@ const defaultTestQueueSize = 200
 func TestExpansion(t *testing.T) {
 	t.Parallel()
 
-	testExpansion(t, "plain-expansion", false, defaultTestQueueSize, defaultTestQueueSize, false)
-	testExpansion(t, "encrypted-expansion", true, defaultTestQueueSize, defaultTestQueueSize, false)
-	testExpansion(t, "parallel-plain-expansion", false, defaultTestQueueSize, defaultTestQueueSize, true)
-	testExpansion(t, "parallel-encrypted-expansion", true, defaultTestQueueSize, defaultTestQueueSize, true)
+	// Test without and with encryption.
+	for _, encrypt := range []bool{false, true} {
+		// Test down/up separately and in parallel.
+		for _, parallel := range []bool{false, true} {
+			// Test with different flow controls.
+			for _, fc := range []struct {
+				flowControl     terminal.FlowControlType
+				flowControlSize uint32
+			}{
+				{
+					flowControl:     terminal.FlowControlNone,
+					flowControlSize: 5,
+				},
+				{
+					flowControl:     terminal.FlowControlDFQ,
+					flowControlSize: defaultTestQueueSize,
+				},
+			} {
+				// Run tests with combined options.
+				testExpansion(
+					t,
+					"expansion-hop-test",
+					&terminal.TerminalOpts{
+						Encrypt:         encrypt,
+						Padding:         8,
+						FlowControl:     fc.flowControl,
+						FlowControlSize: fc.flowControlSize,
+					},
+					defaultTestQueueSize,
+					defaultTestQueueSize,
+					parallel,
+				)
+			}
+		}
+	}
 
-	testExpansion(t, "expansion-stress-test-down", true, defaultTestQueueSize*100, 0, false)
-	testExpansion(t, "expansion-stress-test-up", true, 0, defaultTestQueueSize*100, false)
-	testExpansion(t, "expansion-stress-test-duplex", true, defaultTestQueueSize*100, defaultTestQueueSize*100, false)
+	stressTestOpts := &terminal.TerminalOpts{
+		Encrypt:         true,
+		Padding:         8,
+		FlowControl:     terminal.FlowControlDFQ,
+		FlowControlSize: defaultTestQueueSize,
+	}
+	testExpansion(t, "expansion-stress-test-down", stressTestOpts, defaultTestQueueSize*100, 0, false)
+	testExpansion(t, "expansion-stress-test-up", stressTestOpts, 0, defaultTestQueueSize*100, false)
+	testExpansion(t, "expansion-stress-test-duplex", stressTestOpts, defaultTestQueueSize*100, defaultTestQueueSize*100, false)
 }
 
-func testExpansion(t *testing.T, testID string, encrypting bool, clientCountTo, serverCountTo uint64, inParallel bool) { //nolint:maintidx,thelper
+func testExpansion( //nolint:maintidx,thelper
+	t *testing.T,
+	testID string,
+	terminalOpts *terminal.TerminalOpts,
+	clientCountTo,
+	serverCountTo uint64,
+	inParallel bool,
+) {
+	testID += fmt.Sprintf(":encrypt=%v,flowType=%d,parallel=%v", terminalOpts.Encrypt, terminalOpts.FlowControl, inParallel)
+
 	var identity2, identity3, identity4 *cabin.Identity
 	var connectedHub2, connectedHub3, connectedHub4 *hub.Hub
-	if encrypting {
+	if terminalOpts.Encrypt {
 		identity2, connectedHub2 = getTestIdentity(t)
 		identity3, connectedHub3 = getTestIdentity(t)
 		identity4, connectedHub4 = getTestIdentity(t)
@@ -42,9 +88,9 @@ func testExpansion(t *testing.T, testID string, encrypting bool, clientCountTo, 
 
 	// Build ships and cranes.
 	optimalMinLoadSize = 100
-	ship1to2 := ships.NewTestShip(!encrypting, 100)
-	ship2to3 := ships.NewTestShip(!encrypting, 100)
-	ship3to4 := ships.NewTestShip(!encrypting, 100)
+	ship1to2 := ships.NewTestShip(!terminalOpts.Encrypt, 100)
+	ship2to3 := ships.NewTestShip(!terminalOpts.Encrypt, 100)
+	ship3to4 := ships.NewTestShip(!terminalOpts.Encrypt, 100)
 
 	var crane1, crane2to1, crane2to3, crane3to2, crane3to4, crane4 *Crane
 	var craneWg sync.WaitGroup

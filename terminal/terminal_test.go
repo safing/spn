@@ -10,170 +10,64 @@ import (
 
 	"github.com/safing/portbase/container"
 	"github.com/safing/spn/cabin"
+	"github.com/safing/spn/hub"
 )
 
 func TestTerminals(t *testing.T) {
 	t.Parallel()
-
-	var testQueueSize uint32 = defaultTestQueueSize
-	countToQueueSize := uint64(testQueueSize)
-
-	initMsg := &TerminalOpts{
-		QueueSize: testQueueSize,
-		Padding:   defaultTestPadding,
-	}
-
-	var term1 *TestTerminal
-	var term2 *TestTerminal
-	var initData *container.Container
-	var err *Error
-	term1, initData, err = NewLocalTestTerminal(
-		module.Ctx, 127, "c1", nil, initMsg, createTestForwardingFunc(
-			t, "c1", "c2", func(c *container.Container) *Error {
-				return term2.DuplexFlowQueue.Deliver(c)
-			},
-		),
-	)
-	if err != nil {
-		t.Fatalf("failed to create local terminal: %s", err)
-	}
-	term2, _, err = NewRemoteTestTerminal(
-		module.Ctx, 127, "c2", nil, initData, createTestForwardingFunc(
-			t, "c2", "c1", func(c *container.Container) *Error {
-				return term1.DuplexFlowQueue.Deliver(c)
-			},
-		),
-	)
-	if err != nil {
-		t.Fatalf("failed to create remote terminal: %s", err)
-	}
-
-	// Start testing with counters.
-
-	testTerminalWithCounters(t, term1, term2, &testWithCounterOpts{
-		testName:        "onlyup-flushing-waiting",
-		flush:           true,
-		serverCountTo:   countToQueueSize * 2,
-		waitBetweenMsgs: sendThresholdMaxWait * 2,
-	})
-
-	testTerminalWithCounters(t, term1, term2, &testWithCounterOpts{
-		testName:        "onlyup-waiting",
-		serverCountTo:   10,
-		waitBetweenMsgs: sendThresholdMaxWait * 2,
-	})
-
-	testTerminalWithCounters(t, term1, term2, &testWithCounterOpts{
-		testName:        "onlyup-flushing",
-		flush:           true,
-		serverCountTo:   countToQueueSize * 2,
-		waitBetweenMsgs: time.Millisecond,
-	})
-
-	testTerminalWithCounters(t, term1, term2, &testWithCounterOpts{
-		testName:        "onlyup",
-		serverCountTo:   countToQueueSize * 2,
-		waitBetweenMsgs: time.Millisecond,
-	})
-
-	testTerminalWithCounters(t, term1, term2, &testWithCounterOpts{
-		testName:        "onlydown-flushing-waiting",
-		flush:           true,
-		clientCountTo:   countToQueueSize * 2,
-		waitBetweenMsgs: sendThresholdMaxWait * 2,
-	})
-
-	testTerminalWithCounters(t, term1, term2, &testWithCounterOpts{
-		testName:        "onlydown-waiting",
-		clientCountTo:   10,
-		waitBetweenMsgs: sendThresholdMaxWait * 2,
-	})
-
-	testTerminalWithCounters(t, term1, term2, &testWithCounterOpts{
-		testName:        "onlydown-flushing",
-		flush:           true,
-		clientCountTo:   countToQueueSize * 2,
-		waitBetweenMsgs: time.Millisecond,
-	})
-
-	testTerminalWithCounters(t, term1, term2, &testWithCounterOpts{
-		testName:        "onlydown",
-		clientCountTo:   countToQueueSize * 2,
-		waitBetweenMsgs: time.Millisecond,
-	})
-
-	testTerminalWithCounters(t, term1, term2, &testWithCounterOpts{
-		testName:        "twoway-flushing-waiting",
-		flush:           true,
-		clientCountTo:   countToQueueSize * 2,
-		serverCountTo:   countToQueueSize * 2,
-		waitBetweenMsgs: sendThresholdMaxWait * 2,
-	})
-
-	testTerminalWithCounters(t, term1, term2, &testWithCounterOpts{
-		testName:        "twoway-waiting",
-		flush:           true,
-		clientCountTo:   10,
-		serverCountTo:   10,
-		waitBetweenMsgs: sendThresholdMaxWait * 2,
-	})
-
-	testTerminalWithCounters(t, term1, term2, &testWithCounterOpts{
-		testName:        "twoway-flushing",
-		flush:           true,
-		clientCountTo:   countToQueueSize * 2,
-		serverCountTo:   countToQueueSize * 2,
-		waitBetweenMsgs: time.Millisecond,
-	})
-
-	testTerminalWithCounters(t, term1, term2, &testWithCounterOpts{
-		testName:        "twoway",
-		clientCountTo:   countToQueueSize * 2,
-		serverCountTo:   countToQueueSize * 2,
-		waitBetweenMsgs: time.Millisecond,
-	})
-
-	testTerminalWithCounters(t, term1, term2, &testWithCounterOpts{
-		testName:      "stresstest-down",
-		clientCountTo: countToQueueSize * 1000,
-	})
-
-	testTerminalWithCounters(t, term1, term2, &testWithCounterOpts{
-		testName:      "stresstest-up",
-		serverCountTo: countToQueueSize * 1000,
-	})
-
-	testTerminalWithCounters(t, term1, term2, &testWithCounterOpts{
-		testName:      "stresstest-duplex",
-		clientCountTo: countToQueueSize * 1000,
-		serverCountTo: countToQueueSize * 1000,
-	})
-}
-
-func TestTerminalsWithEncryption(t *testing.T) {
-	t.Parallel()
-
-	var testQueueSize uint32 = defaultTestQueueSize
-	countToQueueSize := uint64(testQueueSize)
-
-	initMsg := &TerminalOpts{
-		QueueSize: testQueueSize,
-		Padding:   8,
-	}
 
 	identity, erro := cabin.CreateIdentity(module.Ctx, "test")
 	if erro != nil {
 		t.Fatalf("failed to create identity: %s", erro)
 	}
 
+	// Test without and with encryption.
+	for _, encrypt := range []bool{false, true} {
+		// Test with different flow controls.
+		for _, fc := range []struct {
+			flowControl     FlowControlType
+			flowControlSize uint32
+		}{
+			{
+				flowControl:     FlowControlNone,
+				flowControlSize: 5,
+			},
+			{
+				flowControl:     FlowControlDFQ,
+				flowControlSize: defaultTestQueueSize,
+			},
+		} {
+			// Run tests with combined options.
+			testTerminals(t, identity, &TerminalOpts{
+				Encrypt:         encrypt,
+				Padding:         defaultTestPadding,
+				FlowControl:     fc.flowControl,
+				FlowControlSize: fc.flowControlSize,
+			})
+		}
+	}
+}
+
+func testTerminals(t *testing.T, identity *cabin.Identity, terminalOpts *TerminalOpts) {
+	t.Helper()
+
+	// Prepare encryption.
+	var dstHub *hub.Hub
+	if terminalOpts.Encrypt {
+		dstHub = identity.Hub
+	} else {
+		identity = nil
+	}
+
+	// Create test terminals.
 	var term1 *TestTerminal
 	var term2 *TestTerminal
 	var initData *container.Container
 	var err *Error
 	term1, initData, err = NewLocalTestTerminal(
-		module.Ctx, 127, "c1", identity.Hub, initMsg, createTestForwardingFunc(
+		module.Ctx, 127, "c1", dstHub, terminalOpts, createTestForwardingFunc(
 			t, "c1", "c2", func(c *container.Container) *Error {
-				return term2.DuplexFlowQueue.Deliver(c)
+				return term2.Deliver(c)
 			},
 		),
 	)
@@ -183,7 +77,7 @@ func TestTerminalsWithEncryption(t *testing.T) {
 	term2, _, err = NewRemoteTestTerminal(
 		module.Ctx, 127, "c2", identity, initData, createTestForwardingFunc(
 			t, "c2", "c1", func(c *container.Container) *Error {
-				return term1.DuplexFlowQueue.Deliver(c)
+				return term1.Deliver(c)
 			},
 		),
 	)
@@ -191,25 +85,122 @@ func TestTerminalsWithEncryption(t *testing.T) {
 		t.Fatalf("failed to create remote terminal: %s", err)
 	}
 
+	// Start testing with counters.
+	countToQueueSize := uint64(terminalOpts.FlowControlSize)
+	optionsSuffix := fmt.Sprintf("encrypt=%v,flowType=%d", terminalOpts.Encrypt, terminalOpts.FlowControl)
+
 	testTerminalWithCounters(t, term1, term2, &testWithCounterOpts{
-		testName:        "twoway-encrypting",
-		clientCountTo:   countToQueueSize * 20,
-		serverCountTo:   countToQueueSize * 20,
+		testName:        "onlyup-flushing-waiting:" + optionsSuffix,
+		flush:           true,
+		serverCountTo:   countToQueueSize * 2,
+		waitBetweenMsgs: sendThresholdMaxWait * 2,
+	})
+
+	testTerminalWithCounters(t, term1, term2, &testWithCounterOpts{
+		testName:        "onlyup-waiting:" + optionsSuffix,
+		serverCountTo:   10,
+		waitBetweenMsgs: sendThresholdMaxWait * 2,
+	})
+
+	testTerminalWithCounters(t, term1, term2, &testWithCounterOpts{
+		testName:        "onlyup-flushing:" + optionsSuffix,
+		flush:           true,
+		serverCountTo:   countToQueueSize * 2,
 		waitBetweenMsgs: time.Millisecond,
+	})
+
+	testTerminalWithCounters(t, term1, term2, &testWithCounterOpts{
+		testName:        "onlyup:" + optionsSuffix,
+		serverCountTo:   countToQueueSize * 2,
+		waitBetweenMsgs: time.Millisecond,
+	})
+
+	testTerminalWithCounters(t, term1, term2, &testWithCounterOpts{
+		testName:        "onlydown-flushing-waiting:" + optionsSuffix,
+		flush:           true,
+		clientCountTo:   countToQueueSize * 2,
+		waitBetweenMsgs: sendThresholdMaxWait * 2,
+	})
+
+	testTerminalWithCounters(t, term1, term2, &testWithCounterOpts{
+		testName:        "onlydown-waiting:" + optionsSuffix,
+		clientCountTo:   10,
+		waitBetweenMsgs: sendThresholdMaxWait * 2,
+	})
+
+	testTerminalWithCounters(t, term1, term2, &testWithCounterOpts{
+		testName:        "onlydown-flushing:" + optionsSuffix,
+		flush:           true,
+		clientCountTo:   countToQueueSize * 2,
+		waitBetweenMsgs: time.Millisecond,
+	})
+
+	testTerminalWithCounters(t, term1, term2, &testWithCounterOpts{
+		testName:        "onlydown:" + optionsSuffix,
+		clientCountTo:   countToQueueSize * 2,
+		waitBetweenMsgs: time.Millisecond,
+	})
+
+	testTerminalWithCounters(t, term1, term2, &testWithCounterOpts{
+		testName:        "twoway-flushing-waiting:" + optionsSuffix,
+		flush:           true,
+		clientCountTo:   countToQueueSize * 2,
+		serverCountTo:   countToQueueSize * 2,
+		waitBetweenMsgs: sendThresholdMaxWait * 2,
+	})
+
+	testTerminalWithCounters(t, term1, term2, &testWithCounterOpts{
+		testName:        "twoway-waiting:" + optionsSuffix,
+		flush:           true,
+		clientCountTo:   10,
+		serverCountTo:   10,
+		waitBetweenMsgs: sendThresholdMaxWait * 2,
+	})
+
+	testTerminalWithCounters(t, term1, term2, &testWithCounterOpts{
+		testName:        "twoway-flushing:" + optionsSuffix,
+		flush:           true,
+		clientCountTo:   countToQueueSize * 2,
+		serverCountTo:   countToQueueSize * 2,
+		waitBetweenMsgs: time.Millisecond,
+	})
+
+	testTerminalWithCounters(t, term1, term2, &testWithCounterOpts{
+		testName:        "twoway:" + optionsSuffix,
+		clientCountTo:   countToQueueSize * 2,
+		serverCountTo:   countToQueueSize * 2,
+		waitBetweenMsgs: time.Millisecond,
+	})
+
+	testTerminalWithCounters(t, term1, term2, &testWithCounterOpts{
+		testName:      "stresstest-down:" + optionsSuffix,
+		clientCountTo: countToQueueSize * 1000,
+	})
+
+	testTerminalWithCounters(t, term1, term2, &testWithCounterOpts{
+		testName:      "stresstest-up:" + optionsSuffix,
+		serverCountTo: countToQueueSize * 1000,
+	})
+
+	testTerminalWithCounters(t, term1, term2, &testWithCounterOpts{
+		testName:      "stresstest-duplex:" + optionsSuffix,
+		clientCountTo: countToQueueSize * 1000,
+		serverCountTo: countToQueueSize * 1000,
 	})
 }
 
-func createTestForwardingFunc(t *testing.T, srcName, dstName string, deliverFunc func(*container.Container) *Error) func(*container.Container) {
+func createTestForwardingFunc(t *testing.T, srcName, dstName string, deliverFunc func(*container.Container) *Error) func(*container.Container) *Error {
 	t.Helper()
 
-	return func(c *container.Container) {
+	return func(c *container.Container) *Error {
 		// Fast track nil containers.
 		if c == nil {
 			dErr := deliverFunc(c)
 			if dErr != nil {
 				t.Errorf("%s>%s: failed to deliver nil msg to terminal: %s", srcName, dstName, dErr)
+				return dErr.With("failed to deliver nil msg to terminal")
 			}
-			return
+			return nil
 		}
 
 		// Log messages.
@@ -221,7 +212,10 @@ func createTestForwardingFunc(t *testing.T, srcName, dstName string, deliverFunc
 		dErr := deliverFunc(c)
 		if dErr != nil {
 			t.Errorf("%s>%s: failed to deliver to terminal: %s", srcName, dstName, dErr)
+			return dErr.With("failed to deliver to terminal")
 		}
+
+		return nil
 	}
 }
 
@@ -238,11 +232,12 @@ func testTerminalWithCounters(t *testing.T, term1, term2 *TestTerminal, opts *te
 
 	// Wait async for test to complete, print stack after timeout.
 	finished := make(chan struct{})
+	maxTestDuration := 60 * time.Second
 	go func() {
 		select {
 		case <-finished:
-		case <-time.After(60 * time.Second):
-			fmt.Printf("terminal test %s is taking too long, print stack:\n", opts.testName)
+		case <-time.After(maxTestDuration):
+			fmt.Printf("terminal test %s is taking more than %s, printing stack:\n", opts.testName, maxTestDuration)
 			_ = pprof.Lookup("goroutine").WriteTo(os.Stdout, 1)
 			os.Exit(1)
 		}
@@ -275,23 +270,32 @@ func testTerminalWithCounters(t *testing.T, term1, term2 *TestTerminal, opts *te
 	printCTStats(t, opts.testName, "term1", term1)
 	printCTStats(t, opts.testName, "term2", term2)
 
-	// Check if stats match.
-	if atomic.LoadInt32(term1.DuplexFlowQueue.sendSpace) != atomic.LoadInt32(term2.DuplexFlowQueue.reportedSpace) ||
-		atomic.LoadInt32(term2.DuplexFlowQueue.sendSpace) != atomic.LoadInt32(term1.DuplexFlowQueue.reportedSpace) {
+	// Check if stats match, if DFQ is used on both sides.
+	dfq1, ok1 := term1.flowControl.(*DuplexFlowQueue)
+	dfq2, ok2 := term2.flowControl.(*DuplexFlowQueue)
+	if ok1 && ok2 &&
+		(atomic.LoadInt32(dfq1.sendSpace) != atomic.LoadInt32(dfq2.reportedSpace) ||
+			atomic.LoadInt32(dfq2.sendSpace) != atomic.LoadInt32(dfq1.reportedSpace)) {
 		t.Fatalf("terminal test %s has non-matching space counters", opts.testName)
 	}
 }
 
 func printCTStats(t *testing.T, testName, name string, term *TestTerminal) {
 	t.Helper()
+
+	dfq, ok := term.flowControl.(*DuplexFlowQueue)
+	if !ok {
+		return
+	}
+
 	t.Logf(
 		"%s: %s: sq=%d rq=%d sends=%d reps=%d opq=%d",
 		testName,
 		name,
-		len(term.DuplexFlowQueue.sendQueue),
-		len(term.DuplexFlowQueue.recvQueue),
-		atomic.LoadInt32(term.DuplexFlowQueue.sendSpace),
-		atomic.LoadInt32(term.DuplexFlowQueue.reportedSpace),
+		len(dfq.sendQueue),
+		len(dfq.recvQueue),
+		atomic.LoadInt32(dfq.sendSpace),
+		atomic.LoadInt32(dfq.reportedSpace),
 		len(term.opMsgQueue),
 	)
 }

@@ -13,13 +13,12 @@ import (
 const (
 	defaultTestQueueSize = 16
 	defaultTestPadding   = 8
-	logTestCraneMsgs     = false
+	logTestCraneMsgs     = true
 )
 
 // TestTerminal is a terminal for running tests.
 type TestTerminal struct {
 	*TerminalBase
-	*DuplexFlowQueue
 }
 
 // NewLocalTestTerminal returns a new local test terminal.
@@ -29,15 +28,18 @@ func NewLocalTestTerminal(
 	parentID string,
 	remoteHub *hub.Hub,
 	initMsg *TerminalOpts,
-	submitUpstream func(*container.Container),
+	submitUpstream func(*container.Container) *Error,
 ) (*TestTerminal, *container.Container, *Error) {
 	// Create Terminal Base.
-	t, initData, err := NewLocalBaseTerminal(ctx, id, parentID, remoteHub, initMsg)
+	t, initData, err := NewLocalBaseTerminal(ctx, id, parentID, remoteHub, initMsg, submitUpstream, false)
 	if err != nil {
 		return nil, nil, err
 	}
+	// Disable adding ID/Type to messages, as test terminals are connected directly.
+	t.addTerminalIDType = false
+	t.StartWorkers(module, "test terminal")
 
-	return initTestTerminal(t, initMsg, submitUpstream), initData, nil
+	return &TestTerminal{t}, initData, nil
 }
 
 // NewRemoteTestTerminal returns a new remote test terminal.
@@ -47,38 +49,16 @@ func NewRemoteTestTerminal(
 	parentID string,
 	identity *cabin.Identity,
 	initData *container.Container,
-	submitUpstream func(*container.Container),
+	submitUpstream func(*container.Container) *Error,
 ) (*TestTerminal, *TerminalOpts, *Error) {
 	// Create Terminal Base.
-	t, initMsg, err := NewRemoteBaseTerminal(ctx, id, parentID, identity, initData)
+	t, initMsg, err := NewRemoteBaseTerminal(ctx, id, parentID, identity, initData, submitUpstream, false)
 	if err != nil {
 		return nil, nil, err
 	}
+	t.StartWorkers(module, "test terminal")
 
-	return initTestTerminal(t, initMsg, submitUpstream), initMsg, nil
-}
-
-func initTestTerminal(
-	t *TerminalBase,
-	initMsg *TerminalOpts,
-	submitUpstream func(*container.Container),
-) *TestTerminal {
-	// Create Flow Queue.
-	dfq := NewDuplexFlowQueue(t, initMsg.QueueSize, submitUpstream)
-
-	// Create Crane Terminal and assign it as the extended Terminal.
-	ct := &TestTerminal{
-		TerminalBase:    t,
-		DuplexFlowQueue: dfq,
-	}
-	t.SetTerminalExtension(ct)
-
-	// Start workers.
-	module.StartWorker("test terminal handler", ct.Handler)
-	module.StartWorker("test terminal sender", ct.Sender)
-	module.StartWorker("test terminal flow queue", ct.FlowHandler)
-
-	return ct
+	return &TestTerminal{t}, initMsg, nil
 }
 
 type delayedMsg struct {
@@ -90,21 +70,24 @@ func createDelayingTestForwardingFunc(
 	srcName,
 	dstName string,
 	delay time.Duration,
+	delayQueueSize int,
 	deliverFunc func(*container.Container) *Error,
-) func(*container.Container) {
+) func(*container.Container) *Error {
 	// Return simple forward func if no delay is given.
 	if delay == 0 {
-		return func(c *container.Container) {
+		return func(c *container.Container) *Error {
 			// Deliver to other terminal.
 			dErr := deliverFunc(c)
 			if dErr != nil {
 				log.Errorf("%s>%s: failed to deliver to terminal: %s", srcName, dstName, dErr)
+				return dErr
 			}
+			return nil
 		}
 	}
 
 	// If there is delay, create a delaying channel and handler.
-	delayedMsgs := make(chan *delayedMsg, 1000)
+	delayedMsgs := make(chan *delayedMsg, delayQueueSize)
 	go func() {
 		for {
 			// Read from chan
@@ -127,19 +110,14 @@ func createDelayingTestForwardingFunc(
 		}
 	}()
 
-	return func(c *container.Container) {
+	return func(c *container.Container) *Error {
 		// Add msg to delaying msg channel.
 		delayedMsgs <- &delayedMsg{
 			data:       c,
 			delayUntil: time.Now().Add(delay),
 		}
+		return nil
 	}
-}
-
-// Flush flushes the terminal base and flow queue.
-func (t *TestTerminal) Flush() {
-	t.TerminalBase.Flush()
-	t.DuplexFlowQueue.Flush()
 }
 
 // Stop stops the terminal.
@@ -160,11 +138,12 @@ func (t *TestTerminal) Stop(err *Error) {
 }
 
 // NewSimpleTestTerminalPair provides a simple conntected terminal pair for tests.
-func NewSimpleTestTerminalPair(delay time.Duration, opts *TerminalOpts) (a, b *TestTerminal, err error) {
+func NewSimpleTestTerminalPair(delay time.Duration, delayQueueSize int, opts *TerminalOpts) (a, b *TestTerminal, err error) {
 	if opts == nil {
 		opts = &TerminalOpts{
-			QueueSize: defaultTestQueueSize,
-			Padding:   defaultTestPadding,
+			Padding:         defaultTestPadding,
+			FlowControl:     FlowControlDFQ,
+			FlowControlSize: defaultTestQueueSize,
 		}
 	}
 
@@ -172,8 +151,8 @@ func NewSimpleTestTerminalPair(delay time.Duration, opts *TerminalOpts) (a, b *T
 	var tErr *Error
 	a, initData, tErr = NewLocalTestTerminal(
 		module.Ctx, 127, "a", nil, opts, createDelayingTestForwardingFunc(
-			"a", "b", delay, func(c *container.Container) *Error {
-				return b.DuplexFlowQueue.Deliver(c)
+			"a", "b", delay, delayQueueSize, func(c *container.Container) *Error {
+				return b.Deliver(c)
 			},
 		),
 	)
@@ -182,8 +161,8 @@ func NewSimpleTestTerminalPair(delay time.Duration, opts *TerminalOpts) (a, b *T
 	}
 	b, _, tErr = NewRemoteTestTerminal(
 		module.Ctx, 127, "b", nil, initData, createDelayingTestForwardingFunc(
-			"b", "a", delay, func(c *container.Container) *Error {
-				return a.DuplexFlowQueue.Deliver(c)
+			"b", "a", delay, delayQueueSize, func(c *container.Container) *Error {
+				return a.Deliver(c)
 			},
 		),
 	)

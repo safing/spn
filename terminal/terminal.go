@@ -12,13 +12,14 @@ import (
 	"github.com/safing/jess"
 	"github.com/safing/portbase/container"
 	"github.com/safing/portbase/log"
+	"github.com/safing/portbase/modules"
 	"github.com/safing/portbase/rng"
 	"github.com/safing/spn/cabin"
 )
 
 const timeoutTicks = 5
 
-// TerminalInterface is a generic interface to a terminal.
+// TerminalInterface is the generic interface for upstream implementations.
 type TerminalInterface interface { //nolint:golint // Being explicit is helpful here.
 	ID() uint32
 	Ctx() context.Context
@@ -28,14 +29,11 @@ type TerminalInterface interface { //nolint:golint // Being explicit is helpful 
 	Flush()
 }
 
-// TerminalExtension is a generic interface to a terminal extension.
+// TerminalExtension is the interface that extended terminal implementations
+// need to adhere to.
 type TerminalExtension interface { //nolint:golint // Being explicit is helpful here.
 	OpTerminal
 
-	ReadyToSend() <-chan struct{}
-	Send(c *container.Container) *Error
-	SendRaw(c *container.Container) *Error
-	Receive() <-chan *container.Container
 	Abandon(err *Error)
 }
 
@@ -47,12 +45,26 @@ type TerminalBase struct { //nolint:golint,maligned // Being explicit is helpful
 
 	// id is the underlying id of the Terminal.
 	id uint32
-	// id of the parent component.
+	// parentID is the id of the parent component.
 	parentID string
 
+	// submitUpstream is used to submit messages to upstream.
+	submitUpstream func(c *container.Container) *Error
+	// addTerminalIDType specifies if the terminal should add its own terminal ID
+	// and message type for messages submitted to upstream.
+	addTerminalIDType bool
 	// ext holds the extended Terminal to supply the communication interface and
 	// override behavior.
 	ext TerminalExtension
+	// flowControl holds the flow control system.
+	flowControl FlowControl
+
+	// deliverProxy is populated with the configured deliver function
+	deliverProxy func(c *container.Container) *Error
+	// recvProxy is populated with the configured recv function
+	recvProxy func() <-chan *container.Container
+	// sendProxy is populated with the configured send function
+	sendProxy func(c *container.Container) *Error
 
 	// ctx is the context of the Terminal.
 	ctx context.Context
@@ -106,28 +118,75 @@ func createTerminalBase(
 	parentID string,
 	remote bool,
 	initMsg *TerminalOpts,
-) *TerminalBase {
+	submitUpstream func(c *container.Container) *Error,
+	addTerminalIDType bool,
+) (*TerminalBase, *Error) {
 	t := &TerminalBase{
-		id:              id,
-		parentID:        parentID,
-		opMsgQueue:      make(chan *container.Container),
-		waitForFlush:    abool.New(),
-		flush:           make(chan func()),
-		idleTicker:      time.NewTicker(time.Minute),
-		idleCounter:     new(uint32),
-		encryptionReady: make(chan struct{}),
-		operations:      make(map[uint32]Operation),
-		nextOpID:        new(uint32),
-		opts:            initMsg,
-		Abandoning:      abool.New(),
+		id:                id,
+		parentID:          parentID,
+		submitUpstream:    submitUpstream,
+		addTerminalIDType: addTerminalIDType,
+		opMsgQueue:        make(chan *container.Container),
+		waitForFlush:      abool.New(),
+		flush:             make(chan func()),
+		idleTicker:        time.NewTicker(time.Minute),
+		idleCounter:       new(uint32),
+		encryptionReady:   make(chan struct{}),
+		operations:        make(map[uint32]Operation),
+		nextOpID:          new(uint32),
+		opts:              initMsg,
+		Abandoning:        abool.New(),
 	}
-	t.idleTicker.Stop() // Stop ticking to disable timeout.
+	// Proxy the submit upstream call and shutdown the terminal in case of an error.
+	originalSubmitUpstream := t.submitUpstream
+	t.submitUpstream = func(c *container.Container) *Error {
+		// Make data message.
+		if t.addTerminalIDType {
+			MakeMsg(c, t.id, MsgTypeData)
+		}
+		// Submit to original upstream.
+		err := originalSubmitUpstream(c)
+		if err != nil {
+			t.Abandon(err.Wrap("failed to submit to upstream"))
+		}
+		return err
+	}
+	// Set self as extension, as it is optional.
+	t.ext = t
+	// Stop ticking to disable timeout.
+	t.idleTicker.Stop()
+	// Shift next operation ID if remote.
 	if remote {
 		atomic.AddUint32(t.nextOpID, 4)
 	}
-
+	// Create context.
 	t.ctx, t.cancelCtx = context.WithCancel(ctx)
-	return t
+
+	// Check flow control configuration.
+	// Check boundaries.
+	if initMsg.FlowControlSize <= 0 || initMsg.FlowControlSize > MaxQueueSize {
+		return nil, ErrInvalidOptions.With("invalid flow control size of %d", initMsg.FlowControlSize)
+	}
+
+	// Create flow control.
+	switch initMsg.FlowControl {
+	case FlowControlDFQ:
+		t.flowControl = NewDuplexFlowQueue(t.Ctx(), initMsg.FlowControlSize, t.submitUpstream)
+		t.deliverProxy = t.flowControl.Deliver
+		t.recvProxy = t.flowControl.Receive
+		t.sendProxy = t.flowControl.Send
+	case FlowControlNone:
+		deliver := make(chan *container.Container, initMsg.FlowControlSize)
+		t.deliverProxy = MakeDirectDeliveryDeliverFunc(ctx, deliver)
+		t.recvProxy = MakeDirectDeliveryRecvFunc(deliver)
+		t.sendProxy = t.submitUpstream
+	case FlowControlDefault:
+		fallthrough
+	default:
+		return nil, ErrInternalError.With("unknown flow control type %d", initMsg.FlowControl)
+	}
+
+	return t, nil
 }
 
 // ID returns the Terminal's ID.
@@ -155,12 +214,27 @@ func (t *TerminalBase) SetTimeout(d time.Duration) {
 // Deliver on TerminalBase only exists to conform to the interface. It must be
 // overridden by an actual implementation.
 func (t *TerminalBase) Deliver(c *container.Container) *Error {
-	return ErrIncorrectUsage
+	return t.deliverProxy(c)
 }
 
 // Abandon abandons the Terminal with the given error.
 func (t *TerminalBase) Abandon(err *Error) {
-	panic("incorrect terminal base inheritance")
+	if t.Abandoning.SetToIf(false, true) {
+		// Send stop msg and end all operations.
+		t.StartAbandonProcedure(err, err.IsExternal(), nil)
+	}
+}
+
+// StartWorkers starts the necessary workers to operate the Terminal.
+func (t *TerminalBase) StartWorkers(m *modules.Module, terminalName string) {
+	// Start terminal workers.
+	m.StartWorker(terminalName+" handler", t.Handler)
+	m.StartWorker(terminalName+" sender", t.Sender)
+
+	// Start any flow control workers.
+	if t.flowControl != nil {
+		t.flowControl.StartWorkers(m, terminalName)
+	}
 }
 
 const (
@@ -190,7 +264,7 @@ func (t *TerminalBase) Handler(_ context.Context) error {
 				atomic.StoreUint32(t.idleCounter, 0)
 			}
 
-		case c := <-t.ext.Receive():
+		case c := <-t.recvProxy():
 			if c.HoldsData() {
 				err := t.handleReceive(c)
 				if err != nil && !errors.Is(err, ErrStopping) {
@@ -242,10 +316,17 @@ func (t *TerminalBase) Sender(_ context.Context) error {
 
 	// Only wait for sending slot when the current msg buffer is ready to be sent.
 	readyToSend := func() <-chan struct{} {
-		if sendMsgs {
-			return t.ext.ReadyToSend()
+		switch {
+		case !sendMsgs:
+			// Wait until there is something to send.
+			return nil
+		case t.flowControl != nil:
+			// Let flow control decide when we are ready.
+			return t.flowControl.ReadyToSend()
+		default:
+			// Always ready.
+			return ready
 		}
-		return nil
 	}
 
 	// Calculate current max wait time to send the msg buffer.
@@ -328,12 +409,9 @@ handling:
 			msgBufferLimitReached = false
 
 			// Send if there is anything to send.
+			var err *Error
 			if msgBufferLen > 0 {
-				err := t.sendOpMsgs(msgBuffer)
-				if err != nil {
-					t.ext.Abandon(err.With("failed to send"))
-					continue handling
-				}
+				err = t.sendOpMsgs(msgBuffer)
 			}
 
 			// Reset buffer.
@@ -350,6 +428,12 @@ handling:
 			if flushFinished != nil {
 				flushFinished()
 				flushFinished = nil
+			}
+
+			// Handle error after state updates.
+			if err != nil {
+				t.ext.Abandon(err.With("failed to send"))
+				continue handling
 			}
 		}
 	}
@@ -378,6 +462,11 @@ func (t *TerminalBase) Flush() {
 	select {
 	case <-wait:
 	case <-t.Ctx().Done():
+	}
+
+	// Flush flow control, if configured.
+	if t.flowControl != nil {
+		t.flowControl.Flush()
 	}
 }
 
@@ -476,7 +565,7 @@ func (t *TerminalBase) handleReceive(c *container.Container) *Error {
 		// Get op msg data.
 		msgData, err := c.GetAsContainer(int(msgLength))
 		if err != nil {
-			return ErrMalformedData.With("failed to get operation msg data (%d bytes): %w", msgLength, err)
+			return ErrMalformedData.With("failed to get operation msg data (%d/%d bytes): %w", c.Length(), msgLength, err)
 		}
 
 		// Handle op msg.
@@ -579,7 +668,7 @@ func (t *TerminalBase) sendOpMsgs(c *container.Container) *Error {
 	}
 
 	// Send data.
-	return t.ext.Send(c)
+	return t.sendProxy(c)
 }
 
 func (t *TerminalBase) addToOpMsgSendBuffer(
@@ -642,7 +731,8 @@ func (t *TerminalBase) handleAbandonProcedure(err *Error, sendError bool, finali
 		stopMsg := container.New(err.Pack())
 		MakeMsg(stopMsg, t.id, MsgTypeStop)
 
-		tErr := t.ext.SendRaw(stopMsg)
+		// Directly submit to upstream.
+		tErr := t.submitUpstream(stopMsg)
 		if tErr != nil {
 			log.Warningf("spn/terminal: terminal %s failed to send stop msg: %s", t.ext.FmtID(), tErr)
 		}
@@ -654,7 +744,7 @@ func (t *TerminalBase) handleAbandonProcedure(err *Error, sendError bool, finali
 	}
 
 	// Flush all messages before stopping.
-	t.ext.Flush()
+	t.Flush()
 
 	// Stop all other connected workers.
 	t.cancelCtx()
@@ -671,4 +761,30 @@ func (t *TerminalBase) allOps() []Operation {
 	}
 
 	return ops
+}
+
+// MakeDirectDeliveryDeliverFunc creates a submit upstream function with the
+// given delivery channel.
+func MakeDirectDeliveryDeliverFunc(
+	ctx context.Context,
+	deliver chan *container.Container,
+) func(c *container.Container) *Error {
+	return func(c *container.Container) *Error {
+		select {
+		case deliver <- c:
+			return nil
+		case <-ctx.Done():
+			return ErrStopping
+		}
+	}
+}
+
+// MakeDirectDeliveryRecvFunc makes a delivery receive function with the given
+// delivery channel.
+func MakeDirectDeliveryRecvFunc(
+	deliver chan *container.Container,
+) func() <-chan *container.Container {
+	return func() <-chan *container.Container {
+		return deliver
+	}
 }

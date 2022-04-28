@@ -2,13 +2,13 @@ package docks
 
 import (
 	"github.com/safing/portbase/container"
+	"github.com/safing/portbase/log"
 	"github.com/safing/spn/terminal"
 )
 
 // CraneControllerTerminal is a terminal for the crane itself.
 type CraneControllerTerminal struct {
 	*terminal.TerminalBase
-	*terminal.DuplexFlowQueue
 
 	Crane *Crane
 }
@@ -18,8 +18,19 @@ func NewLocalCraneControllerTerminal(
 	crane *Crane,
 	initMsg *terminal.TerminalOpts,
 ) (*CraneControllerTerminal, *container.Container, *terminal.Error) {
+	// Remove unnecessary options from the crane controller.
+	initMsg.Padding = 0
+
 	// Create Terminal Base.
-	t, initData, err := terminal.NewLocalBaseTerminal(crane.ctx, 0, crane.ID, nil, initMsg)
+	t, initData, err := terminal.NewLocalBaseTerminal(
+		crane.ctx,
+		0,
+		crane.ID,
+		nil,
+		initMsg,
+		crane.submitImportantTerminalMsg,
+		true,
+	)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -33,7 +44,15 @@ func NewRemoteCraneControllerTerminal(
 	initData *container.Container,
 ) (*CraneControllerTerminal, *terminal.TerminalOpts, *terminal.Error) {
 	// Create Terminal Base.
-	t, initMsg, err := terminal.NewRemoteBaseTerminal(crane.ctx, 0, crane.ID, nil, initData)
+	t, initMsg, err := terminal.NewRemoteBaseTerminal(
+		crane.ctx,
+		0,
+		crane.ID,
+		nil,
+		initData,
+		crane.submitImportantTerminalMsg,
+		true,
+	)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -46,14 +65,10 @@ func initCraneController(
 	t *terminal.TerminalBase,
 	initMsg *terminal.TerminalOpts,
 ) *CraneControllerTerminal {
-	// Create Flow Queue.
-	dfq := terminal.NewDuplexFlowQueue(t, initMsg.QueueSize, t.SubmitAsDataMsg(crane.submitImportantTerminalMsg))
-
 	// Create Crane Terminal and assign it as the extended Terminal.
 	cct := &CraneControllerTerminal{
-		TerminalBase:    t,
-		DuplexFlowQueue: dfq,
-		Crane:           crane,
+		TerminalBase: t,
+		Crane:        crane,
 	}
 	t.SetTerminalExtension(cct)
 
@@ -64,29 +79,13 @@ func initCraneController(
 	// Copy the options to the crane itself.
 	crane.opts = *initMsg
 
-	// Remove unnecessary options from the crane controller.
-	initMsg.Padding = 0
-
 	// Grant crane controller permission.
 	t.GrantPermission(terminal.IsCraneController)
 
 	// Start workers.
-	module.StartWorker("crane controller terminal handler", cct.Handler)
-	module.StartWorker("crane controller terminal sender", cct.Sender)
-	module.StartWorker("crane controller terminal flow queue", cct.FlowHandler)
+	t.StartWorkers(module, "crane controller terminal")
 
 	return cct
-}
-
-// Deliver delivers a message to the crane controller.
-func (controller *CraneControllerTerminal) Deliver(c *container.Container) *terminal.Error {
-	return controller.DuplexFlowQueue.Deliver(c)
-}
-
-// Flush flushes the crane controller's terminal and flow queue.
-func (controller *CraneControllerTerminal) Flush() {
-	controller.TerminalBase.Flush()
-	controller.DuplexFlowQueue.Flush()
 }
 
 // Abandon abandons the crane controller.
@@ -99,7 +98,10 @@ func (controller *CraneControllerTerminal) Abandon(err *terminal.Error) {
 			if !err.IsExternal() {
 				stopMsg := container.New(err.Pack())
 				terminal.MakeMsg(stopMsg, controller.ID(), terminal.MsgTypeStop)
-				controller.Crane.submitImportantTerminalMsg(stopMsg)
+				err := controller.Crane.submitImportantTerminalMsg(stopMsg)
+				if err != nil {
+					log.Warningf("spn/docks: %s controller failed to submit stop msg: %s", controller.Crane, err)
+				}
 			}
 
 			// Abandon terminal.

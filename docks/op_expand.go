@@ -21,9 +21,7 @@ var activeExpandOps = new(int64)
 // ExpandOp is used to expand to another Hub.
 type ExpandOp struct {
 	terminal.OpBase
-
 	opTerminal terminal.OpTerminal
-	*terminal.DuplexFlowQueue
 
 	// ctx is the context of the Terminal.
 	ctx context.Context
@@ -34,17 +32,34 @@ type ExpandOp struct {
 	ended       *abool.AtomicBool
 
 	relayTerminal *ExpansionRelayTerminal
+
+	// flowControl holds the flow control system.
+	flowControl terminal.FlowControl
+	// deliverProxy is populated with the configured deliver function
+	deliverProxy func(c *container.Container) *terminal.Error
+	// recvProxy is populated with the configured recv function
+	recvProxy func() <-chan *container.Container
+	// sendProxy is populated with the configured send function
+	sendProxy func(c *container.Container) *terminal.Error
 }
 
 // ExpansionRelayTerminal is a relay used for expansion.
 type ExpansionRelayTerminal struct {
-	*terminal.DuplexFlowQueue
 	op *ExpandOp
 
 	id    uint32
 	crane *Crane
 
 	abandoned *abool.AtomicBool
+
+	// flowControl holds the flow control system.
+	flowControl terminal.FlowControl
+	// deliverProxy is populated with the configured deliver function
+	deliverProxy func(c *container.Container) *terminal.Error
+	// recvProxy is populated with the configured recv function
+	recvProxy func() <-chan *container.Container
+	// sendProxy is populated with the configured send function
+	sendProxy func(c *container.Container) *terminal.Error
 }
 
 // Type returns the type ID.
@@ -65,6 +80,30 @@ func (op *ExpandOp) Ctx() context.Context {
 // Ctx returns the relay terminal context.
 func (t *ExpansionRelayTerminal) Ctx() context.Context {
 	return t.op.ctx
+}
+
+// Deliver delivers a message to the relay operation.
+func (op *ExpandOp) Deliver(c *container.Container) *terminal.Error {
+	return op.deliverProxy(c)
+}
+
+// Deliver delivers a message to the relay terminal.
+func (t *ExpansionRelayTerminal) Deliver(c *container.Container) *terminal.Error {
+	return t.deliverProxy(c)
+}
+
+// Flush writes all data in the queues.
+func (op *ExpandOp) Flush() {
+	if op.flowControl != nil {
+		op.flowControl.Flush()
+	}
+}
+
+// Flush writes all data in the queues.
+func (t *ExpansionRelayTerminal) Flush() {
+	if t.flowControl != nil {
+		t.flowControl.Flush()
+	}
 }
 
 func init() {
@@ -119,9 +158,36 @@ func expand(t terminal.OpTerminal, opID uint32, data *container.Container) (term
 	op.OpBase.SetID(opID)
 	op.ctx, op.cancelCtx = context.WithCancel(context.Background())
 	op.relayTerminal.op = op
-	// Create flow queues.
-	op.DuplexFlowQueue = terminal.NewDuplexFlowQueue(op, opts.QueueSize, op.submitBackstream)
-	op.relayTerminal.DuplexFlowQueue = terminal.NewDuplexFlowQueue(op, opts.QueueSize, op.submitForwardstream)
+
+	// Create flow control.
+	switch opts.FlowControl {
+	case terminal.FlowControlDFQ:
+		// Operation
+		op.flowControl = terminal.NewDuplexFlowQueue(op.ctx, opts.FlowControlSize, op.submitBackstream)
+		op.deliverProxy = op.flowControl.Deliver
+		op.recvProxy = op.flowControl.Receive
+		op.sendProxy = op.flowControl.Send
+		// Relay Terminal
+		op.relayTerminal.flowControl = terminal.NewDuplexFlowQueue(op.ctx, opts.FlowControlSize, op.submitForwardstream)
+		op.relayTerminal.deliverProxy = op.relayTerminal.flowControl.Deliver
+		op.relayTerminal.recvProxy = op.relayTerminal.flowControl.Receive
+		op.relayTerminal.sendProxy = op.relayTerminal.flowControl.Send
+	case terminal.FlowControlNone:
+		// Operation
+		deliverToOp := make(chan *container.Container, opts.FlowControlSize)
+		op.deliverProxy = terminal.MakeDirectDeliveryDeliverFunc(op.ctx, deliverToOp)
+		op.recvProxy = terminal.MakeDirectDeliveryRecvFunc(deliverToOp)
+		op.sendProxy = op.submitBackstream
+		// Relay Terminal
+		deliverToRelay := make(chan *container.Container, opts.FlowControlSize)
+		op.relayTerminal.deliverProxy = terminal.MakeDirectDeliveryDeliverFunc(op.ctx, deliverToRelay)
+		op.relayTerminal.recvProxy = terminal.MakeDirectDeliveryRecvFunc(deliverToRelay)
+		op.relayTerminal.sendProxy = op.submitForwardstream
+	case terminal.FlowControlDefault:
+		fallthrough
+	default:
+		return nil, terminal.ErrInternalError.With("unknown flow control type %d", opts.FlowControl)
+	}
 
 	// Establish terminal on destination.
 	newInitData, tErr := opts.Pack()
@@ -134,24 +200,33 @@ func expand(t terminal.OpTerminal, opID uint32, data *container.Container) (term
 	}
 
 	// Start workers.
-	module.StartWorker("expand op flow", op.DuplexFlowQueue.FlowHandler)
-	module.StartWorker("expand op terminal flow", op.relayTerminal.DuplexFlowQueue.FlowHandler)
 	module.StartWorker("expand op forward relay", op.forwardHandler)
 	module.StartWorker("expand op backward relay", op.backwardHandler)
+	if op.flowControl != nil {
+		op.flowControl.StartWorkers(module, "expand op")
+	}
+	if op.relayTerminal.flowControl != nil {
+		op.relayTerminal.flowControl.StartWorkers(module, "expand op terminal")
+	}
 
 	return op, nil
 }
 
-func (op *ExpandOp) submitForwardstream(c *container.Container) {
+func (op *ExpandOp) submitForwardstream(c *container.Container) *terminal.Error {
 	terminal.MakeMsg(c, op.relayTerminal.id, terminal.MsgTypeData)
-	op.relayTerminal.crane.submitTerminalMsg(c)
+	err := op.relayTerminal.crane.submitTerminalMsg(c)
+	if err != nil {
+		op.opTerminal.OpEnd(op, err.Wrap("failed to submit forward from relay op"))
+	}
+	return err
 }
 
-func (op *ExpandOp) submitBackstream(c *container.Container) {
+func (op *ExpandOp) submitBackstream(c *container.Container) *terminal.Error {
 	err := op.opTerminal.OpSend(op, c)
 	if err != nil {
-		op.opTerminal.OpEnd(op, err.Wrap("failed to send from relay op"))
+		op.opTerminal.OpEnd(op, err.Wrap("failed to submit backward from relay op"))
 	}
+	return err
 }
 
 func (op *ExpandOp) forwardHandler(_ context.Context) error {
@@ -166,7 +241,7 @@ func (op *ExpandOp) forwardHandler(_ context.Context) error {
 
 	for {
 		select {
-		case c := <-op.DuplexFlowQueue.Receive():
+		case c := <-op.recvProxy():
 			// Debugging:
 			// log.Debugf("forwarding at %s: %s", op.FmtID(), spew.Sdump(c.CompileData()))
 
@@ -174,8 +249,9 @@ func (op *ExpandOp) forwardHandler(_ context.Context) error {
 			atomic.AddUint64(op.dataRelayed, uint64(c.Length()))
 
 			// Receive data from the origin and forward it to the relay.
-			if err := op.relayTerminal.DuplexFlowQueue.Send(c); err != nil {
-				return err
+			if err := op.relayTerminal.sendProxy(c); err != nil {
+				op.relayTerminal.Abandon(err)
+				return nil
 			}
 
 		case <-op.ctx.Done():
@@ -187,7 +263,7 @@ func (op *ExpandOp) forwardHandler(_ context.Context) error {
 func (op *ExpandOp) backwardHandler(_ context.Context) error {
 	for {
 		select {
-		case c := <-op.relayTerminal.DuplexFlowQueue.Receive():
+		case c := <-op.relayTerminal.recvProxy():
 			// Debugging:
 			// log.Debugf("backwarding at %s: %s", op.FmtID(), spew.Sdump(c.CompileData()))
 
@@ -195,8 +271,9 @@ func (op *ExpandOp) backwardHandler(_ context.Context) error {
 			atomic.AddUint64(op.dataRelayed, uint64(c.Length()))
 
 			// Receive data from the relay and forward it to the origin.
-			if err := op.DuplexFlowQueue.Send(c); err != nil {
-				return err
+			if err := op.sendProxy(c); err != nil {
+				op.Abandon(err)
+				return nil
 			}
 
 		case <-op.ctx.Done():

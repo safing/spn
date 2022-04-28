@@ -28,11 +28,11 @@ func TestConnectOp(t *testing.T) {
 	}
 
 	// Create test terminal pair.
-	a, b, err := terminal.NewSimpleTestTerminalPair(
-		0,
+	a, b, err := terminal.NewSimpleTestTerminalPair(0, 0,
 		&terminal.TerminalOpts{
-			QueueSize: testQueueSize,
-			Padding:   testPadding,
+			FlowControl:     terminal.FlowControlDFQ,
+			FlowControlSize: testQueueSize,
+			Padding:         testPadding,
 		},
 	)
 	if err != nil {
