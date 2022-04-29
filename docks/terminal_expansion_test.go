@@ -39,20 +39,27 @@ func TestExpansion(t *testing.T) {
 					flowControlSize: defaultTestQueueSize,
 				},
 			} {
-				// Run tests with combined options.
-				testExpansion(
-					t,
-					"expansion-hop-test",
-					&terminal.TerminalOpts{
-						Encrypt:         encrypt,
-						Padding:         8,
-						FlowControl:     fc.flowControl,
-						FlowControlSize: fc.flowControlSize,
-					},
-					defaultTestQueueSize,
-					defaultTestQueueSize,
-					parallel,
-				)
+				// Test with different submit controls.
+				for _, submitControl := range []terminal.SubmitControlType{
+					terminal.SubmitControlPlain,
+					terminal.SubmitControlFair,
+				} {
+					// Run tests with combined options.
+					testExpansion(
+						t,
+						"expansion-hop-test",
+						&terminal.TerminalOpts{
+							Encrypt:         encrypt,
+							Padding:         8,
+							FlowControl:     fc.flowControl,
+							FlowControlSize: fc.flowControlSize,
+							SubmitControl:   submitControl,
+						},
+						defaultTestQueueSize,
+						defaultTestQueueSize,
+						parallel,
+					)
+				}
 			}
 		}
 	}

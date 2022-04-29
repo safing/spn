@@ -37,13 +37,17 @@ func TestTerminals(t *testing.T) {
 				flowControlSize: defaultTestQueueSize,
 			},
 		} {
-			// Run tests with combined options.
-			testTerminals(t, identity, &TerminalOpts{
-				Encrypt:         encrypt,
-				Padding:         defaultTestPadding,
-				FlowControl:     fc.flowControl,
-				FlowControlSize: fc.flowControlSize,
-			})
+			// Test with different submit controls.
+			for _, submitControl := range []SubmitControlType{SubmitControlPlain, SubmitControlFair} {
+				// Run tests with combined options.
+				testTerminals(t, identity, &TerminalOpts{
+					Encrypt:         encrypt,
+					Padding:         defaultTestPadding,
+					FlowControl:     fc.flowControl,
+					FlowControlSize: fc.flowControlSize,
+					SubmitControl:   submitControl,
+				})
+			}
 		}
 	}
 }
@@ -87,7 +91,12 @@ func testTerminals(t *testing.T, identity *cabin.Identity, terminalOpts *Termina
 
 	// Start testing with counters.
 	countToQueueSize := uint64(terminalOpts.FlowControlSize)
-	optionsSuffix := fmt.Sprintf("encrypt=%v,flowType=%d", terminalOpts.Encrypt, terminalOpts.FlowControl)
+	optionsSuffix := fmt.Sprintf(
+		"encrypt=%v,flowType=%d,submitType=%d",
+		terminalOpts.Encrypt,
+		terminalOpts.FlowControl,
+		terminalOpts.SubmitControl,
+	)
 
 	testTerminalWithCounters(t, term1, term2, &testWithCounterOpts{
 		testName:        "onlyup-flushing-waiting:" + optionsSuffix,
@@ -289,13 +298,12 @@ func printCTStats(t *testing.T, testName, name string, term *TestTerminal) {
 	}
 
 	t.Logf(
-		"%s: %s: sq=%d rq=%d sends=%d reps=%d opq=%d",
+		"%s: %s: sq=%d rq=%d sends=%d reps=%d",
 		testName,
 		name,
 		len(dfq.sendQueue),
 		len(dfq.recvQueue),
 		atomic.LoadInt32(dfq.sendSpace),
 		atomic.LoadInt32(dfq.reportedSpace),
-		len(term.opMsgQueue),
 	)
 }

@@ -27,13 +27,16 @@ const (
 )
 
 // TerminalOpts holds configuration for the terminal.
-type TerminalOpts struct { //nolint:golint // TODO: Rename.
+type TerminalOpts struct { //nolint:golint,maligned // TODO: Rename.
 	Version uint8  `json:"-"`
 	Encrypt bool   `json:"e,omitempty"`
 	Padding uint16 `json:"p,omitempty"`
 
 	FlowControl     FlowControlType `json:"fc,omitempty"`
 	FlowControlSize uint32          `json:"qs,omitempty"` // Previously was "QueueSize".
+
+	SubmitControl     SubmitControlType `json:"sc,omitempty"`
+	SubmitControlSize uint32            `json:"ss,omitempty"`
 }
 
 // ParseTerminalOpts parses terminal options from the container and checks if
@@ -99,20 +102,40 @@ func (opts *TerminalOpts) Check(useDefaultsForRequired bool) *Error {
 	// FlowControl is optional.
 	switch opts.FlowControl {
 	case FlowControlDefault:
-		// Set ti default flow control.
-		opts.FlowControl = defaulFlowControl
+		// Set to default flow control.
+		opts.FlowControl = defaultFlowControl
 	case FlowControlNone, FlowControlDFQ:
 		// Ok.
 	default:
 		return ErrInvalidOptions.With("unknown flow control type: %d", opts.FlowControl)
 	}
 
-	// FlowControlSize is required - use default when permitted.
+	// FlowControlSize is required as it needs to be same on both sides.
+	// Use default when permitted.
 	if opts.FlowControlSize == 0 && useDefaultsForRequired {
 		opts.FlowControlSize = opts.FlowControl.DefaultSize()
 	}
 	if opts.FlowControlSize <= 0 || opts.FlowControlSize > MaxQueueSize {
 		return ErrInvalidOptions.With("invalid flow control size of %d", opts.FlowControlSize)
+	}
+
+	// SubmitControl is optional.
+	switch opts.SubmitControl {
+	case SubmitControlDefault:
+		// Set to default submit control.
+		opts.SubmitControl = defaultSubmitControl
+	case SubmitControlPlain, SubmitControlFair:
+		// Ok.
+	default:
+		return ErrInvalidOptions.With("unknown submit control type: %d", opts.SubmitControl)
+	}
+
+	// SubmitControlSize is optional.
+	if opts.SubmitControlSize == 0 {
+		opts.SubmitControlSize = opts.SubmitControl.DefaultSize()
+	}
+	if opts.SubmitControlSize > MaxSubmitControlSize {
+		return ErrInvalidOptions.With("invalid flow control size of %d", opts.SubmitControlSize)
 	}
 
 	return nil
@@ -189,11 +212,6 @@ func NewRemoteBaseTerminal(
 	initMsg, err = ParseTerminalOpts(initData)
 	if err != nil {
 		return nil, nil, err
-	}
-
-	// Check boundaries.
-	if initMsg.FlowControlSize <= 0 || initMsg.FlowControlSize > MaxQueueSize {
-		return nil, nil, ErrInvalidOptions.With("invalid flow control size of %d", initMsg.FlowControlSize)
 	}
 
 	// Create baseline.

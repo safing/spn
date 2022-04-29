@@ -30,13 +30,13 @@ const (
 	FlowControlDFQ     FlowControlType = 1
 	FlowControlNone    FlowControlType = 2
 
-	defaulFlowControl = FlowControlDFQ
+	defaultFlowControl = FlowControlDFQ
 )
 
 // DefaultSize returns the default flow control size.
 func (fct FlowControlType) DefaultSize() uint32 {
 	if fct == FlowControlDefault {
-		fct = defaulFlowControl
+		fct = defaultFlowControl
 	}
 
 	switch fct {

@@ -58,6 +58,9 @@ type TerminalBase struct { //nolint:golint,maligned // Being explicit is helpful
 	ext TerminalExtension
 	// flowControl holds the flow control system.
 	flowControl FlowControl
+	// submitControl holds the submit control system.
+	// It is used by operations to submit messages for sending.
+	submitControl SubmitControl
 
 	// deliverProxy is populated with the configured deliver function
 	deliverProxy func(c *container.Container) *Error
@@ -71,8 +74,6 @@ type TerminalBase struct { //nolint:golint,maligned // Being explicit is helpful
 	// cancelCtx cancels ctx.
 	cancelCtx context.CancelFunc
 
-	// opMsgQueue is used by operations to submit messages for sending.
-	opMsgQueue chan *container.Container
 	// waitForFlush signifies if sending should be delayed until the next call
 	// to Flush()
 	waitForFlush *abool.AtomicBool
@@ -126,7 +127,6 @@ func createTerminalBase(
 		parentID:          parentID,
 		submitUpstream:    submitUpstream,
 		addTerminalIDType: addTerminalIDType,
-		opMsgQueue:        make(chan *container.Container),
 		waitForFlush:      abool.New(),
 		flush:             make(chan func()),
 		idleTicker:        time.NewTicker(time.Minute),
@@ -162,12 +162,6 @@ func createTerminalBase(
 	// Create context.
 	t.ctx, t.cancelCtx = context.WithCancel(ctx)
 
-	// Check flow control configuration.
-	// Check boundaries.
-	if initMsg.FlowControlSize <= 0 || initMsg.FlowControlSize > MaxQueueSize {
-		return nil, ErrInvalidOptions.With("invalid flow control size of %d", initMsg.FlowControlSize)
-	}
-
 	// Create flow control.
 	switch initMsg.FlowControl {
 	case FlowControlDFQ:
@@ -184,6 +178,18 @@ func createTerminalBase(
 		fallthrough
 	default:
 		return nil, ErrInternalError.With("unknown flow control type %d", initMsg.FlowControl)
+	}
+
+	// Create submit control.
+	switch initMsg.SubmitControl {
+	case SubmitControlPlain:
+		t.submitControl = NewPlainChannel(t.ctx, int(initMsg.FlowControlSize))
+	case SubmitControlFair:
+		t.submitControl = NewFairChannel(t.ctx, int(initMsg.FlowControlSize))
+	case SubmitControlDefault:
+		fallthrough
+	default:
+		return nil, ErrInternalError.With("unknown submit control type %d", initMsg.SubmitControl)
 	}
 
 	return t, nil
@@ -306,12 +312,12 @@ func (t *TerminalBase) Sender(_ context.Context) error {
 	var flushFinished func()
 
 	// Only receive message when not sending the current msg buffer.
-	recvOpMsgs := func() <-chan *container.Container {
+	recvOpMsgs := func() <-chan SubmitControlItem {
 		// Don't handle more messages, if the buffer is full.
 		if msgBufferLimitReached {
 			return nil
 		}
-		return t.opMsgQueue
+		return t.submitControl.Recv()
 	}
 
 	// Only wait for sending slot when the current msg buffer is ready to be sent.
@@ -354,7 +360,9 @@ handling:
 				atomic.StoreUint32(t.idleCounter, 0)
 			}
 
-		case c := <-recvOpMsgs():
+		case submittedItem := <-recvOpMsgs():
+			c := submittedItem.Accept()
+
 			// Add container to current buffer.
 			msgBufferLen += c.Length()
 			msgBuffer.AppendContainer(c)
@@ -680,21 +688,8 @@ func (t *TerminalBase) addToOpMsgSendBuffer(
 	// Add header.
 	MakeMsg(data, opID, msgType)
 
-	// Prepare submit timeout.
-	var submitTimeout <-chan time.Time
-	if timeout > 0 {
-		submitTimeout = time.After(timeout)
-	}
-
-	// Submit message to buffer, if space is available.
-	select {
-	case t.opMsgQueue <- data:
-		return nil
-	case <-submitTimeout:
-		return ErrTimeout.With("op msg send timeout")
-	case <-t.ctx.Done():
-		return ErrStopping
-	}
+	// Submit with submit control.
+	return t.submitControl.Submit(data, timeout)
 }
 
 // StartAbandonProcedure sends a stop message with the given error if wanted, ends
