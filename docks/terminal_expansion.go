@@ -29,11 +29,10 @@ type ExpansionTerminal struct {
 func ExpandTo(t terminal.OpTerminal, routeTo string, encryptFor *hub.Hub) (*ExpansionTerminal, *terminal.Error) {
 	// Create expansion terminal.
 	opts := &terminal.TerminalOpts{
-		Version:         1,
-		Padding:         8,
-		FlowControl:     terminal.FlowControlNone,
-		FlowControlSize: terminal.DefaultQueueSize,
-		Encrypt:         encryptFor != nil,
+		Version:     1,
+		Padding:     8,
+		FlowControl: terminal.FlowControlDFQ,
+		Encrypt:     encryptFor != nil,
 	}
 	expansion := &ExpansionTerminal{
 		relayOp:               t,
