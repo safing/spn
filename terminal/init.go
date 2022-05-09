@@ -16,11 +16,8 @@ import (
 Terminal Init Message Format:
 
 - Version [varint]
-- Flags [varint]
-	- 0x01 - Encrypted
 - Data Block [bytes; not blocked]
-	- Letter (if Encrypted Flag is set)
-		- TerminalOpts as DSD
+	- TerminalOpts as DSD
 
 */
 
@@ -30,14 +27,20 @@ const (
 )
 
 // TerminalOpts holds configuration for the terminal.
-type TerminalOpts struct { //nolint:golint // TODO: Rename.
-	Version   uint8  `json:"-"`
-	Encrypt   bool   `json:"e,omitempty"`
-	Padding   uint16 `json:"p,omitempty"`
-	QueueSize uint32 `json:"qs,omitempty"`
+type TerminalOpts struct { //nolint:golint,maligned // TODO: Rename.
+	Version uint8  `json:"-"`
+	Encrypt bool   `json:"e,omitempty"`
+	Padding uint16 `json:"p,omitempty"`
+
+	FlowControl     FlowControlType `json:"fc,omitempty"`
+	FlowControlSize uint32          `json:"qs,omitempty"` // Previously was "QueueSize".
+
+	SubmitControl     SubmitControlType `json:"sc,omitempty"`
+	SubmitControlSize uint32            `json:"ss,omitempty"`
 }
 
-// ParseTerminalOpts parses terminal options from the container.
+// ParseTerminalOpts parses terminal options from the container and checks if
+// they are valid.
 func ParseTerminalOpts(c *container.Container) (*TerminalOpts, *Error) {
 	// Parse and check version.
 	version, err := c.GetNextN8()
@@ -56,15 +59,27 @@ func ParseTerminalOpts(c *container.Container) (*TerminalOpts, *Error) {
 	}
 	initMsg.Version = version
 
+	// Check if options are valid.
+	tErr := initMsg.Check(false)
+	if tErr != nil {
+		return nil, tErr
+	}
+
 	return initMsg, nil
 }
 
-// Pack seriualized the terminal options.
+// Pack serialized the terminal options and checks if they are valid.
 func (opts *TerminalOpts) Pack() (*container.Container, *Error) {
+	// Check if options are valid.
+	tErr := opts.Check(true)
+	if tErr != nil {
+		return nil, tErr
+	}
+
 	// Pack init message.
 	optsData, err := dsd.Dump(opts, dsd.JSON)
 	if err != nil {
-		return nil, ErrInternalError.With("failed to parse init message: %w", err)
+		return nil, ErrInternalError.With("failed to pack init message: %w", err)
 	}
 
 	// Compile init message.
@@ -74,6 +89,58 @@ func (opts *TerminalOpts) Pack() (*container.Container, *Error) {
 	), nil
 }
 
+// Check checks if terminal options are valid.
+func (opts *TerminalOpts) Check(useDefaultsForRequired bool) *Error {
+	// Version is required - use default when permitted.
+	if opts.Version == 0 && useDefaultsForRequired {
+		opts.Version = 1
+	}
+	if opts.Version < minSupportedTerminalVersion || opts.Version > maxSupportedTerminalVersion {
+		return ErrInvalidOptions.With("unsupported terminal version %d", opts.Version)
+	}
+
+	// FlowControl is optional.
+	switch opts.FlowControl {
+	case FlowControlDefault:
+		// Set to default flow control.
+		opts.FlowControl = defaultFlowControl
+	case FlowControlNone, FlowControlDFQ:
+		// Ok.
+	default:
+		return ErrInvalidOptions.With("unknown flow control type: %d", opts.FlowControl)
+	}
+
+	// FlowControlSize is required as it needs to be same on both sides.
+	// Use default when permitted.
+	if opts.FlowControlSize == 0 && useDefaultsForRequired {
+		opts.FlowControlSize = opts.FlowControl.DefaultSize()
+	}
+	if opts.FlowControlSize <= 0 || opts.FlowControlSize > MaxQueueSize {
+		return ErrInvalidOptions.With("invalid flow control size of %d", opts.FlowControlSize)
+	}
+
+	// SubmitControl is optional.
+	switch opts.SubmitControl {
+	case SubmitControlDefault:
+		// Set to default submit control.
+		opts.SubmitControl = defaultSubmitControl
+	case SubmitControlPlain, SubmitControlFair:
+		// Ok.
+	default:
+		return ErrInvalidOptions.With("unknown submit control type: %d", opts.SubmitControl)
+	}
+
+	// SubmitControlSize is optional.
+	if opts.SubmitControlSize == 0 {
+		opts.SubmitControlSize = opts.SubmitControl.DefaultSize()
+	}
+	if opts.SubmitControlSize > MaxSubmitControlSize {
+		return ErrInvalidOptions.With("invalid flow control size of %d", opts.SubmitControlSize)
+	}
+
+	return nil
+}
+
 // NewLocalBaseTerminal creates a new local terminal base for use with inheriting terminals.
 func NewLocalBaseTerminal(
 	ctx context.Context,
@@ -81,20 +148,23 @@ func NewLocalBaseTerminal(
 	parentID string,
 	remoteHub *hub.Hub,
 	initMsg *TerminalOpts,
+	submitUpstream func(*container.Container) *Error,
+	addTerminalIDType bool,
 ) (
 	t *TerminalBase,
 	initData *container.Container,
 	err *Error,
 ) {
-	// Create baseline.
-	t = createTerminalBase(ctx, id, parentID, false, initMsg)
-
-	// Set default values.
-	if initMsg.Version == 0 {
-		initMsg.Version = 1
+	// Pack, check and add defaults to init message.
+	initData, err = initMsg.Pack()
+	if err != nil {
+		return nil, nil, err
 	}
-	if initMsg.QueueSize == 0 {
-		initMsg.QueueSize = DefaultQueueSize
+
+	// Create baseline.
+	t, err = createTerminalBase(ctx, id, parentID, false, initMsg, submitUpstream, addTerminalIDType)
+	if err != nil {
+		return nil, nil, err
 	}
 
 	// Setup encryption if enabled.
@@ -121,12 +191,6 @@ func NewLocalBaseTerminal(
 		close(t.encryptionReady)
 	}
 
-	// Pack init message.
-	initData, err = initMsg.Pack()
-	if err != nil {
-		return nil, nil, err
-	}
-
 	return t, initData, nil
 }
 
@@ -137,6 +201,8 @@ func NewRemoteBaseTerminal(
 	parentID string,
 	identity *cabin.Identity,
 	initData *container.Container,
+	submitUpstream func(*container.Container) *Error,
+	addTerminalIDType bool,
 ) (
 	t *TerminalBase,
 	initMsg *TerminalOpts,
@@ -148,13 +214,11 @@ func NewRemoteBaseTerminal(
 		return nil, nil, err
 	}
 
-	// Check boundaries.
-	if initMsg.QueueSize <= 0 || initMsg.QueueSize > MaxQueueSize {
-		return nil, nil, ErrInvalidOptions.With("invalid queue size of %d", initMsg.QueueSize)
-	}
-
 	// Create baseline.
-	t = createTerminalBase(ctx, id, parentID, true, initMsg)
+	t, err = createTerminalBase(ctx, id, parentID, true, initMsg, submitUpstream, addTerminalIDType)
+	if err != nil {
+		return nil, nil, err
+	}
 
 	// Setup encryption if enabled.
 	if initMsg.Encrypt {

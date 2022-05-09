@@ -37,11 +37,11 @@ func (crane *Crane) establishTerminal(id uint32, initData *container.Container) 
 		id,
 		initData,
 	)
-	// Connections via public cranes have a timeout.
-	if crane.Public() {
-		newTerminal.TerminalBase.SetTimeout(expansionServerTimeout)
-	}
 	if err == nil {
+		// Connections via public cranes have a timeout.
+		if crane.Public() {
+			newTerminal.TerminalBase.SetTimeout(expansionServerTimeout)
+		}
 		// Register terminal with crane.
 		crane.setTerminal(newTerminal)
 		log.Debugf("spn/docks: %s established new crane terminal %d", crane, newTerminal.ID())

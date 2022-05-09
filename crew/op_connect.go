@@ -108,7 +108,7 @@ func NewConnectOp(tunnel *Tunnel) (*ConnectOp, *terminal.Error) {
 	}
 	op.OpBase.Init()
 	op.ctx, op.cancelCtx = context.WithCancel(context.Background())
-	op.DuplexFlowQueue = terminal.NewDuplexFlowQueue(op, request.QueueSize, op.submitUpstream)
+	op.DuplexFlowQueue = terminal.NewDuplexFlowQueue(op.Ctx(), request.QueueSize, op.submitUpstream)
 
 	// Prepare init msg.
 	data, err := dsd.Dump(request, dsd.JSON)
@@ -190,7 +190,7 @@ func runConnectOp(t terminal.OpTerminal, opID uint32, data *container.Container)
 	op.OpBase.Init()
 	op.OpBase.SetID(opID)
 	op.ctx, op.cancelCtx = context.WithCancel(context.Background())
-	op.DuplexFlowQueue = terminal.NewDuplexFlowQueue(op, request.QueueSize, op.submitUpstream)
+	op.DuplexFlowQueue = terminal.NewDuplexFlowQueue(op.Ctx(), request.QueueSize, op.submitUpstream)
 
 	// Setup metrics.
 	op.incomingTraffic = new(uint64)
@@ -205,11 +205,12 @@ func runConnectOp(t terminal.OpTerminal, opID uint32, data *container.Container)
 	return op, nil
 }
 
-func (op *ConnectOp) submitUpstream(c *container.Container) {
+func (op *ConnectOp) submitUpstream(c *container.Container) *terminal.Error {
 	tErr := op.t.OpSend(op, c)
 	if tErr != nil {
 		op.t.OpEnd(op, tErr.Wrap("failed to send data (op) read from %s", op.connectedType()))
 	}
+	return tErr
 }
 
 func (op *ConnectOp) connReader(_ context.Context) error {

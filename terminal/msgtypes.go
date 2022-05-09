@@ -51,14 +51,6 @@ func MakeMsg(c *container.Container, id uint32, msgType MsgType) {
 	c.PrependLength()
 }
 
-// SubmitAsDataMsg wraps the given submit function to call MakeMsg on the data before submitting.
-func (t *TerminalBase) SubmitAsDataMsg(submitFunc func(*container.Container)) func(*container.Container) {
-	return func(c *container.Container) {
-		MakeMsg(c, t.id, MsgTypeData)
-		submitFunc(c)
-	}
-}
-
 // ParseIDType parses the combined message ID and type.
 func ParseIDType(c *container.Container) (id uint32, msgType MsgType, err error) {
 	idType, err := c.GetNextN32()

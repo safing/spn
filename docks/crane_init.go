@@ -140,8 +140,8 @@ func (crane *Crane) startLocal() *terminal.Error {
 
 	// Create crane controller.
 	_, initData, tErr := NewLocalCraneControllerTerminal(crane, &terminal.TerminalOpts{
-		QueueSize: terminal.DefaultQueueSize,
-		Padding:   8,
+		Padding:     8,
+		FlowControl: terminal.FlowControlDFQ,
 	})
 	if tErr != nil {
 		return tErr.Wrap("failed to set up controller")

@@ -8,7 +8,48 @@ import (
 
 	"github.com/safing/portbase/container"
 	"github.com/safing/portbase/formats/varint"
+	"github.com/safing/portbase/modules"
 )
+
+// FlowControl defines the flow control interface.
+type FlowControl interface {
+	Deliver(c *container.Container) *Error
+	Receive() <-chan *container.Container
+	Send(c *container.Container) *Error
+	ReadyToSend() <-chan struct{}
+	Flush()
+	StartWorkers(m *modules.Module, terminalName string)
+}
+
+// FlowControlType represents a flow control type.
+type FlowControlType uint8
+
+// Flow Control Types.
+const (
+	FlowControlDefault FlowControlType = 0
+	FlowControlDFQ     FlowControlType = 1
+	FlowControlNone    FlowControlType = 2
+
+	defaultFlowControl = FlowControlDFQ
+)
+
+// DefaultSize returns the default flow control size.
+func (fct FlowControlType) DefaultSize() uint32 {
+	if fct == FlowControlDefault {
+		fct = defaultFlowControl
+	}
+
+	switch fct {
+	case FlowControlDFQ:
+		return 50000
+	case FlowControlNone:
+		return 10000
+	case FlowControlDefault:
+		fallthrough
+	default:
+		return 0
+	}
+}
 
 // Flow Queue Configuration.
 const (
@@ -19,11 +60,11 @@ const (
 
 // DuplexFlowQueue is a duplex flow control mechanism using queues.
 type DuplexFlowQueue struct {
-	// ti is the interface to the Terminal that is using the DFQ.
-	ti TerminalInterface
+	// ti is the Terminal that is using the DFQ.
+	ctx context.Context
 
 	// upstream is the channel to put containers into to send them upstream.
-	submitUpstream func(*container.Container)
+	submitUpstream func(*container.Container) *Error
 
 	// sendQueue holds the containers that are waiting to be sent.
 	sendQueue chan *container.Container
@@ -52,12 +93,12 @@ type DuplexFlowQueue struct {
 
 // NewDuplexFlowQueue returns a new duplex flow queue.
 func NewDuplexFlowQueue(
-	ti TerminalInterface,
+	ctx context.Context,
 	queueSize uint32,
-	submitUpstream func(*container.Container),
+	submitUpstream func(*container.Container) *Error,
 ) *DuplexFlowQueue {
 	dfq := &DuplexFlowQueue{
-		ti:               ti,
+		ctx:              ctx,
 		submitUpstream:   submitUpstream,
 		sendQueue:        make(chan *container.Container, queueSize),
 		sendSpace:        new(int32),
@@ -72,6 +113,11 @@ func NewDuplexFlowQueue(
 	atomic.StoreInt32(dfq.reportedSpace, int32(queueSize))
 
 	return dfq
+}
+
+// StartWorkers starts the necessary workers to operate the flow queue.
+func (dfq *DuplexFlowQueue) StartWorkers(m *modules.Module, terminalName string) {
+	m.StartWorker(terminalName+" flow queue", dfq.FlowHandler)
 }
 
 // shouldReportRecvSpace returns whether the receive space should be reported.
@@ -162,13 +208,13 @@ sending:
 				// no data included.
 				spaceToReport := dfq.reportableRecvSpace()
 				if spaceToReport > 0 {
-					dfq.submitUpstream(container.New(
+					_ = dfq.submitUpstream(container.New(
 						varint.Pack64(uint64(spaceToReport)),
 					))
 				}
 				continue sending
 
-			case <-dfq.ti.Ctx().Done():
+			case <-dfq.ctx.Done():
 				return nil
 			}
 		}
@@ -191,7 +237,7 @@ sending:
 			c.Prepend(varint.Pack64(uint64(dfq.reportableRecvSpace())))
 
 			// Submit for sending upstream.
-			dfq.submitUpstream(c)
+			_ = dfq.submitUpstream(c)
 
 			// Decrease the send space and set flag if depleted.
 			if dfq.decrementSendSpace() <= 0 {
@@ -210,7 +256,7 @@ sending:
 			// no data included.
 			spaceToReport := dfq.reportableRecvSpace()
 			if spaceToReport > 0 {
-				dfq.submitUpstream(container.New(
+				_ = dfq.submitUpstream(container.New(
 					varint.Pack64(uint64(spaceToReport)),
 				))
 			}
@@ -232,7 +278,7 @@ sending:
 				}
 			}
 
-		case <-dfq.ti.Ctx().Done():
+		case <-dfq.ctx.Done():
 			return nil
 		}
 	}
@@ -248,13 +294,13 @@ func (dfq *DuplexFlowQueue) Flush() {
 	// Request flush and return when stopping.
 	select {
 	case dfq.flush <- finished:
-	case <-dfq.ti.Ctx().Done():
+	case <-dfq.ctx.Done():
 		return
 	}
 	// Wait for flush to finish and return when stopping.
 	select {
 	case <-wait:
-	case <-dfq.ti.Ctx().Done():
+	case <-dfq.ctx.Done():
 	}
 }
 
@@ -277,15 +323,9 @@ func (dfq *DuplexFlowQueue) Send(c *container.Container) *Error {
 	select {
 	case dfq.sendQueue <- c:
 		return nil
-	case <-dfq.ti.Ctx().Done():
+	case <-dfq.ctx.Done():
 		return ErrStopping
 	}
-}
-
-// SendRaw sends the given raw data without any further processing.
-func (dfq *DuplexFlowQueue) SendRaw(c *container.Container) *Error {
-	dfq.submitUpstream(c)
-	return nil
 }
 
 // Receive receives a container from the recv queue.

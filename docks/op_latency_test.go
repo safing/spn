@@ -21,8 +21,10 @@ func TestLatencyOp(t *testing.T) {
 	// Create test terminal pair.
 	a, b, err := terminal.NewSimpleTestTerminalPair(
 		latTestDelay,
+		int(latTestQueueSize),
 		&terminal.TerminalOpts{
-			QueueSize: latTestQueueSize,
+			FlowControl:     terminal.FlowControlNone,
+			FlowControlSize: latTestQueueSize,
 		},
 	)
 	if err != nil {

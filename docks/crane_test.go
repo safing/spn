@@ -21,9 +21,9 @@ import (
 func TestCraneCommunication(t *testing.T) {
 	t.Parallel()
 
-	testCraneWithCounter(t, "plain-counter-100", false, 100, 1000)
-	testCraneWithCounter(t, "plain-counter-1000", false, 1000, 1000)
-	testCraneWithCounter(t, "plain-counter-10000", false, 10000, 1000)
+	testCraneWithCounter(t, "plain-counter-load-100", false, 100, 1000)
+	testCraneWithCounter(t, "plain-counter-load-1000", false, 1000, 1000)
+	testCraneWithCounter(t, "plain-counter-load-10000", false, 10000, 1000)
 	testCraneWithCounter(t, "encrypted-counter", true, 1000, 1000)
 }
 
@@ -223,7 +223,10 @@ func testCraneWithStreaming(t *testing.T, testID string, encrypting bool, loadSi
 		for i := 1; i <= count; i++ {
 			c := container.New(st.testData)
 			terminal.MakeMsg(c, st.ID(), terminal.MsgTypeData)
-			crane1.submitTerminalMsg(c)
+			err := crane1.submitTerminalMsg(c)
+			if err != nil {
+				crane1.Stop(err.Wrap("failed to submit terminal msg"))
+			}
 			// log.Tracef("+ %d", i)
 		}
 		t.Logf("crane test %s done with sending", testID)

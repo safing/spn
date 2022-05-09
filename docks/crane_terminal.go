@@ -17,7 +17,6 @@ const (
 // CraneTerminal is a terminal started by a crane.
 type CraneTerminal struct {
 	*terminal.TerminalBase
-	*terminal.DuplexFlowQueue
 
 	crane *Crane
 }
@@ -27,7 +26,7 @@ func NewLocalCraneTerminal(
 	crane *Crane,
 	remoteHub *hub.Hub,
 	initMsg *terminal.TerminalOpts,
-	submitUpstream func(*container.Container),
+	submitUpstream func(*container.Container) *terminal.Error,
 ) (*CraneTerminal, *container.Container, *terminal.Error) {
 	// Create Terminal Base.
 	t, initData, err := terminal.NewLocalBaseTerminal(
@@ -36,12 +35,14 @@ func NewLocalCraneTerminal(
 		crane.ID,
 		remoteHub,
 		initMsg,
+		crane.submitTerminalMsg,
+		true,
 	)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	return initCraneTerminal(crane, t, initMsg), initData, nil
+	return initCraneTerminal(crane, t), initData, nil
 }
 
 // NewRemoteCraneTerminal returns a new remote crane terminal.
@@ -57,34 +58,29 @@ func NewRemoteCraneTerminal(
 		crane.ID,
 		crane.identity,
 		initData,
+		crane.submitTerminalMsg,
+		true,
 	)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	return initCraneTerminal(crane, t, initMsg), initMsg, nil
+	return initCraneTerminal(crane, t), initMsg, nil
 }
 
 func initCraneTerminal(
 	crane *Crane,
 	t *terminal.TerminalBase,
-	initMsg *terminal.TerminalOpts,
 ) *CraneTerminal {
-	// Create Flow Queue.
-	dfq := terminal.NewDuplexFlowQueue(t, initMsg.QueueSize, t.SubmitAsDataMsg(crane.submitTerminalMsg))
-
 	// Create Crane Terminal and assign it as the extended Terminal.
 	ct := &CraneTerminal{
-		TerminalBase:    t,
-		DuplexFlowQueue: dfq,
-		crane:           crane,
+		TerminalBase: t,
+		crane:        crane,
 	}
 	t.SetTerminalExtension(ct)
 
 	// Start workers.
-	module.StartWorker("crane terminal handler", ct.Handler)
-	module.StartWorker("crane terminal sender", ct.Sender)
-	module.StartWorker("crane terminal flow queue", ct.FlowHandler)
+	t.StartWorkers(module, "crane terminal")
 
 	return ct
 }
@@ -102,17 +98,6 @@ func (t *CraneTerminal) GrantPermission(grant terminal.Permission) {
 		// Submit metrics.
 		newAuthenticatedCranes.Inc()
 	}
-}
-
-// Deliver delivers a message to the crane terminal.
-func (t *CraneTerminal) Deliver(c *container.Container) *terminal.Error {
-	return t.DuplexFlowQueue.Deliver(c)
-}
-
-// Flush flushes the terminal and its flow queue.
-func (t *CraneTerminal) Flush() {
-	t.TerminalBase.Flush()
-	t.DuplexFlowQueue.Flush()
 }
 
 // LocalAddr returns the crane's local address.
