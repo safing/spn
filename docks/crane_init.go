@@ -139,10 +139,7 @@ func (crane *Crane) startLocal() *terminal.Error {
 	}
 
 	// Create crane controller.
-	_, initData, tErr := NewLocalCraneControllerTerminal(crane, &terminal.TerminalOpts{
-		Padding:     8,
-		FlowControl: terminal.FlowControlDFQ,
-	})
+	_, initData, tErr := NewLocalCraneControllerTerminal(crane, terminal.DefaultCraneControllerOpts())
 	if tErr != nil {
 		return tErr.Wrap("failed to set up controller")
 	}
@@ -242,7 +239,7 @@ handling:
 			}
 
 			// Set up encryption.
-			letter, err := jess.LetterFromWireData(request.CompileData())
+			letter, err := jess.LetterFromWire(container.New(request.CompileData()))
 			if err != nil {
 				return terminal.ErrMalformedData.With("failed to unpack initial packet: %w", err)
 			}

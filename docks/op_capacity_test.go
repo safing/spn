@@ -48,7 +48,7 @@ func testCapacityOp(t *testing.T, opts *CapacityTestOptions) {
 		capTestDelay,
 		int(capTestQueueSize),
 		&terminal.TerminalOpts{
-			FlowControl:     terminal.FlowControlNone,
+			FlowControl:     terminal.FlowControlDFQ,
 			FlowControlSize: capTestQueueSize,
 		},
 	)

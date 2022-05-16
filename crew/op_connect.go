@@ -275,6 +275,7 @@ writing:
 			select {
 			case c = <-op.DuplexFlowQueue.Receive():
 			case <-op.ctx.Done():
+				op.t.OpEnd(op, terminal.ErrStopping.With("operation was canceled"))
 				return nil
 			}
 		}
