@@ -2,6 +2,7 @@ package terminal
 
 import (
 	"context"
+	"runtime"
 	"time"
 
 	"github.com/safing/portbase/container"
@@ -138,6 +139,7 @@ func (fc *FairChannel) Submit(data *container.Container, timeout time.Duration) 
 	// Submit message to buffer, if space is available.
 	select {
 	case fc.queue <- item:
+		runtime.Gosched()
 		// Continue
 	case <-submitTimeout:
 		return ErrTimeout.With("fair channel submit timeout")
@@ -148,6 +150,7 @@ func (fc *FairChannel) Submit(data *container.Container, timeout time.Duration) 
 	// Wait for message to be read.
 	select {
 	case <-item.read:
+		runtime.Gosched()
 		return nil
 	case <-submitTimeout:
 		return ErrTimeout.With("fair channel submit timeout")
