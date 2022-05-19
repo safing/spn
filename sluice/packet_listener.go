@@ -37,7 +37,7 @@ func ListenPacket(network, address string) (net.Listener, error) {
 		newConns: make(chan *PacketConn),
 		conns:    make(map[string]*PacketConn),
 	}
-	module.StartWorker("packet listener reader", ln.reader)
+	module.StartServiceWorker("packet listener reader", 0, ln.reader)
 	module.StartServiceWorker("packet listener cleaner", time.Minute, ln.cleaner)
 
 	return ln, nil

@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"net"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -12,6 +13,8 @@ import (
 	"golang.org/x/net/ipv4"
 	"golang.org/x/net/ipv6"
 )
+
+const onWindows = runtime.GOOS == "windows"
 
 // UDPListener is a listener for UDP.
 type UDPListener struct {
@@ -61,8 +64,8 @@ func ListenUDP(network, address string) (net.Listener, error) {
 	}
 
 	// Start workers.
-	module.StartWorker("packet listener reader", ln.reader)
-	module.StartServiceWorker("packet listener cleaner", time.Minute, ln.cleaner)
+	module.StartServiceWorker("udp listener reader", 0, ln.reader)
+	module.StartServiceWorker("udp listener cleaner", time.Minute, ln.cleaner)
 
 	return ln, nil
 }
@@ -208,6 +211,11 @@ func (ln *UDPListener) cleanInactiveConns(overInactivityCnt uint32) {
 // setUDPSocketOptions sets socket options so that the source address for
 // replies is correct.
 func (ln *UDPListener) setSocketOptions() error {
+	// Setting socket options is not supported on windows.
+	if onWindows {
+		return nil
+	}
+
 	// As we might be listening on an interface that supports both IPv4 and IPv6,
 	// try to set the socket options on both.
 	// Only report an error if it fails on both.
