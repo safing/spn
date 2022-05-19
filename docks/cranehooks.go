@@ -33,6 +33,10 @@ func ResetCraneUpdateHook() {
 
 // NotifyUpdate calls the registers crane update hook function.
 func (crane *Crane) NotifyUpdate() {
+	if crane == nil {
+		return
+	}
+
 	craneUpdateHookLock.Lock()
 	defer craneUpdateHookLock.Unlock()
 

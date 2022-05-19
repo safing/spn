@@ -17,6 +17,10 @@ func stopDockHooks() {
 }
 
 func handleCraneUpdate(crane *docks.Crane) {
+	if crane == nil {
+		return
+	}
+
 	if conf.Client() && crane.Controller != nil && crane.Controller.Abandoning.IsSet() {
 		// Check connection to home hub.
 		triggerClientHealthCheck()
