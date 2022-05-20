@@ -103,8 +103,9 @@ func (t *ExpansionTerminal) HasEnded(end bool) bool {
 }
 
 // End ends the operation.
-func (t *ExpansionTerminal) End(err *terminal.Error) {
+func (t *ExpansionTerminal) End(err *terminal.Error) (errorToSend *terminal.Error) {
 	t.stop(err)
+	return err
 }
 
 // Abandon ends the terminal.

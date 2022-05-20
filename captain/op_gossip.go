@@ -142,6 +142,7 @@ func (op *GossipOp) Deliver(c *container.Container) *terminal.Error {
 }
 
 // End ends the operation.
-func (op *GossipOp) End(err *terminal.Error) {
+func (op *GossipOp) End(err *terminal.Error) (errorToSend *terminal.Error) {
 	deleteGossipOp(op.controller.Crane.ID)
+	return err
 }

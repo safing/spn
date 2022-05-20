@@ -314,11 +314,12 @@ func (op *CapacityTestOp) Deliver(c *container.Container) *terminal.Error {
 }
 
 // End ends the operation.
-func (op *CapacityTestOp) End(tErr *terminal.Error) {
+func (op *CapacityTestOp) End(tErr *terminal.Error) (errorToSend *terminal.Error) {
 	select {
 	case op.result <- tErr:
 	default:
 	}
+	return tErr
 }
 
 // Result returns the result (end error) of the operation.

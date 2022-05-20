@@ -278,12 +278,13 @@ func (op *LatencyTestClientOp) Deliver(c *container.Container) *terminal.Error {
 }
 
 // End ends the operation.
-func (op *LatencyTestClientOp) End(tErr *terminal.Error) {
+func (op *LatencyTestClientOp) End(tErr *terminal.Error) (errorToSend *terminal.Error) {
 	close(op.responses)
 	select {
 	case op.result <- tErr:
 	default:
 	}
+	return tErr
 }
 
 // Result returns the result (end error) of the operation.
@@ -335,4 +336,6 @@ func (op *LatencyTestOp) Deliver(c *container.Container) *terminal.Error {
 }
 
 // End ends the operation.
-func (op *LatencyTestOp) End(tErr *terminal.Error) {}
+func (op *LatencyTestOp) End(tErr *terminal.Error) (errorToSend *terminal.Error) {
+	return tErr
+}

@@ -285,11 +285,11 @@ func (op *ExpandOp) backwardHandler(_ context.Context) error {
 // Abandon abandons the expansion.
 func (op *ExpandOp) Abandon(err *terminal.Error) {
 	// Proxy for Terminal Interface needed for the Duplex Flow Queue.
-	op.End(err)
+	_ = op.End(err)
 }
 
 // End abandons the expansion.
-func (op *ExpandOp) End(err *terminal.Error) {
+func (op *ExpandOp) End(err *terminal.Error) (errorToSend *terminal.Error) {
 	if op.ended.SetToIf(false, true) {
 		// Init proper process.
 		op.opTerminal.OpEnd(op, err)
@@ -300,6 +300,7 @@ func (op *ExpandOp) End(err *terminal.Error) {
 		// Abandon connected terminal.
 		op.relayTerminal.crane.AbandonTerminal(op.relayTerminal.id, nil)
 	}
+	return err
 }
 
 // Abandon abandons the expansion.
@@ -309,7 +310,7 @@ func (t *ExpansionRelayTerminal) Abandon(err *terminal.Error) {
 		t.crane.AbandonTerminal(t.id, err)
 
 		// End connected operation.
-		t.op.End(err.Wrap("relay failed with"))
+		_ = t.op.End(err.Wrap("relay failed with"))
 	}
 }
 
