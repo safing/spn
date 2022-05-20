@@ -289,7 +289,7 @@ func establishRoute(route *navigator.Route) (dstPin *navigator.Pin, dstTerminal 
 				return nil, nil, tErr.Wrap("failed to authenticate to %s", check.pin.Hub)
 			}
 		case <-time.After(3 * time.Second):
-			return nil, nil, terminal.ErrTimeout.With("timed out waiting for auth to %s", check.pin.Hub)
+			return nil, nil, terminal.ErrTimeout.With("waiting for auth to %s", check.pin.Hub)
 		}
 
 		// Add terminal extension to the map.
