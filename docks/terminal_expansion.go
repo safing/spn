@@ -2,7 +2,6 @@ package docks
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"github.com/tevino/abool"
@@ -118,8 +117,8 @@ func (t *ExpansionTerminal) stop(err *terminal.Error) {
 		switch {
 		case err == nil:
 			log.Debugf("spn/docks: expansion terminal %s is being abandoned", t.FmtID())
-		case errors.Is(err, terminal.ErrTimeout):
-			log.Debugf("spn/docks: expansion terminal %s %s", t.FmtID(), err)
+		case err.IsOK():
+			log.Infof("spn/docks: expansion terminal %s is being abandoned: %s", t.FmtID(), err)
 		default:
 			log.Warningf("spn/docks: expansion terminal %s: %s", t.FmtID(), err)
 		}
