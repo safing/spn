@@ -154,7 +154,7 @@ func (op *PublishOp) Result() <-chan *terminal.Error {
 }
 
 // End ends the operation.
-func (op *PublishOp) End(tErr *terminal.Error) {
+func (op *PublishOp) End(tErr *terminal.Error) (errorToSend *terminal.Error) {
 	if tErr.Is(terminal.ErrExplicitAck) {
 		// TODO: Check for concurrenct access.
 		if op.controller.Crane.ConnectedHub == nil {
@@ -175,4 +175,5 @@ func (op *PublishOp) End(tErr *terminal.Error) {
 	case op.result <- tErr:
 	default:
 	}
+	return tErr
 }

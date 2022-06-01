@@ -62,9 +62,10 @@ func (op *OpBaseRequest) Deliver(data *container.Container) *Error {
 }
 
 // End ends the operation.
-func (op *OpBaseRequest) End(err *Error) {
+func (op *OpBaseRequest) End(err *Error) (errorToSend *Error) {
 	select {
 	case op.Ended <- err:
 	default:
 	}
+	return err
 }

@@ -200,7 +200,7 @@ func (op *CounterOp) Deliver(data *container.Container) *Error {
 }
 
 // End ends the operation.
-func (op *CounterOp) End(err *Error) {
+func (op *CounterOp) End(err *Error) (errorToSend *Error) {
 	// Check if counting finished.
 	if !op.isDone() {
 		err := fmt.Errorf(
@@ -213,6 +213,7 @@ func (op *CounterOp) End(err *Error) {
 	}
 
 	op.wg.Done()
+	return err
 }
 
 // SendCounter sends the next counter.

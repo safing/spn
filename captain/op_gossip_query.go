@@ -181,9 +181,10 @@ func (op *GossipQueryOp) Deliver(c *container.Container) *terminal.Error {
 }
 
 // End ends the operation.
-func (op *GossipQueryOp) End(err *terminal.Error) {
+func (op *GossipQueryOp) End(err *terminal.Error) (errorToSend *terminal.Error) {
 	if op.client {
 		log.Infof("spn/captain: gossip query imported %d entries", op.importCnt)
 	}
 	op.cancelCtx()
+	return err
 }

@@ -95,7 +95,7 @@ func (crane *Crane) startLocal() *terminal.Error {
 		select {
 		case reply = <-crane.unloading:
 		case <-time.After(5 * time.Second):
-			return terminal.ErrTimeout.With("timed out waiting for hub info")
+			return terminal.ErrTimeout.With("waiting for hub info")
 		case <-crane.ctx.Done():
 			return terminal.ErrShipSunk.With("waiting for hub info")
 		}
@@ -187,7 +187,7 @@ handling:
 		case request = <-crane.unloading:
 
 		case <-time.After(5 * time.Second):
-			return terminal.ErrTimeout.With("timed out waiting for crane init msg")
+			return terminal.ErrTimeout.With("waiting for crane init msg")
 		case <-crane.ctx.Done():
 			return terminal.ErrShipSunk.With("waiting for crane init msg")
 		}

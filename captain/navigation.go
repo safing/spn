@@ -159,7 +159,7 @@ func connectToHomeHub(ctx context.Context, dst *hub.Hub) error {
 			return tErr.Wrap("failed to authenticate to")
 		}
 	case <-time.After(3 * time.Second):
-		return terminal.ErrTimeout.With("timed out waiting for auth to complete")
+		return terminal.ErrTimeout.With("waiting for auth to complete")
 	case <-ctx.Done():
 		return terminal.ErrStopping
 	}

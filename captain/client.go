@@ -20,8 +20,7 @@ import (
 )
 
 var (
-	bootstrapped = abool.New()
-	ready        = abool.New()
+	ready = abool.New()
 
 	spnLoginButton = notifications.Action{
 		Text:    "Login",
@@ -39,12 +38,6 @@ var (
 		Payload: "https://account.safing.io",
 	}
 )
-
-// ClientBootstrapping signifies if the SPN is currently bootstrapping and
-// requires normal connectivity for download assets.
-func ClientBootstrapping() bool {
-	return bootstrapped.IsNotSet()
-}
 
 // ClientReady signifies if the SPN client is fully ready to handle connections.
 func ClientReady() bool {
@@ -84,7 +77,6 @@ func triggerClientHealthCheck() {
 func clientManager(ctx context.Context) error {
 	defer func() {
 		ready.UnSet()
-		bootstrapped.UnSet()
 		netenv.ConnectedToSPN.UnSet()
 		resetSPNStatus(StatusDisabled, true)
 		module.Resolve("")

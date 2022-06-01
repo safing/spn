@@ -329,7 +329,7 @@ func (op *ConnectOp) connectedType() string {
 }
 
 // End ends the operation.
-func (op *ConnectOp) End(err *terminal.Error) {
+func (op *ConnectOp) End(err *terminal.Error) (errorToSend *terminal.Error) {
 	if err.IsError() {
 		reportConnectError(err)
 	}
@@ -348,6 +348,12 @@ func (op *ConnectOp) End(err *terminal.Error) {
 		atomic.LoadUint64(op.outgoingTraffic) == 0 { // Only if not data was received.
 		op.tunnel.avoidDestinationHub()
 	}
+
+	// If we are on the client, don't leak the error to the server.
+	if op.entry {
+		return terminal.ErrStopping
+	}
+	return err
 }
 
 // Abandon ends the operation.

@@ -24,7 +24,7 @@ type Operation interface {
 	Type() string
 	Deliver(data *container.Container) *Error
 	HasEnded(end bool) bool
-	End(err *Error)
+	End(err *Error) (errorToSend *Error)
 }
 
 // OpParams defines an operation.
@@ -277,7 +277,9 @@ func (op *unknownOp) Deliver(data *container.Container) *Error {
 	return ErrIncorrectUsage.With("unknown op shim cannot receive")
 }
 
-func (op *unknownOp) End(err *Error) {}
+func (op *unknownOp) End(err *Error) (errorToSend *Error) {
+	return err
+}
 
 func (op *unknownOp) HasEnded(end bool) bool {
 	if end {

@@ -160,11 +160,12 @@ func (op *SyncStateOp) Deliver(c *container.Container) *terminal.Error {
 }
 
 // End ends the operation.
-func (op *SyncStateOp) End(tErr *terminal.Error) {
+func (op *SyncStateOp) End(tErr *terminal.Error) (errorToSend *terminal.Error) {
 	if op.result != nil {
 		select {
 		case op.result <- tErr:
 		default:
 		}
 	}
+	return tErr
 }

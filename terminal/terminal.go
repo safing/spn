@@ -266,7 +266,7 @@ func (t *TerminalBase) Handler(_ context.Context) error {
 			// If nothing happens for a while, end the session.
 			if atomic.AddUint32(t.idleCounter, 1) > timeoutTicks {
 				// Abandon the terminal and reset the counter.
-				t.ext.Abandon(ErrTimeout.With("no activity"))
+				t.ext.Abandon(ErrNoActivity)
 				atomic.StoreUint32(t.idleCounter, 0)
 			}
 
@@ -356,7 +356,7 @@ handling:
 			// If nothing happens for a while, end the session.
 			if atomic.AddUint32(t.idleCounter, 1) > timeoutTicks {
 				// Abandon the terminal and reset the counter.
-				t.ext.Abandon(ErrTimeout.With("no activity"))
+				t.ext.Abandon(ErrNoActivity)
 				atomic.StoreUint32(t.idleCounter, 0)
 			}
 
