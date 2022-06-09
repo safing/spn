@@ -6,6 +6,7 @@ import (
 
 	"github.com/safing/portbase/config"
 	"github.com/safing/portbase/modules"
+	"github.com/safing/portmaster/intel/geoip"
 	"github.com/safing/spn/conf"
 )
 
@@ -44,6 +45,20 @@ func start() error {
 	err := registerMapDatabase()
 	if err != nil {
 		return err
+	}
+
+	// Wait for geoip databases to be ready.
+	// Try again if not yet ready, as this is critical.
+	// The "wait" parameter times out after 1 second.
+	// Allow 30 seconds for both databases to load.
+geoInitCheck:
+	for i := 0; i < 30; i++ {
+		switch {
+		case !geoip.IsInitialized(false, true): // First, IPv4.
+		case !geoip.IsInitialized(true, true): // Then, IPv6.
+		default:
+			break geoInitCheck
+		}
 	}
 
 	Main.InitializeFromDatabase()
