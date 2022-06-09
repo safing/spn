@@ -124,7 +124,7 @@ func (pin *Pin) updateLocationData() {
 		var ok bool
 		pin.LocationV4, ok = pin.EntityV4.GetLocation(context.TODO())
 		if !ok {
-			log.Warningf("navigator: failed to get location of %s of %s", pin.Hub.Info.IPv4, pin.Hub.StringWithoutLocking())
+			log.Warningf("spn/navigator: failed to get location of %s of %s", pin.Hub.Info.IPv4, pin.Hub.StringWithoutLocking())
 			return
 		}
 	} else {
@@ -141,7 +141,7 @@ func (pin *Pin) updateLocationData() {
 		var ok bool
 		pin.LocationV6, ok = pin.EntityV6.GetLocation(context.TODO())
 		if !ok {
-			log.Warningf("navigator: failed to get location of %s of %s", pin.Hub.Info.IPv6, pin.Hub.StringWithoutLocking())
+			log.Warningf("spn/navigator: failed to get location of %s of %s", pin.Hub.Info.IPv6, pin.Hub.StringWithoutLocking())
 			return
 		}
 	} else {
