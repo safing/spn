@@ -54,6 +54,11 @@ func prep() error {
 		return err
 	}
 
+	// Register API endpoints.
+	if err := registerAPIEndpoints(); err != nil {
+		return err
+	}
+
 	if conf.PublicHub() {
 		// Register API authenticator.
 		if err := api.SetAuthenticator(apiAuthenticator); err != nil {

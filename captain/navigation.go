@@ -26,7 +26,7 @@ var ErrAllHomeHubsExcluded = errors.New("all home hubs are excluded")
 func establishHomeHub(ctx context.Context) error {
 	// Get own IP.
 	locations, ok := netenv.GetInternetLocation()
-	if !ok {
+	if !ok || len(locations.All) == 0 {
 		return errors.New("failed to locate own device")
 	}
 	log.Debugf(
@@ -95,7 +95,7 @@ findCandidates:
 			if errors.Is(err, terminal.ErrStopping) {
 				return err
 			}
-			log.Debugf("spn/captain: failed to connect to %s as new home: %s", candidate, err)
+			log.Warningf("spn/captain: failed to connect to %s as new home: %s", candidate, err)
 		} else {
 			log.Infof("spn/captain: established connection to %s as new home with %d failed tries", candidate, tries)
 			return nil

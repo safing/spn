@@ -105,6 +105,13 @@ type TerminalBase struct { //nolint:golint,maligned // Being explicit is helpful
 	// has started.
 	opts *TerminalOpts
 
+	// lastUnknownOpID holds the operation ID of the last data message received
+	// for an unknown operation ID.
+	lastUnknownOpID uint32
+	// lastUnknownOpMsgs holds the amount of continuous data messages received
+	// for the operation ID in lastUnknownOpID.
+	lastUnknownOpMsgs uint32
+
 	// Abandoning indicates if the Terminal is being abandoned. The main handlers
 	// will keep running until the context has been canceled by the abandon
 	// procedure.
@@ -614,6 +621,26 @@ func (t *TerminalBase) handleOpMsg(data *container.Container) *Error {
 			// If an active op is not found, this is likely just left-overs from a
 			// ended or failed operation.
 			log.Tracef("spn/terminal: %s received data msg for unknown op %d", fmtTerminalID(t.parentID, t.id), opID)
+
+			// Send a stop error if this happens too often.
+			if opID == t.lastUnknownOpID {
+				// OpID is the same as last time.
+
+				// Send a stop message every ten.
+				t.lastUnknownOpMsgs++
+				if t.lastUnknownOpMsgs%10 == 0 {
+					t.OpEnd(newUnknownOp(opID, ""), ErrUnknownOperationID.With("received %d unsolicited data msgs", t.lastUnknownOpMsgs))
+				}
+				// Log an error every thousand.
+				if t.lastUnknownOpMsgs%1000 == 0 {
+					log.Tracef("spn/terminal: %s received %d data msgs for unknown op %d", fmtTerminalID(t.parentID, t.id), t.lastUnknownOpMsgs, opID)
+				}
+				// TODO: Stop terminal at over 10000?
+			} else {
+				// OpID changed, set new ID and reset counter.
+				t.lastUnknownOpID = opID
+				t.lastUnknownOpMsgs = 0
+			}
 		}
 
 	case MsgTypeStop:

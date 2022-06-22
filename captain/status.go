@@ -80,6 +80,21 @@ func pushSPNStatusUpdate() {
 	spnStatusPushFunc(spnStatus)
 }
 
+// GetSPNStatus returns the current SPN status.
+func GetSPNStatus() *SPNStatus {
+	spnStatus.Lock()
+	defer spnStatus.Unlock()
+
+	return &SPNStatus{
+		Status:             spnStatus.Status,
+		HomeHubID:          spnStatus.HomeHubID,
+		HomeHubName:        spnStatus.HomeHubName,
+		ConnectedIP:        spnStatus.ConnectedIP,
+		ConnectedTransport: spnStatus.ConnectedTransport,
+		ConnectedSince:     spnStatus.ConnectedSince,
+	}
+}
+
 // AddToDebugInfo adds the SPN status to the given debug.Info.
 func AddToDebugInfo(di *debug.Info) {
 	spnStatus.Lock()

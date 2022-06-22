@@ -51,7 +51,7 @@ func (m *Map) InitializeFromDatabase() {
 	}
 	switch {
 	case iter.Err() != nil:
-		log.Warningf("spn/navigator: failed to (fully) initialize %s map: %s", m.Name, err)
+		log.Warningf("spn/navigator: failed to (fully) initialize %s map: %s", m.Name, iter.Err())
 	case hubCount == 0:
 		log.Warningf("spn/navigator: no hubs available for %s map - this is normal on first start", m.Name)
 	default:
