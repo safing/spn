@@ -46,7 +46,6 @@ Reconnect to the SPN in order to apply new rules.`,
 		ExpertiseLevel: config.ExpertiseLevelExpert,
 		DefaultValue:   []string{},
 		Annotations: config.Annotations{
-			config.StackableAnnotation:                   true,
 			config.CategoryAnnotation:                    "Routing",
 			config.DisplayOrderAnnotation:                cfgOptionHomeHubPolicyOrder,
 			config.DisplayHintAnnotation:                 endpoints.DisplayHintEndpointList,
@@ -77,7 +76,6 @@ This setting mainly exists for when you need to simulate your presence in anothe
 		ExpertiseLevel:  config.ExpertiseLevelExpert,
 		DefaultValue:    []string{},
 		Annotations: config.Annotations{
-			config.StackableAnnotation:                   true,
 			config.CategoryAnnotation:                    "Routing",
 			config.DisplayOrderAnnotation:                cfgOptionDNSExitHubPolicyOrder,
 			config.DisplayHintAnnotation:                 endpoints.DisplayHintEndpointList,
