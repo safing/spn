@@ -12,8 +12,8 @@ import (
 
 func registerAPIEndpoints() error {
 	if err := api.RegisterEndpoint(api.Endpoint{
-		Path: `spn/reinit`,
-		Read: api.PermitUser,
+		Path:  `spn/reinit`,
+		Write: api.PermitAdmin,
 		// BelongsTo:   module, // Do not attach to module, as this must run outside of the module.
 		ActionFunc:  handleReInit,
 		Name:        "Re-initialize SPN",
