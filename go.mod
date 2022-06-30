@@ -14,7 +14,7 @@ require (
 	github.com/safing/jess v0.2.3
 	github.com/safing/portbase v0.14.4
 	github.com/safing/portmaster v0.8.14-interdep
-	github.com/stretchr/testify v1.7.1
+	github.com/stretchr/testify v1.8.0
 	github.com/tevino/abool v1.2.0
 	golang.org/x/crypto v0.0.0-20220525230936-793ad666bf5e // indirect
 	golang.org/x/net v0.0.0-20220621193019-9d032be2e588
