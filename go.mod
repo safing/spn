@@ -12,7 +12,7 @@ require (
 	github.com/mr-tron/base58 v1.2.0
 	github.com/rot256/pblind v0.0.0-20211117203330-22455f90b565
 	github.com/safing/jess v0.2.3
-	github.com/safing/portbase v0.14.4
+	github.com/safing/portbase v0.14.5
 	github.com/safing/portmaster v0.8.14-interdep
 	github.com/stretchr/testify v1.7.1
 	github.com/tevino/abool v1.2.0
