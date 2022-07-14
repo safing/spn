@@ -349,8 +349,8 @@ func (op *ConnectOp) End(err *terminal.Error) (errorToSend *terminal.Error) {
 		op.tunnel.avoidDestinationHub()
 	}
 
-	// If we are on the client, don't leak the error to the server.
-	if op.entry {
+	// If we are on the client, don't leak local errors to the server.
+	if op.entry && !err.IsExternal() {
 		return terminal.ErrStopping
 	}
 	return err
