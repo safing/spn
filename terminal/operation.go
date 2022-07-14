@@ -193,7 +193,7 @@ func (t *TerminalBase) OpEnd(op Operation, err *Error) {
 
 	module.StartWorker("end operation", func(_ context.Context) error {
 		// Call operation end function for proper shutdown cleaning up.
-		op.End(err)
+		err = op.End(err)
 
 		// Send error to the connected Operation, if the error is internal.
 		if !err.IsExternal() {
