@@ -328,6 +328,8 @@ type TunnelContext struct {
 	RoutingAlg string
 }
 
+// GetExitNodeID returns the ID of the exit node.
+// It returns an empty string in case no path exists.
 func (tc *TunnelContext) GetExitNodeID() string {
 	if len(tc.Path) == 0 {
 		return ""
