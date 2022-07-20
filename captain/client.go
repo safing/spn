@@ -312,7 +312,7 @@ func clientStopHomeHub(ctx context.Context) clientComponentResult {
 func clientConnectToHomeHub(ctx context.Context) clientComponentResult {
 	err := establishHomeHub(ctx)
 	if err != nil {
-		log.Errorf("failed to establish connection to home hub: %s", err)
+		log.Errorf("spn/captain: failed to establish connection to home hub: %s", err)
 		resetSPNStatus(StatusFailed, true)
 
 		switch {

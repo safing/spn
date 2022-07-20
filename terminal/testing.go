@@ -79,7 +79,7 @@ func createDelayingTestForwardingFunc(
 			// Deliver to other terminal.
 			dErr := deliverFunc(c)
 			if dErr != nil {
-				log.Errorf("%s>%s: failed to deliver to terminal: %s", srcName, dstName, dErr)
+				log.Errorf("spn/testing: %s>%s: failed to deliver to terminal: %s", srcName, dstName, dErr)
 				return dErr
 			}
 			return nil
@@ -105,7 +105,7 @@ func createDelayingTestForwardingFunc(
 			// Deliver to other terminal.
 			dErr := deliverFunc(msg.data)
 			if dErr != nil {
-				log.Errorf("%s>%s: failed to deliver to terminal: %s", srcName, dstName, dErr)
+				log.Errorf("spn/testing: %s>%s: failed to deliver to terminal: %s", srcName, dstName, dErr)
 			}
 		}
 	}()

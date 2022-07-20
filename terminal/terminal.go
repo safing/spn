@@ -548,7 +548,7 @@ func (t *TerminalBase) decrypt(c *container.Container) (*container.Container, *E
 
 func (t *TerminalBase) handleReceive(c *container.Container) *Error {
 	// Debugging:
-	// log.Errorf("terminal %s handling tmsg: %s", t.FmtID(), spew.Sdump(c.CompileData()))
+	// log.Errorf("spn/terminal %s handling tmsg: %s", t.FmtID(), spew.Sdump(c.CompileData()))
 
 	// Check if message is empty. This will be the case if a message was only
 	// for updated the available space of the flow queue.
@@ -594,7 +594,7 @@ func (t *TerminalBase) handleReceive(c *container.Container) *Error {
 
 func (t *TerminalBase) handleOpMsg(data *container.Container) *Error {
 	// Debugging:
-	// log.Errorf("terminal %s handling opmsg: %s", t.FmtID(), spew.Sdump(data.CompileData()))
+	// log.Errorf("spn/terminal %s handling opmsg: %s", t.FmtID(), spew.Sdump(data.CompileData()))
 
 	// Parse message operation id, type.
 	opID, msgType, err := ParseIDType(data)
@@ -687,7 +687,7 @@ func (t *TerminalBase) sendOpMsgs(c *container.Container) *Error {
 			if paddingNeeded > 0 {
 				padding, err := rng.Bytes(paddingNeeded)
 				if err != nil {
-					log.Debugf("terminal: %s failed to get random data, using zeros instead", t.FmtID())
+					log.Debugf("spn/terminal: %s failed to get random data, using zeros instead", t.FmtID())
 					padding = make([]byte, paddingNeeded)
 				}
 				c.Append(padding)

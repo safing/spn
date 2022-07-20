@@ -517,7 +517,7 @@ handling:
 
 		case shipment := <-crane.unloading:
 
-			// log.Debugf("crane %s: before decrypt: %v ... %v", crane.ID, c.CompileData()[:10], c.CompileData()[c.Length()-10:])
+			// log.Debugf("spn/crane %s: before decrypt: %v ... %v", crane.ID, c.CompileData()[:10], c.CompileData()[c.Length()-10:])
 
 			// Decrypt shipment.
 			shipment, err := crane.decrypt(shipment)

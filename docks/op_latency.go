@@ -251,7 +251,7 @@ func (op *LatencyTestClientOp) reportMeasuredLatencies() *terminal.Error {
 	if controller, ok := op.t.(*CraneControllerTerminal); ok {
 		if controller.Crane.ConnectedHub != nil {
 			controller.Crane.ConnectedHub.GetMeasurements().SetLatency(op.testResult)
-			log.Infof("docks: measured latency to %s: %s", controller.Crane.ConnectedHub, op.testResult)
+			log.Infof("spn/docks: measured latency to %s: %s", controller.Crane.ConnectedHub, op.testResult)
 			return nil
 		} else if controller.Crane.IsMine() {
 			return terminal.ErrInternalError.With("latency operation was run on %s without a connected hub set", controller.Crane)

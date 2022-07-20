@@ -113,14 +113,14 @@ func UpdateAccount(_ context.Context, task *modules.Task) error {
 func enableSPN() {
 	err := config.SetConfigOption("spn/enable", true)
 	if err != nil {
-		log.Warningf("access: failed to enable the SPN during login: %s", err)
+		log.Warningf("spn/access: failed to enable the SPN during login: %s", err)
 	}
 }
 
 func disableSPN() {
 	err := config.SetConfigOption("spn/enable", false)
 	if err != nil {
-		log.Warningf("access: failed to disable the SPN during logout: %s", err)
+		log.Warningf("spn/access: failed to disable the SPN during logout: %s", err)
 	}
 }
 

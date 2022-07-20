@@ -87,7 +87,7 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 	// Process login.
 	user, code, err := Login(username, password)
 	if err != nil {
-		log.Warningf("access: failed to login: %s", err)
+		log.Warningf("spn/access: failed to login: %s", err)
 		if code == 0 {
 			http.Error(w, "Internal error: "+err.Error(), http.StatusInternalServerError)
 		} else {
@@ -107,7 +107,7 @@ func handleLogout(ar *api.Request) (msg string, err error) {
 	err = Logout(false, purge)
 	switch {
 	case err != nil:
-		log.Warningf("access: failed to logout: %s", err)
+		log.Warningf("spn/access: failed to logout: %s", err)
 		return "", err
 	case purge:
 		return "Logged out and user data purged.", nil

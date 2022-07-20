@@ -243,7 +243,7 @@ func (op *ExpandOp) forwardHandler(_ context.Context) error {
 		select {
 		case c := <-op.recvProxy():
 			// Debugging:
-			// log.Debugf("forwarding at %s: %s", op.FmtID(), spew.Sdump(c.CompileData()))
+			// log.Debugf("spn/testing: forwarding at %s: %s", op.FmtID(), spew.Sdump(c.CompileData()))
 
 			// Count relayed data for metrics.
 			atomic.AddUint64(op.dataRelayed, uint64(c.Length()))
@@ -265,7 +265,7 @@ func (op *ExpandOp) backwardHandler(_ context.Context) error {
 		select {
 		case c := <-op.relayTerminal.recvProxy():
 			// Debugging:
-			// log.Debugf("backwarding at %s: %s", op.FmtID(), spew.Sdump(c.CompileData()))
+			// log.Debugf("spn/testing: backwarding at %s: %s", op.FmtID(), spew.Sdump(c.CompileData()))
 
 			// Count relayed data for metrics.
 			atomic.AddUint64(op.dataRelayed, uint64(c.Length()))
