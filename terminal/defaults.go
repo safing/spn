@@ -1,5 +1,13 @@
 package terminal
 
+import (
+	"time"
+)
+
+// DefaultMediumPriorityMaxDelay defines the default maximum delay to use when
+// waiting for an execution slow when starting or signaling a microtask.
+const DefaultMediumPriorityMaxDelay = 100 * time.Microsecond
+
 // DefaultCraneControllerOpts returns the default terminal options for a crane
 // controller terminal.
 func DefaultCraneControllerOpts() *TerminalOpts {

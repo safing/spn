@@ -114,7 +114,7 @@ func runPublishOp(t terminal.OpTerminal, opID uint32, data *container.Container)
 	op.OpBase.SetID(opID)
 
 	// Reply with verification request.
-	tErr = controller.OpSend(op, container.New(request))
+	tErr = controller.OpSend(op, container.New(request), 0, false)
 	if tErr != nil {
 		return nil, tErr.Wrap("failed to send verification request")
 	}
@@ -133,7 +133,7 @@ func (op *PublishOp) Deliver(c *container.Container) *terminal.Error {
 			return terminal.ErrPermissinDenied.With("signing verification request failed: %w", err)
 		}
 
-		return op.controller.OpSend(op, container.New(response))
+		return op.controller.OpSend(op, container.New(response), 0, false)
 	} else if op.requestingHub != nil {
 		// Server
 

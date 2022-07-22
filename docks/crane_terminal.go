@@ -26,7 +26,7 @@ func NewLocalCraneTerminal(
 	crane *Crane,
 	remoteHub *hub.Hub,
 	initMsg *terminal.TerminalOpts,
-	submitUpstream func(*container.Container) *terminal.Error,
+	submitUpstream func(*container.Container, bool) *terminal.Error,
 ) (*CraneTerminal, *container.Container, *terminal.Error) {
 	// Create Terminal Base.
 	t, initData, err := terminal.NewLocalBaseTerminal(

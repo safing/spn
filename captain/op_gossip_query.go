@@ -129,7 +129,7 @@ iterating:
 
 			// Send msg.
 			if c != nil {
-				tErr := op.t.OpSendWithTimeout(op, c, 100*time.Millisecond)
+				tErr := op.t.OpSend(op, c, 100*time.Millisecond, false)
 				if tErr != nil {
 					return tErr.Wrap("failed to send msg")
 				}

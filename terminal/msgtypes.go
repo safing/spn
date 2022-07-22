@@ -36,6 +36,9 @@ const (
 	// MsgTypeData is used to send data to a terminal or operation.
 	MsgTypeData MsgType = 2
 
+	// MsgTypePriorityData is used to send prioritized data to a terminal or operation.
+	MsgTypePriorityData MsgType = 0
+
 	// MsgTypeStop is used to abandon a terminal or end an operation, with an optional error.
 	MsgTypeStop MsgType = 3
 )

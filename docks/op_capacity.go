@@ -217,7 +217,7 @@ func (op *CapacityTestOp) handler(ctx context.Context) error {
 
 			// Send the data received signal when we received the full test volume.
 			if op.dataReceived >= op.opts.TestVolume && !op.dataReceivedAckWasAckd {
-				tErr := op.t.OpSendWithTimeout(op, container.New(capacityTestDataReceivedSignal), capacityTestSendTimeout)
+				tErr := op.t.OpSend(op, container.New(capacityTestDataReceivedSignal), capacityTestSendTimeout, false)
 				if !tErr.IsOK() {
 					returnErr = tErr.Wrap("failed to send data received signal")
 					return nil
@@ -242,7 +242,7 @@ func (op *CapacityTestOp) handler(ctx context.Context) error {
 func (op *CapacityTestOp) sender(ctx context.Context) error {
 	for {
 		// Send next chunk.
-		tErr := op.t.OpSendWithTimeout(op, container.New(capacityTestSendData), capacityTestSendTimeout)
+		tErr := op.t.OpSend(op, container.New(capacityTestSendData), capacityTestSendTimeout, false)
 		if tErr.IsError() {
 			op.t.OpEnd(op, tErr.Wrap("failed to send capacity test data"))
 		}

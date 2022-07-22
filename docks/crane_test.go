@@ -223,7 +223,7 @@ func testCraneWithStreaming(t *testing.T, testID string, encrypting bool, loadSi
 		for i := 1; i <= count; i++ {
 			c := container.New(st.testData)
 			terminal.MakeMsg(c, st.ID(), terminal.MsgTypeData)
-			err := crane1.submitTerminalMsg(c)
+			err := crane1.submitTerminalMsg(c, false)
 			if err != nil {
 				crane1.Stop(err.Wrap("failed to submit terminal msg"))
 			}

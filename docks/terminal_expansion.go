@@ -69,8 +69,8 @@ func ExpandTo(t terminal.OpTerminal, routeTo string, encryptFor *hub.Hub) (*Expa
 	return expansion, nil
 }
 
-func (t *ExpansionTerminal) submitUpstream(c *container.Container) *terminal.Error {
-	err := t.relayOp.OpSend(t, c)
+func (t *ExpansionTerminal) submitUpstream(c *container.Container, highPriority bool) *terminal.Error {
+	err := t.relayOp.OpSend(t, c, 0, highPriority)
 	if err != nil {
 		t.relayOp.OpEnd(t, err.Wrap("failed to send relay op msg"))
 	}

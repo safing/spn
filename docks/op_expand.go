@@ -9,6 +9,7 @@ import (
 	"github.com/tevino/abool"
 
 	"github.com/safing/portbase/container"
+	"github.com/safing/portbase/formats/varint"
 	"github.com/safing/spn/conf"
 	"github.com/safing/spn/terminal"
 )
@@ -22,6 +23,7 @@ var activeExpandOps = new(int64)
 type ExpandOp struct {
 	terminal.OpBase
 	opTerminal terminal.OpTerminal
+	opts       *terminal.TerminalOpts
 
 	// ctx is the context of the Terminal.
 	ctx context.Context
@@ -40,7 +42,7 @@ type ExpandOp struct {
 	// recvProxy is populated with the configured recv function
 	recvProxy func() <-chan *container.Container
 	// sendProxy is populated with the configured send function
-	sendProxy func(c *container.Container) *terminal.Error
+	sendProxy func(c *container.Container, highPriority bool) *terminal.Error
 }
 
 // ExpansionRelayTerminal is a relay used for expansion.
@@ -59,7 +61,7 @@ type ExpansionRelayTerminal struct {
 	// recvProxy is populated with the configured recv function
 	recvProxy func() <-chan *container.Container
 	// sendProxy is populated with the configured send function
-	sendProxy func(c *container.Container) *terminal.Error
+	sendProxy func(c *container.Container, highPriority bool) *terminal.Error
 }
 
 // Type returns the type ID.
@@ -146,6 +148,7 @@ func expand(t terminal.OpTerminal, opID uint32, data *container.Container) (term
 	// Create operation and terminal.
 	op := &ExpandOp{
 		opTerminal:  t,
+		opts:        opts,
 		dataRelayed: new(uint64),
 		ended:       abool.New(),
 		relayTerminal: &ExpansionRelayTerminal{
@@ -212,17 +215,22 @@ func expand(t terminal.OpTerminal, opID uint32, data *container.Container) (term
 	return op, nil
 }
 
-func (op *ExpandOp) submitForwardstream(c *container.Container) *terminal.Error {
-	terminal.MakeMsg(c, op.relayTerminal.id, terminal.MsgTypeData)
-	err := op.relayTerminal.crane.submitTerminalMsg(c)
+func (op *ExpandOp) submitForwardstream(c *container.Container, highPriority bool) (err *terminal.Error) {
+	if highPriority && op.opts.UsePriorityDataMsgs {
+		terminal.MakeMsg(c, op.relayTerminal.id, terminal.MsgTypePriorityData)
+		err = op.relayTerminal.crane.submitTerminalMsg(c, true)
+	} else {
+		terminal.MakeMsg(c, op.relayTerminal.id, terminal.MsgTypeData)
+		err = op.relayTerminal.crane.submitTerminalMsg(c, false)
+	}
 	if err != nil {
 		op.opTerminal.OpEnd(op, err.Wrap("failed to submit forward from relay op"))
 	}
 	return err
 }
 
-func (op *ExpandOp) submitBackstream(c *container.Container) *terminal.Error {
-	err := op.opTerminal.OpSend(op, c)
+func (op *ExpandOp) submitBackstream(c *container.Container, highPriority bool) *terminal.Error {
+	err := op.opTerminal.OpSend(op, c, 0, highPriority)
 	if err != nil {
 		op.opTerminal.OpEnd(op, err.Wrap("failed to submit backward from relay op"))
 	}
@@ -239,17 +247,42 @@ func (op *ExpandOp) forwardHandler(_ context.Context) error {
 		expandOpRelayedDataHistogram.Update(float64(atomic.LoadUint64(op.dataRelayed)))
 	}()
 
+	// Setup micro task done signal.
+	microTaskDone := func() {}
+	defer microTaskDone()
+
 	for {
+		// Signal that we've finished the micro task.
+		microTaskDone()
+
 		select {
 		case c := <-op.recvProxy():
 			// Debugging:
 			// log.Debugf("spn/testing: forwarding at %s: %s", op.FmtID(), spew.Sdump(c.CompileData()))
 
+			// FIXME: what data are we seeing here exactly?
+
+			// Check if message is prioritized.
+			var highPriority bool
+			if op.opts.UsePriorityDataMsgs {
+				buf := c.Gather(5)
+				num, _, err := varint.Unpack32(buf)
+				highPriority = err == nil &&
+					terminal.MsgType(num%4) == terminal.MsgTypePriorityData
+			}
+
+			// Get execution priority.
+			if highPriority {
+				microTaskDone = module.SignalHighPriorityMicroTask()
+			} else {
+				microTaskDone = module.SignalMicroTask(terminal.DefaultMediumPriorityMaxDelay)
+			}
+
 			// Count relayed data for metrics.
 			atomic.AddUint64(op.dataRelayed, uint64(c.Length()))
 
 			// Receive data from the origin and forward it to the relay.
-			if err := op.relayTerminal.sendProxy(c); err != nil {
+			if err := op.relayTerminal.sendProxy(c, highPriority); err != nil {
 				op.relayTerminal.Abandon(err)
 				return nil
 			}
@@ -261,17 +294,40 @@ func (op *ExpandOp) forwardHandler(_ context.Context) error {
 }
 
 func (op *ExpandOp) backwardHandler(_ context.Context) error {
+	// Setup micro task done signal.
+	microTaskDone := func() {}
+	defer microTaskDone()
+
 	for {
+		// Signal that we've finished the micro task.
+		microTaskDone()
+
 		select {
 		case c := <-op.relayTerminal.recvProxy():
 			// Debugging:
 			// log.Debugf("spn/testing: backwarding at %s: %s", op.FmtID(), spew.Sdump(c.CompileData()))
 
+			// Check if message is prioritized.
+			var highPriority bool
+			if op.opts.UsePriorityDataMsgs {
+				buf := c.Gather(5)
+				num, _, err := varint.Unpack32(buf)
+				highPriority = err == nil &&
+					terminal.MsgType(num%4) == terminal.MsgTypePriorityData
+			}
+
+			// Get execution priority.
+			if highPriority {
+				microTaskDone = module.SignalHighPriorityMicroTask()
+			} else {
+				microTaskDone = module.SignalMicroTask(terminal.DefaultMediumPriorityMaxDelay)
+			}
+
 			// Count relayed data for metrics.
 			atomic.AddUint64(op.dataRelayed, uint64(c.Length()))
 
 			// Receive data from the relay and forward it to the origin.
-			if err := op.sendProxy(c); err != nil {
+			if err := op.sendProxy(c, highPriority); err != nil {
 				op.Abandon(err)
 				return nil
 			}

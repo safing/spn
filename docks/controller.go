@@ -98,7 +98,7 @@ func (controller *CraneControllerTerminal) Abandon(err *terminal.Error) {
 			if !err.IsExternal() {
 				stopMsg := container.New(err.Pack())
 				terminal.MakeMsg(stopMsg, controller.ID(), terminal.MsgTypeStop)
-				err := controller.Crane.submitImportantTerminalMsg(stopMsg)
+				err := controller.Crane.submitImportantTerminalMsg(stopMsg, false)
 				if err != nil {
 					log.Warningf("spn/docks: %s controller failed to submit stop msg: %s", controller.Crane, err)
 				}

@@ -198,10 +198,10 @@ func testTerminals(t *testing.T, identity *cabin.Identity, terminalOpts *Termina
 	})
 }
 
-func createTestForwardingFunc(t *testing.T, srcName, dstName string, deliverFunc func(*container.Container) *Error) func(*container.Container) *Error {
+func createTestForwardingFunc(t *testing.T, srcName, dstName string, deliverFunc func(*container.Container) *Error) func(c *container.Container, highPriority bool) *Error {
 	t.Helper()
 
-	return func(c *container.Container) *Error {
+	return func(c *container.Container, _ bool) *Error {
 		// Fast track nil containers.
 		if c == nil {
 			dErr := deliverFunc(c)

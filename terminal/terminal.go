@@ -49,7 +49,7 @@ type TerminalBase struct { //nolint:golint,maligned // Being explicit is helpful
 	parentID string
 
 	// submitUpstream is used to submit messages to upstream.
-	submitUpstream func(c *container.Container) *Error
+	submitUpstream func(c *container.Container, highPriority bool) *Error
 	// addTerminalIDType specifies if the terminal should add its own terminal ID
 	// and message type for messages submitted to upstream.
 	addTerminalIDType bool
@@ -67,7 +67,7 @@ type TerminalBase struct { //nolint:golint,maligned // Being explicit is helpful
 	// recvProxy is populated with the configured recv function
 	recvProxy func() <-chan *container.Container
 	// sendProxy is populated with the configured send function
-	sendProxy func(c *container.Container) *Error
+	sendProxy func(c *container.Container, highPriority bool) *Error
 
 	// ctx is the context of the Terminal.
 	ctx context.Context
@@ -126,7 +126,7 @@ func createTerminalBase(
 	parentID string,
 	remote bool,
 	initMsg *TerminalOpts,
-	submitUpstream func(c *container.Container) *Error,
+	submitUpstream func(c *container.Container, highPriority bool) *Error,
 	addTerminalIDType bool,
 ) (*TerminalBase, *Error) {
 	t := &TerminalBase{
@@ -146,13 +146,17 @@ func createTerminalBase(
 	}
 	// Proxy the submit upstream call and shutdown the terminal in case of an error.
 	originalSubmitUpstream := t.submitUpstream
-	t.submitUpstream = func(c *container.Container) *Error {
+	t.submitUpstream = func(c *container.Container, highPriority bool) *Error {
 		// Make data message.
 		if t.addTerminalIDType {
-			MakeMsg(c, t.id, MsgTypeData)
+			if highPriority {
+				MakeMsg(c, t.id, MsgTypePriorityData)
+			} else {
+				MakeMsg(c, t.id, MsgTypeData)
+			}
 		}
 		// Submit to original upstream.
-		err := originalSubmitUpstream(c)
+		err := originalSubmitUpstream(c, highPriority)
 		if err != nil {
 			t.Abandon(err.Wrap("failed to submit to upstream"))
 		}
@@ -317,6 +321,7 @@ func (t *TerminalBase) Sender(_ context.Context) error {
 	var sendMsgs bool
 	var sendMaxWait *time.Timer
 	var flushFinished func()
+	var highPriority bool
 
 	// Only receive message when not sending the current msg buffer.
 	recvOpMsgs := func() <-chan SubmitControlItem {
@@ -381,8 +386,14 @@ handling:
 				sendMaxWait = time.NewTimer(sendThresholdMaxWait)
 			}
 
+			// Check if we have reached the maximum buffer size.
 			if msgBufferLen >= sendMaxLength {
 				msgBufferLimitReached = true
+			}
+
+			// Check if the submitted item is prioritized.
+			if submittedItem.HighPriority() {
+				highPriority = true
 			}
 
 			// Register activity.
@@ -426,8 +437,12 @@ handling:
 			// Send if there is anything to send.
 			var err *Error
 			if msgBufferLen > 0 {
-				err = t.sendOpMsgs(msgBuffer)
+				err = t.sendOpMsgs(
+					msgBuffer,
+					t.opts.UsePriorityDataMsgs && highPriority,
+				)
 			}
+			highPriority = false
 
 			// Reset buffer.
 			msgBuffer = container.New()
@@ -547,6 +562,9 @@ func (t *TerminalBase) decrypt(c *container.Container) (*container.Container, *E
 }
 
 func (t *TerminalBase) handleReceive(c *container.Container) *Error {
+	done := module.SignalHighPriorityMicroTask()
+	defer done()
+
 	// Debugging:
 	// log.Errorf("spn/terminal %s handling tmsg: %s", t.FmtID(), spew.Sdump(c.CompileData()))
 
@@ -606,7 +624,7 @@ func (t *TerminalBase) handleOpMsg(data *container.Container) *Error {
 	case MsgTypeInit:
 		t.runOperation(t.ctx, t.ext, opID, data)
 
-	case MsgTypeData:
+	case MsgTypeData, MsgTypePriorityData:
 		op, ok := t.GetActiveOp(opID)
 		if ok {
 			err := op.Deliver(data)
@@ -674,9 +692,18 @@ func (t *TerminalBase) handlePaddingMsg(c *container.Container) {
 	}
 }
 
-func (t *TerminalBase) sendOpMsgs(c *container.Container) *Error {
+func (t *TerminalBase) sendOpMsgs(c *container.Container, highPriority bool) *Error {
+	// Wait for execution slow depending on priority.
+	if highPriority {
+		done := module.SignalHighPriorityMicroTask()
+		defer done()
+	} else {
+		done := module.SignalMicroTask(DefaultMediumPriorityMaxDelay)
+		defer done()
+	}
+
+	// Add Padding if needed.
 	if t.opts.Padding > 0 {
-		// Add Padding if needed.
 		paddingNeeded := (int(t.opts.Padding) - c.Length()) % int(t.opts.Padding)
 		if paddingNeeded > 0 {
 			// Add padding message header.
@@ -703,7 +730,7 @@ func (t *TerminalBase) sendOpMsgs(c *container.Container) *Error {
 	}
 
 	// Send data.
-	return t.sendProxy(c)
+	return t.sendProxy(c, highPriority)
 }
 
 func (t *TerminalBase) addToOpMsgSendBuffer(
@@ -716,7 +743,7 @@ func (t *TerminalBase) addToOpMsgSendBuffer(
 	MakeMsg(data, opID, msgType)
 
 	// Submit with submit control.
-	return t.submitControl.Submit(data, timeout)
+	return t.submitControl.Submit(data, msgType == MsgTypePriorityData, timeout)
 }
 
 // StartAbandonProcedure sends a stop message with the given error if wanted, ends
@@ -754,7 +781,7 @@ func (t *TerminalBase) handleAbandonProcedure(err *Error, sendError bool, finali
 		MakeMsg(stopMsg, t.id, MsgTypeStop)
 
 		// Directly submit to upstream.
-		tErr := t.submitUpstream(stopMsg)
+		tErr := t.submitUpstream(stopMsg, false)
 		if tErr != nil {
 			log.Warningf("spn/terminal: terminal %s failed to send stop msg: %s", t.ext.FmtID(), tErr)
 		}

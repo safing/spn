@@ -94,7 +94,7 @@ func (op *GossipOp) sendMsg(msgType GossipMsgType, data []byte) {
 		varint.Pack8(uint8(msgType)),
 		data,
 	)
-	err := op.controller.OpSendWithTimeout(op, c, time.Second)
+	err := op.controller.OpSend(op, c, time.Second, false)
 	if err != nil {
 		log.Debugf("spn/captain: failed to forward %s via %s: %s", msgType, op.controller.Crane.ID, err)
 	}

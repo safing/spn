@@ -162,7 +162,7 @@ func (op *LatencyTestClientOp) handler(ctx context.Context) error {
 				returnErr = terminal.ErrInternalError.With("%w", err)
 				return nil
 			}
-			tErr := op.t.OpSend(op, pingRequest)
+			tErr := op.t.OpSend(op, pingRequest, latencyTestOpTimeout, false)
 			if tErr != nil {
 				returnErr = tErr.Wrap("failed to send ping request")
 				return nil
@@ -322,7 +322,7 @@ func (op *LatencyTestOp) Deliver(c *container.Container) *terminal.Error {
 		c.PrependNumber(latencyPingResponse)
 
 		// Send response.
-		tErr := op.t.OpSend(op, c)
+		tErr := op.t.OpSend(op, c, latencyTestOpTimeout, false)
 		if tErr != nil {
 			return tErr.Wrap("failed to send ping response")
 		}
