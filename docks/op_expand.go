@@ -9,7 +9,6 @@ import (
 	"github.com/tevino/abool"
 
 	"github.com/safing/portbase/container"
-	"github.com/safing/portbase/formats/varint"
 	"github.com/safing/spn/conf"
 	"github.com/safing/spn/terminal"
 )
@@ -43,6 +42,8 @@ type ExpandOp struct {
 	recvProxy func() <-chan *container.Container
 	// sendProxy is populated with the configured send function
 	sendProxy func(c *container.Container, highPriority bool) *terminal.Error
+	// prioMsgs holds the number of messages to forward with high priority.
+	prioMsgs *int32
 }
 
 // ExpansionRelayTerminal is a relay used for expansion.
@@ -62,6 +63,8 @@ type ExpansionRelayTerminal struct {
 	recvProxy func() <-chan *container.Container
 	// sendProxy is populated with the configured send function
 	sendProxy func(c *container.Container, highPriority bool) *terminal.Error
+	// prioMsgs holds the number of messages to forward with high priority.
+	prioMsgs *int32
 }
 
 // Type returns the type ID.
@@ -89,8 +92,52 @@ func (op *ExpandOp) Deliver(c *container.Container) *terminal.Error {
 	return op.deliverProxy(c)
 }
 
+// DeliverHighPriority delivers a high priority message to the relay operation.
+func (op *ExpandOp) DeliverHighPriority(c *container.Container) *terminal.Error {
+	// Set prioMsgs for prioritizing sending of messages until the high priority
+	// one is sent.
+	// Always add two extra for (1) the current message and (2) because prioMsgs
+	// might be reduced immediately for sending the current message being handled
+	// concurrently.
+	if op.flowControl != nil {
+		// Set prioMsgs of the relay terminal to the full length of the op recv
+		// queue, from which the relay terminal reads and then sends.
+		atomic.StoreInt32(
+			op.relayTerminal.prioMsgs,
+			int32(op.flowControl.RecvQueueLen())+2,
+		)
+	} else {
+		// Set prioMsgs of the relay terminal to 2 if no flow control is configured.
+		atomic.StoreInt32(op.relayTerminal.prioMsgs, 2)
+	}
+
+	return op.deliverProxy(c)
+}
+
 // Deliver delivers a message to the relay terminal.
 func (t *ExpansionRelayTerminal) Deliver(c *container.Container) *terminal.Error {
+	return t.deliverProxy(c)
+}
+
+// DeliverHighPriority delivers a high priority message to the relay terminal.
+func (t *ExpansionRelayTerminal) DeliverHighPriority(c *container.Container) *terminal.Error {
+	// Set prioMsgs for prioritizing sending of messages until the high priority
+	// one is sent.
+	// Always add two extra for (1) the current message and (2) because prioMsgs
+	// might be reduced immediately for sending the current message being handled
+	// concurrently.
+	if t.flowControl != nil {
+		// Set prioMsgs of the relay operation to the full length of the terminal
+		// recv queue, from which the relay operation reads and then sends.
+		atomic.StoreInt32(
+			t.op.prioMsgs,
+			int32(t.flowControl.RecvQueueLen())+2,
+		)
+	} else {
+		// Set prioMsgs of the relay operation to 2 if no flow control is configured.
+		atomic.StoreInt32(t.op.prioMsgs, 2)
+	}
+
 	return t.deliverProxy(c)
 }
 
@@ -151,10 +198,12 @@ func expand(t terminal.OpTerminal, opID uint32, data *container.Container) (term
 		opts:        opts,
 		dataRelayed: new(uint64),
 		ended:       abool.New(),
+		prioMsgs:    new(int32),
 		relayTerminal: &ExpansionRelayTerminal{
 			crane:     relayCrane,
 			id:        relayCrane.getNextTerminalID(),
 			abandoned: abool.New(),
+			prioMsgs:  new(int32),
 		},
 	}
 	op.OpBase.Init()
@@ -260,29 +309,23 @@ func (op *ExpandOp) forwardHandler(_ context.Context) error {
 			// Debugging:
 			// log.Debugf("spn/testing: forwarding at %s: %s", op.FmtID(), spew.Sdump(c.CompileData()))
 
-			// FIXME: what data are we seeing here exactly?
-
-			// Check if message is prioritized.
-			var highPriority bool
-			if op.opts.UsePriorityDataMsgs {
-				buf := c.Gather(5)
-				num, _, err := varint.Unpack32(buf)
-				highPriority = err == nil &&
-					terminal.MsgType(num%4) == terminal.MsgTypePriorityData
-			}
-
-			// Get execution priority.
-			if highPriority {
+			// Check if we should forward with high priority.
+			remainingPrioMsgs := atomic.AddInt32(op.prioMsgs, -1)
+			if remainingPrioMsgs >= 0 {
 				microTaskDone = module.SignalHighPriorityMicroTask()
 			} else {
 				microTaskDone = module.SignalMicroTask(terminal.DefaultMediumPriorityMaxDelay)
+				// Protect against wrapping.
+				if remainingPrioMsgs < -2_000_000_000 {
+					atomic.StoreInt32(op.prioMsgs, 0)
+				}
 			}
 
 			// Count relayed data for metrics.
 			atomic.AddUint64(op.dataRelayed, uint64(c.Length()))
 
 			// Receive data from the origin and forward it to the relay.
-			if err := op.relayTerminal.sendProxy(c, highPriority); err != nil {
+			if err := op.relayTerminal.sendProxy(c, remainingPrioMsgs >= 0); err != nil {
 				op.relayTerminal.Abandon(err)
 				return nil
 			}
@@ -307,27 +350,23 @@ func (op *ExpandOp) backwardHandler(_ context.Context) error {
 			// Debugging:
 			// log.Debugf("spn/testing: backwarding at %s: %s", op.FmtID(), spew.Sdump(c.CompileData()))
 
-			// Check if message is prioritized.
-			var highPriority bool
-			if op.opts.UsePriorityDataMsgs {
-				buf := c.Gather(5)
-				num, _, err := varint.Unpack32(buf)
-				highPriority = err == nil &&
-					terminal.MsgType(num%4) == terminal.MsgTypePriorityData
-			}
-
-			// Get execution priority.
-			if highPriority {
+			// Check if we should forward with high priority.
+			remainingPrioMsgs := atomic.AddInt32(op.prioMsgs, -1)
+			if remainingPrioMsgs >= 0 {
 				microTaskDone = module.SignalHighPriorityMicroTask()
 			} else {
 				microTaskDone = module.SignalMicroTask(terminal.DefaultMediumPriorityMaxDelay)
+				// Protect against wrapping.
+				if remainingPrioMsgs < -2_000_000_000 {
+					atomic.StoreInt32(op.prioMsgs, 0)
+				}
 			}
 
 			// Count relayed data for metrics.
 			atomic.AddUint64(op.dataRelayed, uint64(c.Length()))
 
 			// Receive data from the relay and forward it to the origin.
-			if err := op.sendProxy(c, highPriority); err != nil {
+			if err := op.sendProxy(c, remainingPrioMsgs >= 0); err != nil {
 				op.Abandon(err)
 				return nil
 			}
@@ -372,7 +411,7 @@ func (t *ExpansionRelayTerminal) Abandon(err *terminal.Error) {
 
 // FmtID returns the expansion ID hierarchy.
 func (op *ExpandOp) FmtID() string {
-	return fmt.Sprintf("%s>%d r> %s#%d", op.opTerminal.FmtID(), op.ID(), op.relayTerminal.crane.ID, op.relayTerminal.id)
+	return fmt.Sprintf("%s>%d <r> %s#%d", op.opTerminal.FmtID(), op.ID(), op.relayTerminal.crane.ID, op.relayTerminal.id)
 }
 
 // FmtID returns the expansion ID hierarchy.

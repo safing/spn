@@ -57,12 +57,13 @@ func (op *ConnectOp) Ctx() context.Context {
 // ConnectRequest holds all the information necessary for a connect operation.
 type ConnectRequest struct {
 	// TODO: Keep MsgPack aliases until we've finished introducing the new struct tags.
-	Domain              string            `json:"d,omitempty" msgpack:"alias:d,omitempty"`
-	IP                  net.IP            `json:"ip,omitempty" msgpack:"alias:ip,omitempty"`
-	UsePriorityDataMsgs bool              `json:"pr,omitempty" msgpack:"pr,omitempty"`
-	Protocol            packet.IPProtocol `json:"p,omitempty" msgpack:"alias:p,omitempty"`
-	Port                uint16            `json:"po,omitempty" msgpack:"alias:po,omitempty"`
-	QueueSize           uint32            `json:"qs,omitempty" msgpack:"alias:qs,omitempty"`
+	// TODO: Add json tags while everyone is on msgpack.
+	Domain              string            `msgpack:"alias:d,omitempty"`
+	IP                  net.IP            `msgpack:"alias:ip,omitempty"`
+	UsePriorityDataMsgs bool              `msgpack:"pr,omitempty"`
+	Protocol            packet.IPProtocol `msgpack:"alias:p,omitempty"`
+	Port                uint16            `msgpack:"alias:po,omitempty"`
+	QueueSize           uint32            `msgpack:"alias:qs,omitempty"`
 }
 
 // Address returns the address of the connext request.
@@ -89,10 +90,11 @@ func init() {
 func NewConnectOp(tunnel *Tunnel) (*ConnectOp, *terminal.Error) {
 	// Create request.
 	request := &ConnectRequest{
-		Domain:   tunnel.connInfo.Entity.Domain,
-		IP:       tunnel.connInfo.Entity.IP,
-		Protocol: packet.IPProtocol(tunnel.connInfo.Entity.Protocol),
-		Port:     tunnel.connInfo.Entity.Port,
+		Domain:              tunnel.connInfo.Entity.Domain,
+		IP:                  tunnel.connInfo.Entity.IP,
+		Protocol:            packet.IPProtocol(tunnel.connInfo.Entity.Protocol),
+		Port:                tunnel.connInfo.Entity.Port,
+		UsePriorityDataMsgs: terminal.UsePriorityDataMsgs,
 	}
 
 	// Set defaults.
@@ -243,7 +245,15 @@ func (op *ConnectOp) connReader(_ context.Context) error {
 		}()
 	}
 
+	// Setup micro task done signal.
+	microTaskDone := func() {}
+	defer microTaskDone()
+
 	for {
+		// Signal that we've finished the micro task.
+		microTaskDone()
+
+		// Read from connection.
 		buf := make([]byte, readBufSize)
 		n, err := op.conn.Read(buf)
 		if err != nil {
@@ -266,14 +276,11 @@ func (op *ConnectOp) connReader(_ context.Context) error {
 		// Check if message should be prioritized.
 		switch {
 		case inBytes < highPrioLimit:
-			done := module.SignalHighPriorityMicroTask()
-			defer done()
+			microTaskDone = module.SignalHighPriorityMicroTask()
 		case inBytes < mediumPrioLimit:
-			done := module.SignalMicroTask(mediumPrioMaxDelay)
-			defer done()
+			microTaskDone = module.SignalMicroTask(mediumPrioMaxDelay)
 		default:
-			done := module.SignalLowPriorityMicroTask(lowPrioMaxDelay)
-			defer done()
+			microTaskDone = module.SignalLowPriorityMicroTask(lowPrioMaxDelay)
 		}
 
 		tErr := op.DuplexFlowQueue.Send(

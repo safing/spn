@@ -19,6 +19,8 @@ type FlowControl interface {
 	ReadyToSend() <-chan struct{}
 	Flush()
 	StartWorkers(m *modules.Module, terminalName string)
+	RecvQueueLen() int
+	SendQueueLen() int
 }
 
 // FlowControlType represents a flow control type.
@@ -422,4 +424,14 @@ func (dfq *DuplexFlowQueue) FlowStats() string {
 		atomic.LoadInt32(dfq.sendSpace),
 		atomic.LoadInt32(dfq.reportedSpace),
 	)
+}
+
+// RecvQueueLen returns the current length of the receiv queue.
+func (dfq *DuplexFlowQueue) RecvQueueLen() int {
+	return len(dfq.recvQueue)
+}
+
+// SendQueueLen returns the current length of the send queue.
+func (dfq *DuplexFlowQueue) SendQueueLen() int {
+	return len(dfq.sendQueue)
 }

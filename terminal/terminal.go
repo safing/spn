@@ -627,7 +627,17 @@ func (t *TerminalBase) handleOpMsg(data *container.Container) *Error {
 	case MsgTypeData, MsgTypePriorityData:
 		op, ok := t.GetActiveOp(opID)
 		if ok {
-			err := op.Deliver(data)
+			var err *Error
+			if msgType == MsgTypeData {
+				// Deliver regularly.
+				err = op.Deliver(data)
+			} else if highPrio, ok := op.(HighPriorityDelivery); ok {
+				// Deliver with high priority regularly.
+				err = highPrio.DeliverHighPriority(data)
+			} else {
+				// Deliver regularly when high priority is not supported.
+				err = op.Deliver(data)
+			}
 			if err != nil {
 				if err.IsOK() {
 					t.OpEnd(op, err)

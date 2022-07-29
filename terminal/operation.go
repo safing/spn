@@ -27,6 +27,11 @@ type Operation interface {
 	End(err *Error) (errorToSend *Error)
 }
 
+// HighPriorityDelivery is an interface for high priority data delivery.
+type HighPriorityDelivery interface {
+	DeliverHighPriority(data *container.Container) *Error
+}
+
 // OpParams defines an operation.
 type OpParams struct {
 	// Type is the type name of an operation.
