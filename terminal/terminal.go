@@ -653,21 +653,17 @@ func (t *TerminalBase) handleOpMsg(data *container.Container) *Error {
 			// Send a stop error if this happens too often.
 			if opID == t.lastUnknownOpID {
 				// OpID is the same as last time.
-
-				// Send a stop message every ten.
 				t.lastUnknownOpMsgs++
-				if t.lastUnknownOpMsgs%10 == 0 {
-					t.OpEnd(newUnknownOp(opID, ""), ErrUnknownOperationID.With("received %d unsolicited data msgs", t.lastUnknownOpMsgs))
-				}
-				// Log an error every thousand.
+
+				// Log an warning (via OpEnd) and send a stop message every thousand.
 				if t.lastUnknownOpMsgs%1000 == 0 {
-					log.Tracef("spn/terminal: %s received %d data msgs for unknown op %d", fmtTerminalID(t.parentID, t.id), t.lastUnknownOpMsgs, opID)
+					t.OpEnd(newUnknownOp(opID, ""), ErrUnknownOperationID.With("received %d unsolicited data msgs", t.lastUnknownOpMsgs))
 				}
 				// TODO: Stop terminal at over 10000?
 			} else {
 				// OpID changed, set new ID and reset counter.
 				t.lastUnknownOpID = opID
-				t.lastUnknownOpMsgs = 0
+				t.lastUnknownOpMsgs = 1
 			}
 		}
 
