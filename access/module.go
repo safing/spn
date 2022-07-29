@@ -36,7 +36,7 @@ var (
 )
 
 func init() {
-	module = modules.Register("access", prep, start, stop)
+	module = modules.Register("access", prep, start, stop, "base")
 }
 
 func prep() error {
