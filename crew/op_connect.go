@@ -56,14 +56,13 @@ func (op *ConnectOp) Ctx() context.Context {
 
 // ConnectRequest holds all the information necessary for a connect operation.
 type ConnectRequest struct {
-	// TODO: Keep MsgPack aliases until we've finished introducing the new struct tags.
-	// TODO: Add json tags while everyone is on msgpack.
-	Domain              string            `msgpack:"alias:d,omitempty"`
-	IP                  net.IP            `msgpack:"alias:ip,omitempty"`
-	UsePriorityDataMsgs bool              `msgpack:"pr,omitempty"`
-	Protocol            packet.IPProtocol `msgpack:"alias:p,omitempty"`
-	Port                uint16            `msgpack:"alias:po,omitempty"`
-	QueueSize           uint32            `msgpack:"alias:qs,omitempty"`
+	// TODO: Switch to json tags and CBOR encoding when everyone has the update.
+	Domain              string            `cbor:"d,omitempty"`
+	IP                  net.IP            `cbor:"ip,omitempty"`
+	UsePriorityDataMsgs bool              `cbor:"pr,omitempty"`
+	Protocol            packet.IPProtocol `cbor:"p,omitempty"`
+	Port                uint16            `cbor:"po,omitempty"`
+	QueueSize           uint32            `cbor:"qs,omitempty"`
 }
 
 // Address returns the address of the connext request.
@@ -115,8 +114,8 @@ func NewConnectOp(tunnel *Tunnel) (*ConnectOp, *terminal.Error) {
 	op.DuplexFlowQueue = terminal.NewDuplexFlowQueue(op.Ctx(), request.QueueSize, op.submitUpstream)
 
 	// Prepare init msg.
-	// TODO: Stick to MsgPack until we've finished introducing the new struct tags.
-	data, err := dsd.Dump(request, dsd.MsgPack)
+	// TODO: Switch to json tags and CBOR encoding when everyone has the update.
+	data, err := dsd.Dump(request, dsd.JSON)
 	if err != nil {
 		return nil, terminal.ErrInternalError.With("failed to pack connect request: %w", err)
 	}
