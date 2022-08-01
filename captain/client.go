@@ -62,7 +62,7 @@ var (
 	clientRetryConnectBackoffDuration  = 5 * time.Second
 	clientInitialHealthCheckDelay      = 10 * time.Second
 	clientHealthCheckTickDuration      = 1 * time.Minute
-	clientHealthCheckTimeout           = 5 * time.Second
+	clientHealthCheckTimeout           = 15 * time.Second
 
 	clientHealthCheckTrigger = make(chan struct{}, 1)
 )
