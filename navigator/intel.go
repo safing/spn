@@ -59,20 +59,23 @@ func (m *Map) updateIntelStatuses(pin *Pin) {
 		return
 	}
 
-	// Check if Hub is discontinued.
-	for _, hubID := range m.intel.DiscontinuedHubs {
-		if pin.Hub.ID == hubID {
+	// Check Hub Intel
+	hubIntel, ok := m.intel.Hubs[pin.Hub.ID]
+	if ok {
+		// Apply the verified owner, if any.
+		pin.VerifiedOwner = hubIntel.VerifiedOwner
+
+		// Check if Hub is discontinued.
+		if hubIntel.Discontinued {
+			// Reset state, set offline and return.
 			pin.State = StateNone
 			pin.addStates(StateOffline)
 			return
 		}
-	}
 
-	// Check if Hub is trusted.
-	for _, hubID := range m.intel.TrustedHubs {
-		if pin.Hub.ID == hubID {
+		// Check if Hub is trusted.
+		if hubIntel.Trusted {
 			pin.addStates(StateTrusted)
-			break
 		}
 	}
 
@@ -125,10 +128,11 @@ func (m *Map) updateInfoOverrides(pin *Pin) {
 	}
 
 	// Get overrides for this pin.
-	overrides, ok := m.intel.InfoOverrides[pin.Hub.ID]
-	if !ok {
+	hubIntel, ok := m.intel.Hubs[pin.Hub.ID]
+	if !ok || hubIntel.Override == nil {
 		return
 	}
+	overrides := hubIntel.Override
 
 	// Apply overrides
 	if overrides.ContinentCode != "" {

@@ -25,6 +25,8 @@ type Pin struct { //nolint:maligned
 
 	// Hub Status
 	State PinState
+	// VerifiedOwner holds the name of the verified owner / operator of the Hub.
+	VerifiedOwner string
 	// HopDistance signifies the needed hops to reach this Hub.
 	// HopDistance is measured from the view of a client.
 	// A Hub itself will have itself at distance 1.
