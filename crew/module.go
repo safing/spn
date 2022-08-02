@@ -10,7 +10,7 @@ import (
 var module *modules.Module
 
 func init() {
-	module = modules.Register("crew", nil, start, stop, "navigator", "intel", "cabin")
+	module = modules.Register("crew", nil, start, stop, "terminal", "docks", "navigator", "intel", "cabin")
 }
 
 func start() error {

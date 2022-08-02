@@ -103,7 +103,7 @@ func (m *Map) RegisterHubUpdateHook() (err error) {
 func (m *Map) CancelHubUpdateHook() {
 	if m.hubUpdateHook != nil {
 		if err := m.hubUpdateHook.Cancel(); err != nil {
-			log.Warningf("navigator: failed to cancel update hook for map %s: %s", m.Name, err)
+			log.Warningf("spn/navigator: failed to cancel update hook for map %s: %s", m.Name, err)
 		}
 	}
 }
@@ -291,7 +291,7 @@ func (m *Map) updateHub(h *hub.Hub, lockMap, lockHub bool) {
 	if removedLanes {
 		err := m.recalculateReachableHubs()
 		if err != nil {
-			log.Warningf("navigator: failed to recalculate reachable Hubs: %s", err)
+			log.Warningf("spn/navigator: failed to recalculate reachable Hubs: %s", err)
 		}
 	}
 
@@ -405,7 +405,7 @@ pinLoop:
 			for _, hubID := range m.intel.DiscontinuedHubs {
 				if pin.Hub.ID == hubID {
 					toDelete = append(toDelete, pin.Hub.ID)
-					log.Infof("navigator: deleting discontinued %s", pin.Hub)
+					log.Infof("spn/navigator: deleting discontinued %s", pin.Hub)
 					continue pinLoop
 				}
 			}
@@ -413,7 +413,7 @@ pinLoop:
 		// Check for obsoleted Hubs.
 		if pin.State.hasNoneOf(StateActive) && pin.Hub.Obsolete() {
 			toDelete = append(toDelete, pin.Hub.ID)
-			log.Infof("navigator: deleting obsolete %s", pin.Hub)
+			log.Infof("spn/navigator: deleting obsolete %s", pin.Hub)
 		}
 
 		// Delete hubs async, as deleting triggers a couple hooks that lock the map.
@@ -422,7 +422,7 @@ pinLoop:
 				for _, idToDelete := range toDelete {
 					err := hub.RemoveHubAndMsgs(m.Name, idToDelete)
 					if err != nil {
-						log.Warningf("navigator: failed to delete Hub %s: %s", idToDelete, err)
+						log.Warningf("spn/navigator: failed to delete Hub %s: %s", idToDelete, err)
 					}
 				}
 				return nil

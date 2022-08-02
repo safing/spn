@@ -56,11 +56,13 @@ func (op *ConnectOp) Ctx() context.Context {
 
 // ConnectRequest holds all the information necessary for a connect operation.
 type ConnectRequest struct {
-	Domain    string
-	IP        net.IP
-	Protocol  packet.IPProtocol
-	Port      uint16
-	QueueSize uint32
+	// TODO: Switch to json tags and CBOR encoding when everyone has the update.
+	Domain              string            `cbor:"d,omitempty"`
+	IP                  net.IP            `cbor:"ip,omitempty"`
+	UsePriorityDataMsgs bool              `cbor:"pr,omitempty"`
+	Protocol            packet.IPProtocol `cbor:"p,omitempty"`
+	Port                uint16            `cbor:"po,omitempty"`
+	QueueSize           uint32            `cbor:"qs,omitempty"`
 }
 
 // Address returns the address of the connext request.
@@ -87,10 +89,11 @@ func init() {
 func NewConnectOp(tunnel *Tunnel) (*ConnectOp, *terminal.Error) {
 	// Create request.
 	request := &ConnectRequest{
-		Domain:   tunnel.connInfo.Entity.Domain,
-		IP:       tunnel.connInfo.Entity.IP,
-		Protocol: packet.IPProtocol(tunnel.connInfo.Entity.Protocol),
-		Port:     tunnel.connInfo.Entity.Port,
+		Domain:              tunnel.connInfo.Entity.Domain,
+		IP:                  tunnel.connInfo.Entity.IP,
+		Protocol:            packet.IPProtocol(tunnel.connInfo.Entity.Protocol),
+		Port:                tunnel.connInfo.Entity.Port,
+		UsePriorityDataMsgs: terminal.UsePriorityDataMsgs,
 	}
 
 	// Set defaults.
@@ -107,10 +110,11 @@ func NewConnectOp(tunnel *Tunnel) (*ConnectOp, *terminal.Error) {
 		tunnel:  tunnel,
 	}
 	op.OpBase.Init()
-	op.ctx, op.cancelCtx = context.WithCancel(context.Background())
+	op.ctx, op.cancelCtx = context.WithCancel(module.Ctx)
 	op.DuplexFlowQueue = terminal.NewDuplexFlowQueue(op.Ctx(), request.QueueSize, op.submitUpstream)
 
 	// Prepare init msg.
+	// TODO: Switch to json tags and CBOR encoding when everyone has the update.
 	data, err := dsd.Dump(request, dsd.JSON)
 	if err != nil {
 		return nil, terminal.ErrInternalError.With("failed to pack connect request: %w", err)
@@ -189,7 +193,7 @@ func runConnectOp(t terminal.OpTerminal, opID uint32, data *container.Container)
 	}
 	op.OpBase.Init()
 	op.OpBase.SetID(opID)
-	op.ctx, op.cancelCtx = context.WithCancel(context.Background())
+	op.ctx, op.cancelCtx = context.WithCancel(t.Ctx())
 	op.DuplexFlowQueue = terminal.NewDuplexFlowQueue(op.Ctx(), request.QueueSize, op.submitUpstream)
 
 	// Setup metrics.
@@ -205,13 +209,27 @@ func runConnectOp(t terminal.OpTerminal, opID uint32, data *container.Container)
 	return op, nil
 }
 
-func (op *ConnectOp) submitUpstream(c *container.Container) *terminal.Error {
-	tErr := op.t.OpSend(op, c)
+func (op *ConnectOp) submitUpstream(c *container.Container, highPriority bool) *terminal.Error {
+	tErr := op.t.OpSend(op, c, 0, highPriority)
 	if tErr != nil {
 		op.t.OpEnd(op, tErr.Wrap("failed to send data (op) read from %s", op.connectedType()))
 	}
 	return tErr
 }
+
+const (
+	readBufSize = 1500
+
+	// High priority below 1MB.
+	highPrioLimit = 1_000_000
+
+	// Medium priority below 100MB with max of 24Mbit/s _under load_.
+	mediumPrioLimit    = 100_000_000
+	mediumPrioMaxDelay = time.Second / (24 / 8 * 1_000_000 / readBufSize)
+
+	// Low priority above 100MB with max of 8 Mbit/s _under load_.
+	lowPrioMaxDelay = time.Second / (8 / 8 * 1_000_000 / readBufSize) //nolint:gocritic,staticcheck
+)
 
 func (op *ConnectOp) connReader(_ context.Context) error {
 	// Metrics setup and submitting.
@@ -226,8 +244,16 @@ func (op *ConnectOp) connReader(_ context.Context) error {
 		}()
 	}
 
+	// Setup micro task done signal.
+	microTaskDone := func() {}
+	defer microTaskDone()
+
 	for {
-		buf := make([]byte, 1500)
+		// Signal that we've finished the micro task.
+		microTaskDone()
+
+		// Read from connection.
+		buf := make([]byte, readBufSize)
 		n, err := op.conn.Read(buf)
 		if err != nil {
 			if errors.Is(err, io.EOF) {
@@ -244,9 +270,22 @@ func (op *ConnectOp) connReader(_ context.Context) error {
 
 		// Submit metrics.
 		connectOpIncomingBytes.Add(n)
-		atomic.AddUint64(op.incomingTraffic, uint64(n))
+		inBytes := atomic.AddUint64(op.incomingTraffic, uint64(n))
 
-		tErr := op.DuplexFlowQueue.Send(container.New(buf[:n]))
+		// Check if message should be prioritized.
+		switch {
+		case inBytes < highPrioLimit:
+			microTaskDone = module.SignalHighPriorityMicroTask()
+		case inBytes < mediumPrioLimit:
+			microTaskDone = module.SignalMicroTask(mediumPrioMaxDelay)
+		default:
+			microTaskDone = module.SignalLowPriorityMicroTask(lowPrioMaxDelay)
+		}
+
+		tErr := op.DuplexFlowQueue.Send(
+			container.New(buf[:n]),
+			op.request.UsePriorityDataMsgs && inBytes < highPrioLimit,
+		)
 		if tErr != nil {
 			op.t.OpEnd(op, tErr.Wrap("failed to send data (dfq) read from %s", op.connectedType()))
 			return nil

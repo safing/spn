@@ -12,7 +12,7 @@ var (
 )
 
 func init() {
-	module = modules.Register("sluice", nil, start, stop, "base")
+	module = modules.Register("sluice", nil, start, stop, "terminal")
 }
 
 func start() error {

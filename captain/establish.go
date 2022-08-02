@@ -32,7 +32,7 @@ func EstablishCrane(ctx context.Context, dst *hub.Hub) (*docks.Crane, error) {
 		ship.MarkPublic()
 	}
 
-	crane, err := docks.NewCrane(context.Background(), ship, dst, publicIdentity)
+	crane, err := docks.NewCrane(ctx, ship, dst, publicIdentity)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create crane: %w", err)
 	}

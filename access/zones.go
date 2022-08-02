@@ -139,7 +139,7 @@ func shouldRequestTokensHandler(_ token.Handler) {
 	// accountUpdateTask is always set in client mode and when the module is online.
 	// Check if it's set in case this gets executed in other circumstances.
 	if accountUpdateTask == nil {
-		log.Warningf("access: trying to trigger account update, but the task is not available")
+		log.Warningf("spn/access: trying to trigger account update, but the task is not available")
 		return
 	}
 
@@ -153,7 +153,7 @@ handlerLoop:
 		// Get handler and check if it should be used.
 		handler, ok := token.GetHandler(zone)
 		if !ok {
-			log.Warningf("access: use of non-registered zone %q", zone)
+			log.Warningf("spn/access: use of non-registered zone %q", zone)
 			continue handlerLoop
 		}
 
@@ -174,7 +174,7 @@ handlerLoop:
 		// Get handler and check if it should be used.
 		handler, ok := token.GetHandler(zone)
 		if !ok {
-			log.Warningf("access: use of non-registered zone %q", zone)
+			log.Warningf("spn/access: use of non-registered zone %q", zone)
 			continue handlerLoop
 		}
 
@@ -196,7 +196,7 @@ handlerSelection:
 		handler, ok := token.GetHandler(zone)
 		switch {
 		case !ok:
-			log.Warningf("access: use of non-registered zone %q", zone)
+			log.Warningf("spn/access: use of non-registered zone %q", zone)
 			continue handlerSelection
 		case handler.IsFallback() && !TokenIssuerIsFailing():
 			// Skip fallback zone if everything works.

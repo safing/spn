@@ -48,7 +48,7 @@ var (
 )
 
 // Crane is the primary duplexer and connection manager.
-type Crane struct { //nolint:maligned // TODO
+type Crane struct {
 	// ID is the ID of the Crane.
 	ID string
 	// opts holds options.
@@ -359,7 +359,7 @@ func (crane *Crane) AbandonTerminal(id uint32, err *terminal.Error) {
 	}
 }
 
-func (crane *Crane) submitImportantTerminalMsg(c *container.Container) *terminal.Error {
+func (crane *Crane) submitImportantTerminalMsg(c *container.Container, _ bool) *terminal.Error {
 	select {
 	case crane.importantMsgs <- c:
 		return nil
@@ -368,7 +368,7 @@ func (crane *Crane) submitImportantTerminalMsg(c *container.Container) *terminal
 	}
 }
 
-func (crane *Crane) submitTerminalMsg(c *container.Container) *terminal.Error {
+func (crane *Crane) submitTerminalMsg(c *container.Container, _ bool) *terminal.Error {
 	select {
 	case crane.terminalMsgs <- c:
 		return nil
@@ -508,16 +508,25 @@ func (crane *Crane) handler(ctx context.Context) error {
 	var partialShipment *container.Container
 	var segmentLength uint32
 
+	// Setup micro task done signal.
+	microTaskDone := func() {}
+	defer microTaskDone()
+
 handling:
 	for {
+		// Signal that we've finished the micro task.
+		microTaskDone()
+
 		select {
 		case <-ctx.Done():
 			crane.Stop(nil)
 			return nil
 
 		case shipment := <-crane.unloading:
+			// Get execution priority.
+			microTaskDone = module.SignalHighPriorityMicroTask()
 
-			// log.Debugf("crane %s: before decrypt: %v ... %v", crane.ID, c.CompileData()[:10], c.CompileData()[c.Length()-10:])
+			// log.Debugf("spn/crane %s: before decrypt: %v ... %v", crane.ID, c.CompileData()[:10], c.CompileData()[c.Length()-10:])
 
 			// Decrypt shipment.
 			shipment, err := crane.decrypt(shipment)
@@ -587,7 +596,7 @@ handling:
 				case terminal.MsgTypeInit:
 					crane.establishTerminal(terminalID, segment)
 
-				case terminal.MsgTypeData:
+				case terminal.MsgTypeData, terminal.MsgTypePriorityData:
 					// Get terminal and let it further handle the message.
 					t, ok := crane.getTerminal(terminalID)
 					if ok {
@@ -727,8 +736,12 @@ func (crane *Crane) loader(ctx context.Context) (err error) {
 }
 
 func (crane *Crane) load(c *container.Container) error {
+	// Get execution priority.
+	done := module.SignalHighPriorityMicroTask()
+	defer done()
+
+	// Add Padding if needed.
 	if crane.opts.Padding > 0 {
-		// Add Padding if needed.
 		paddingNeeded := int(crane.opts.Padding) -
 			((c.Length() + varint.EncodedSize(uint64(c.Length()))) % int(crane.opts.Padding))
 		// As the length changes slightly with the padding, we should avoid loading

@@ -1,7 +1,6 @@
 package cabin
 
 import (
-	"context"
 	"testing"
 	"time"
 
@@ -11,7 +10,7 @@ import (
 func TestKeyMaintenance(t *testing.T) {
 	t.Parallel()
 
-	id, err := CreateIdentity(context.Background(), conf.MainMapName)
+	id, err := CreateIdentity(module.Ctx, conf.MainMapName)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -15,10 +15,12 @@ import (
 type FlowControl interface {
 	Deliver(c *container.Container) *Error
 	Receive() <-chan *container.Container
-	Send(c *container.Container) *Error
+	Send(c *container.Container, highPriority bool) *Error
 	ReadyToSend() <-chan struct{}
 	Flush()
 	StartWorkers(m *modules.Module, terminalName string)
+	RecvQueueLen() int
+	SendQueueLen() int
 }
 
 // FlowControlType represents a flow control type.
@@ -64,10 +66,12 @@ type DuplexFlowQueue struct {
 	ctx context.Context
 
 	// upstream is the channel to put containers into to send them upstream.
-	submitUpstream func(*container.Container) *Error
+	submitUpstream func(data *container.Container, highPriority bool) *Error
 
 	// sendQueue holds the containers that are waiting to be sent.
 	sendQueue chan *container.Container
+	// prioMsgs holds the number of messages to send with high priority.
+	prioMsgs *int32
 	// sendSpace indicates the amount free slots in the recvQueue on the other end.
 	sendSpace *int32
 	// readyToSend is used to notify sending components that there is free space.
@@ -95,12 +99,13 @@ type DuplexFlowQueue struct {
 func NewDuplexFlowQueue(
 	ctx context.Context,
 	queueSize uint32,
-	submitUpstream func(*container.Container) *Error,
+	submitUpstream func(c *container.Container, highPriority bool) *Error,
 ) *DuplexFlowQueue {
 	dfq := &DuplexFlowQueue{
 		ctx:              ctx,
 		submitUpstream:   submitUpstream,
 		sendQueue:        make(chan *container.Container, queueSize),
+		prioMsgs:         new(int32),
 		sendSpace:        new(int32),
 		readyToSend:      make(chan struct{}),
 		wakeSender:       make(chan struct{}, 1),
@@ -190,8 +195,15 @@ func (dfq *DuplexFlowQueue) FlowHandler(_ context.Context) error {
 	var sendSpaceDepleted bool
 	var flushFinished func()
 
+	// Setup micro task done signal.
+	microTaskDone := func() {}
+	defer microTaskDone()
+
 sending:
 	for {
+		// Signal that we've finished the micro task.
+		microTaskDone()
+
 		// If the send queue is depleted, wait to be woken.
 		if sendSpaceDepleted {
 			select {
@@ -208,9 +220,10 @@ sending:
 				// no data included.
 				spaceToReport := dfq.reportableRecvSpace()
 				if spaceToReport > 0 {
-					_ = dfq.submitUpstream(container.New(
-						varint.Pack64(uint64(spaceToReport)),
-					))
+					_ = dfq.submitUpstream(
+						container.New(varint.Pack64(uint64(spaceToReport))),
+						false,
+					)
 				}
 				continue sending
 
@@ -233,12 +246,26 @@ sending:
 				return nil
 			}
 
+			// Check if we are handling a high priority message.
+			remainingPrioMsgs := atomic.AddInt32(dfq.prioMsgs, -1)
+			if remainingPrioMsgs >= 0 {
+				microTaskDone = module.SignalHighPriorityMicroTask()
+			} else {
+				microTaskDone = module.SignalMicroTask(DefaultMediumPriorityMaxDelay)
+				// Protect against wrapping.
+				if remainingPrioMsgs < -2_000_000_000 {
+					atomic.StoreInt32(dfq.prioMsgs, 0)
+				}
+			}
+
 			// Prepend available receiving space and flow ID.
 			c.Prepend(varint.Pack64(uint64(dfq.reportableRecvSpace())))
 
 			// Submit for sending upstream.
-			_ = dfq.submitUpstream(c)
-
+			_ = dfq.submitUpstream(
+				c,
+				remainingPrioMsgs >= 0,
+			)
 			// Decrease the send space and set flag if depleted.
 			if dfq.decrementSendSpace() <= 0 {
 				sendSpaceDepleted = true
@@ -256,9 +283,10 @@ sending:
 			// no data included.
 			spaceToReport := dfq.reportableRecvSpace()
 			if spaceToReport > 0 {
-				_ = dfq.submitUpstream(container.New(
-					varint.Pack64(uint64(spaceToReport)),
-				))
+				_ = dfq.submitUpstream(
+					container.New(varint.Pack64(uint64(spaceToReport))),
+					false,
+				)
 			}
 
 		case newFlushFinishedFn := <-dfq.flush:
@@ -319,9 +347,14 @@ func (dfq *DuplexFlowQueue) ReadyToSend() <-chan struct{} {
 }
 
 // Send adds the given container to the send queue.
-func (dfq *DuplexFlowQueue) Send(c *container.Container) *Error {
+func (dfq *DuplexFlowQueue) Send(c *container.Container, highPriority bool) *Error {
 	select {
 	case dfq.sendQueue <- c:
+		if highPriority {
+			// Reset prioMsgs to the current queue size, so that all waiting and the
+			// message we just added are all sent with high priority.
+			atomic.StoreInt32(dfq.prioMsgs, int32(len(dfq.sendQueue)))
+		}
 		return nil
 	case <-dfq.ctx.Done():
 		return ErrStopping
@@ -391,4 +424,14 @@ func (dfq *DuplexFlowQueue) FlowStats() string {
 		atomic.LoadInt32(dfq.sendSpace),
 		atomic.LoadInt32(dfq.reportedSpace),
 	)
+}
+
+// RecvQueueLen returns the current length of the receiv queue.
+func (dfq *DuplexFlowQueue) RecvQueueLen() int {
+	return len(dfq.recvQueue)
+}
+
+// SendQueueLen returns the current length of the send queue.
+func (dfq *DuplexFlowQueue) SendQueueLen() int {
+	return len(dfq.sendQueue)
 }

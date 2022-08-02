@@ -1,7 +1,6 @@
 package docks
 
 import (
-	"context"
 	"fmt"
 
 	"github.com/tevino/abool"
@@ -37,7 +36,7 @@ func ExpandTo(t terminal.OpTerminal, routeTo string, encryptFor *hub.Hub) (*Expa
 
 	// Create base terminal for expansion.
 	tBase, initData, tErr := terminal.NewLocalBaseTerminal(
-		context.Background(),
+		module.Ctx,
 		0,
 		t.FmtID(),
 		encryptFor,
@@ -69,8 +68,8 @@ func ExpandTo(t terminal.OpTerminal, routeTo string, encryptFor *hub.Hub) (*Expa
 	return expansion, nil
 }
 
-func (t *ExpansionTerminal) submitUpstream(c *container.Container) *terminal.Error {
-	err := t.relayOp.OpSend(t, c)
+func (t *ExpansionTerminal) submitUpstream(c *container.Container, highPriority bool) *terminal.Error {
+	err := t.relayOp.OpSend(t, c, 0, highPriority)
 	if err != nil {
 		t.relayOp.OpEnd(t, err.Wrap("failed to send relay op msg"))
 	}

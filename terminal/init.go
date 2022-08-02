@@ -37,6 +37,8 @@ type TerminalOpts struct { //nolint:golint,maligned // TODO: Rename.
 
 	SubmitControl     SubmitControlType `json:"sc,omitempty"`
 	SubmitControlSize uint32            `json:"ss,omitempty"`
+
+	UsePriorityDataMsgs bool `json:"pr,omitempty"`
 }
 
 // ParseTerminalOpts parses terminal options from the container and checks if
@@ -77,7 +79,7 @@ func (opts *TerminalOpts) Pack() (*container.Container, *Error) {
 	}
 
 	// Pack init message.
-	optsData, err := dsd.Dump(opts, dsd.JSON)
+	optsData, err := dsd.Dump(opts, dsd.CBOR)
 	if err != nil {
 		return nil, ErrInternalError.With("failed to pack init message: %w", err)
 	}
@@ -148,7 +150,7 @@ func NewLocalBaseTerminal(
 	parentID string,
 	remoteHub *hub.Hub,
 	initMsg *TerminalOpts,
-	submitUpstream func(*container.Container) *Error,
+	submitUpstream func(c *container.Container, highPriority bool) *Error,
 	addTerminalIDType bool,
 ) (
 	t *TerminalBase,
@@ -201,7 +203,7 @@ func NewRemoteBaseTerminal(
 	parentID string,
 	identity *cabin.Identity,
 	initData *container.Container,
-	submitUpstream func(*container.Container) *Error,
+	submitUpstream func(c *container.Container, highPriority bool) *Error,
 	addTerminalIDType bool,
 ) (
 	t *TerminalBase,

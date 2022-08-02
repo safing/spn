@@ -178,7 +178,7 @@ func (op *CounterOp) Deliver(data *container.Container) *Error {
 	// 	counter < 10000 && counter%1000 == 0 ||
 	// 	counter < 100000 && counter%10000 == 0 ||
 	// 	counter < 1000000 && counter%100000 == 0 {
-	// 	log.Errorf("terminal: counter %s>%d recvd, now at %d", op.t.FmtID(), op.id, counter)
+	// 	log.Errorf("spn/terminal: counter %s>%d recvd, now at %d", op.t.FmtID(), op.id, counter)
 	// }
 
 	if counter != nextStep {
@@ -231,10 +231,10 @@ func (op *CounterOp) SendCounter() *Error {
 	// 	counter < 10000 && counter%1000 == 0 ||
 	// 	counter < 100000 && counter%10000 == 0 ||
 	// 	counter < 1000000 && counter%100000 == 0 {
-	// 	defer log.Errorf("terminal: counter %s>%d sent, now at %d", op.t.FmtID(), op.id, counter)
+	// 	defer log.Errorf("spn/terminal: counter %s>%d sent, now at %d", op.t.FmtID(), op.id, counter)
 	// }
 
-	return op.t.OpSend(op, container.New(varint.Pack64(counter)))
+	return op.t.OpSend(op, container.New(varint.Pack64(counter)), 0, false)
 }
 
 // Wait waits for the Counter Op to finish.

@@ -1,7 +1,6 @@
 package cabin
 
 import (
-	"context"
 	"fmt"
 	"testing"
 )
@@ -9,7 +8,7 @@ import (
 func TestVerification(t *testing.T) {
 	t.Parallel()
 
-	id, err := CreateIdentity(context.Background(), "test")
+	id, err := CreateIdentity(module.Ctx, "test")
 	if err != nil {
 		t.Fatal(err)
 	}

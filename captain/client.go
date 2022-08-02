@@ -62,7 +62,7 @@ var (
 	clientRetryConnectBackoffDuration  = 5 * time.Second
 	clientInitialHealthCheckDelay      = 10 * time.Second
 	clientHealthCheckTickDuration      = 1 * time.Minute
-	clientHealthCheckTimeout           = 5 * time.Second
+	clientHealthCheckTimeout           = 15 * time.Second
 
 	clientHealthCheckTrigger = make(chan struct{}, 1)
 )
@@ -312,7 +312,7 @@ func clientStopHomeHub(ctx context.Context) clientComponentResult {
 func clientConnectToHomeHub(ctx context.Context) clientComponentResult {
 	err := establishHomeHub(ctx)
 	if err != nil {
-		log.Errorf("failed to establish connection to home hub: %s", err)
+		log.Errorf("spn/captain: failed to establish connection to home hub: %s", err)
 		resetSPNStatus(StatusFailed, true)
 
 		switch {

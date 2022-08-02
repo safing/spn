@@ -15,10 +15,18 @@ import (
 type Intel struct {
 	// BootstrapHubs is list of transports that also contain an IP and the Hub's ID.
 	BootstrapHubs []string
+
+	// Hubs holds intel regarding specific Hubs.
+	Hubs map[string]*HubIntel
 	// TrustedHubs is a list of Hub IDs that are specially designated for more sensitive tasls, such as handling unencrypted traffic.
+	// Deprecated: Use "Hubs" instead.
 	TrustedHubs []string
 	// DiscontinuedHubs is a list of Hub IDs that have been discontinued and should be marked as offline and removed.
+	// Deprecated: Use "Hubs" instead.
 	DiscontinuedHubs []string
+	// InfoOverrides is used to override certain Hub information.
+	// Deprecated: Use "Hubs" instead.
+	InfoOverrides map[string]*InfoOverride
 
 	// AdviseOnlyTrustedHubs advises to only use trusted Hubs regardless of intended purpose.
 	AdviseOnlyTrustedHubs bool
@@ -36,9 +44,6 @@ type Intel struct {
 	// DestinationHubAdvisory is only taken into account when selecting a Destination Hub.
 	DestinationHubAdvisory []string
 
-	// InfoOverrides is used to override certain Hub information.
-	InfoOverrides map[string]*InfoOverride
-
 	// Regions defines regions to assist network optimization.
 	Regions []*RegionConfig
 
@@ -46,6 +51,21 @@ type Intel struct {
 	VirtualNetworks []*VirtualNetworkConfig
 
 	parsed *ParsedIntel
+}
+
+// HubIntel holds Hub-related data.
+type HubIntel struct { //nolint:golint
+	// Trusted specifies if the Hub is specially designated for more sensitive tasks, such as handling unencrypted traffic.
+	Trusted bool
+
+	// Discontinued specifies if the Hub has been discontinued and should be marked as offline and removed.
+	Discontinued bool
+
+	// VerifiedOwner holds the name of the verified owner / operator of the Hub.
+	VerifiedOwner string
+
+	// Override is used to override certain Hub information.
+	Override *InfoOverride
 }
 
 // RegionConfig holds the configuration of a region.

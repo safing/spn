@@ -282,7 +282,7 @@ func Logout(shallow, purge bool) error {
 		// Disable SPN when the user logs out directly.
 		disableSPN()
 
-		log.Info("access: logged out and purged data")
+		log.Info("spn/access: logged out and purged data")
 		return nil
 	}
 
@@ -322,9 +322,9 @@ func Logout(shallow, purge bool) error {
 	}
 
 	if shallow {
-		log.Info("access: logged out shallow")
+		log.Info("spn/access: logged out shallow")
 	} else {
-		log.Info("access: logged out")
+		log.Info("spn/access: logged out")
 
 		// Disable SPN when the user logs out directly.
 		disableSPN()
@@ -369,7 +369,7 @@ func UpdateUser() (user *UserRecord, statusCode int, err error) {
 		}()
 		err := previousUser.Save()
 		if err != nil {
-			log.Warningf("access: failed to save updated user profile: %s", err)
+			log.Warningf("spn/access: failed to save updated user profile: %s", err)
 		}
 
 		log.Infof("spn/access: got user profile, updated existing")
@@ -384,7 +384,7 @@ func UpdateUser() (user *UserRecord, statusCode int, err error) {
 	}
 	err = newUser.Save()
 	if err != nil {
-		log.Warningf("access: failed to save new user profile: %s", err)
+		log.Warningf("spn/access: failed to save new user profile: %s", err)
 	}
 
 	log.Infof("spn/access: got user profile, saved as new")
@@ -487,7 +487,7 @@ func healthCheck() (ok bool) {
 		url:    AccountServer + HealthCheckPath,
 	})
 	if err != nil {
-		log.Warningf("access: token issuer health check failed: %s", err)
+		log.Warningf("spn/access: token issuer health check failed: %s", err)
 	}
 	// Update health check expiry.
 	lastHealthCheckExpires = time.Now().Add(lastHealthCheckValidityDuration)

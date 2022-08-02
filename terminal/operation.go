@@ -27,6 +27,11 @@ type Operation interface {
 	End(err *Error) (errorToSend *Error)
 }
 
+// HighPriorityDelivery is an interface for high priority data delivery.
+type HighPriorityDelivery interface {
+	DeliverHighPriority(data *container.Container) *Error
+}
+
 // OpParams defines an operation.
 type OpParams struct {
 	// Type is the type name of an operation.
@@ -123,10 +128,9 @@ type OpTerminal interface {
 	OpInit(op Operation, data *container.Container) *Error
 
 	// OpSend sends data.
-	OpSend(op Operation, data *container.Container) *Error
-
-	// OpSendWithTimeout sends data, but fails after the given timeout passed.
-	OpSendWithTimeout(op Operation, data *container.Container, timeout time.Duration) *Error
+	// Setting highPriority will use MsgTypePriorityData.
+	// If a timeout is set, sending will fail after the given timeout passed.
+	OpSend(op Operation, data *container.Container, timeout time.Duration, highPriority bool) *Error
 
 	// OpEnd sends the end signal and calls End(ErrNil) on the Operation.
 	// The Operation should cease operation after calling this function.
@@ -137,6 +141,9 @@ type OpTerminal interface {
 
 	// Flush writes all pending data waiting to be sent.
 	Flush()
+
+	// Ctx returns the Terminal's context.
+	Ctx() context.Context
 }
 
 // OpInit initialized the operation with the given data.
@@ -162,12 +169,12 @@ func (t *TerminalBase) OpInit(op Operation, data *container.Container) *Error {
 }
 
 // OpSend sends data.
-func (t *TerminalBase) OpSend(op Operation, data *container.Container) *Error {
-	return t.addToOpMsgSendBuffer(op.ID(), MsgTypeData, data, 0)
-}
-
-// OpSendWithTimeout sends data, but fails after the given timeout passed.
-func (t *TerminalBase) OpSendWithTimeout(op Operation, data *container.Container, timeout time.Duration) *Error {
+// Setting highPriority will use MsgTypePriorityData.
+// If a timeout is set, sending will fail after the given timeout passed.
+func (t *TerminalBase) OpSend(op Operation, data *container.Container, timeout time.Duration, highPriority bool) *Error {
+	if highPriority {
+		return t.addToOpMsgSendBuffer(op.ID(), MsgTypePriorityData, data, timeout)
+	}
 	return t.addToOpMsgSendBuffer(op.ID(), MsgTypeData, data, timeout)
 }
 

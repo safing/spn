@@ -27,7 +27,7 @@ const (
 
 func (m *Map) measureHubs(ctx context.Context, _ *modules.Task) error {
 	if home, _ := m.GetHome(); home == nil {
-		log.Debug("navigator: skipping measuring, no home hub set")
+		log.Debug("spn/navigator: skipping measuring, no home hub set")
 		return nil
 	}
 
@@ -83,7 +83,7 @@ func (m *Map) measureHubs(ctx context.Context, _ *modules.Task) error {
 		pin.measurements.SetCalculatedCost(calculatedCost)
 		// Log result.
 		log.Infof(
-			"navigator: updated measurements for connection to %s: %s %.2fMbit/s %.2fc",
+			"spn/navigator: updated measurements for connection to %s: %s %.2fMbit/s %.2fc",
 			pin.Hub,
 			latency,
 			float64(capacity)/1000000,
@@ -97,18 +97,18 @@ func (m *Map) measureHubs(ctx context.Context, _ *modules.Task) error {
 		case tErr.Is(terminal.ErrTryAgainLater):
 			if tErr.IsExternal() {
 				// Remote is measuring, just continue with next.
-				log.Debugf("navigator: remote %s is measuring, continuing with next", pin.Hub)
+				log.Debugf("spn/navigator: remote %s is measuring, continuing with next", pin.Hub)
 			} else {
 				// We are measuring, abort and restart measuring again later.
-				log.Debugf("navigator: postponing measuring because we are currently engaged in measuring")
+				log.Debugf("spn/navigator: postponing measuring because we are currently engaged in measuring")
 				return nil
 			}
 
 		default:
-			log.Warningf("navigator: failed to measure connection to %s: %s", pin.Hub, tErr)
+			log.Warningf("spn/navigator: failed to measure connection to %s: %s", pin.Hub, tErr)
 			unknownErrCnt++
 			if unknownErrCnt >= 3 {
-				log.Warningf("navigator: postponing measuring task because of multiple errors")
+				log.Warningf("spn/navigator: postponing measuring task because of multiple errors")
 				return nil
 			}
 		}
@@ -125,7 +125,7 @@ func (m *Map) SaveMeasuredHubs() {
 	for _, pin := range m.all {
 		if !pin.measurements.IsPersisted() {
 			if err := pin.Hub.Save(); err != nil {
-				log.Warningf("navigator: failed to save Hub %s to persist measurements: %s", pin.Hub, err)
+				log.Warningf("spn/navigator: failed to save Hub %s to persist measurements: %s", pin.Hub, err)
 			}
 		}
 	}

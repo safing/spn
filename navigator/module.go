@@ -31,7 +31,7 @@ var (
 )
 
 func init() {
-	module = modules.Register("navigator", prep, start, stop, "base", "geoip", "netenv")
+	module = modules.Register("navigator", prep, start, stop, "terminal", "geoip", "netenv")
 }
 
 func prep() error {

@@ -162,7 +162,7 @@ func (op *LatencyTestClientOp) handler(ctx context.Context) error {
 				returnErr = terminal.ErrInternalError.With("%w", err)
 				return nil
 			}
-			tErr := op.t.OpSend(op, pingRequest)
+			tErr := op.t.OpSend(op, pingRequest, latencyTestOpTimeout, false)
 			if tErr != nil {
 				returnErr = tErr.Wrap("failed to send ping request")
 				return nil
@@ -251,7 +251,7 @@ func (op *LatencyTestClientOp) reportMeasuredLatencies() *terminal.Error {
 	if controller, ok := op.t.(*CraneControllerTerminal); ok {
 		if controller.Crane.ConnectedHub != nil {
 			controller.Crane.ConnectedHub.GetMeasurements().SetLatency(op.testResult)
-			log.Infof("docks: measured latency to %s: %s", controller.Crane.ConnectedHub, op.testResult)
+			log.Infof("spn/docks: measured latency to %s: %s", controller.Crane.ConnectedHub, op.testResult)
 			return nil
 		} else if controller.Crane.IsMine() {
 			return terminal.ErrInternalError.With("latency operation was run on %s without a connected hub set", controller.Crane)
@@ -322,7 +322,7 @@ func (op *LatencyTestOp) Deliver(c *container.Container) *terminal.Error {
 		c.PrependNumber(latencyPingResponse)
 
 		// Send response.
-		tErr := op.t.OpSend(op, c)
+		tErr := op.t.OpSend(op, c, latencyTestOpTimeout, false)
 		if tErr != nil {
 			return tErr.Wrap("failed to send ping response")
 		}

@@ -176,6 +176,11 @@ func (m *Map) findNearestPins(locationV4, locationV6 *geoip.Location, matcher Pi
 		}
 	}
 
+	// Check if we found any nearby pins
+	if nearby.Len() == 0 {
+		return nil, errors.New("no pins found near destination")
+	}
+
 	// Clean one last time and return the list.
 	nearby.clean()
 	return nearby, nil

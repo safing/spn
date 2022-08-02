@@ -22,6 +22,7 @@ var activeExpandOps = new(int64)
 type ExpandOp struct {
 	terminal.OpBase
 	opTerminal terminal.OpTerminal
+	opts       *terminal.TerminalOpts
 
 	// ctx is the context of the Terminal.
 	ctx context.Context
@@ -40,7 +41,9 @@ type ExpandOp struct {
 	// recvProxy is populated with the configured recv function
 	recvProxy func() <-chan *container.Container
 	// sendProxy is populated with the configured send function
-	sendProxy func(c *container.Container) *terminal.Error
+	sendProxy func(c *container.Container, highPriority bool) *terminal.Error
+	// prioMsgs holds the number of messages to forward with high priority.
+	prioMsgs *int32
 }
 
 // ExpansionRelayTerminal is a relay used for expansion.
@@ -59,7 +62,9 @@ type ExpansionRelayTerminal struct {
 	// recvProxy is populated with the configured recv function
 	recvProxy func() <-chan *container.Container
 	// sendProxy is populated with the configured send function
-	sendProxy func(c *container.Container) *terminal.Error
+	sendProxy func(c *container.Container, highPriority bool) *terminal.Error
+	// prioMsgs holds the number of messages to forward with high priority.
+	prioMsgs *int32
 }
 
 // Type returns the type ID.
@@ -87,8 +92,52 @@ func (op *ExpandOp) Deliver(c *container.Container) *terminal.Error {
 	return op.deliverProxy(c)
 }
 
+// DeliverHighPriority delivers a high priority message to the relay operation.
+func (op *ExpandOp) DeliverHighPriority(c *container.Container) *terminal.Error {
+	// Set prioMsgs for prioritizing sending of messages until the high priority
+	// one is sent.
+	// Always add two extra for (1) the current message and (2) because prioMsgs
+	// might be reduced immediately for sending the current message being handled
+	// concurrently.
+	if op.flowControl != nil {
+		// Set prioMsgs of the relay terminal to the full length of the op recv
+		// queue, from which the relay terminal reads and then sends.
+		atomic.StoreInt32(
+			op.relayTerminal.prioMsgs,
+			int32(op.flowControl.RecvQueueLen())+2,
+		)
+	} else {
+		// Set prioMsgs of the relay terminal to 2 if no flow control is configured.
+		atomic.StoreInt32(op.relayTerminal.prioMsgs, 2)
+	}
+
+	return op.deliverProxy(c)
+}
+
 // Deliver delivers a message to the relay terminal.
 func (t *ExpansionRelayTerminal) Deliver(c *container.Container) *terminal.Error {
+	return t.deliverProxy(c)
+}
+
+// DeliverHighPriority delivers a high priority message to the relay terminal.
+func (t *ExpansionRelayTerminal) DeliverHighPriority(c *container.Container) *terminal.Error {
+	// Set prioMsgs for prioritizing sending of messages until the high priority
+	// one is sent.
+	// Always add two extra for (1) the current message and (2) because prioMsgs
+	// might be reduced immediately for sending the current message being handled
+	// concurrently.
+	if t.flowControl != nil {
+		// Set prioMsgs of the relay operation to the full length of the terminal
+		// recv queue, from which the relay operation reads and then sends.
+		atomic.StoreInt32(
+			t.op.prioMsgs,
+			int32(t.flowControl.RecvQueueLen())+2,
+		)
+	} else {
+		// Set prioMsgs of the relay operation to 2 if no flow control is configured.
+		atomic.StoreInt32(t.op.prioMsgs, 2)
+	}
+
 	return t.deliverProxy(c)
 }
 
@@ -146,17 +195,20 @@ func expand(t terminal.OpTerminal, opID uint32, data *container.Container) (term
 	// Create operation and terminal.
 	op := &ExpandOp{
 		opTerminal:  t,
+		opts:        opts,
 		dataRelayed: new(uint64),
 		ended:       abool.New(),
+		prioMsgs:    new(int32),
 		relayTerminal: &ExpansionRelayTerminal{
 			crane:     relayCrane,
 			id:        relayCrane.getNextTerminalID(),
 			abandoned: abool.New(),
+			prioMsgs:  new(int32),
 		},
 	}
 	op.OpBase.Init()
 	op.OpBase.SetID(opID)
-	op.ctx, op.cancelCtx = context.WithCancel(context.Background())
+	op.ctx, op.cancelCtx = context.WithCancel(t.Ctx())
 	op.relayTerminal.op = op
 
 	// Create flow control.
@@ -212,17 +264,22 @@ func expand(t terminal.OpTerminal, opID uint32, data *container.Container) (term
 	return op, nil
 }
 
-func (op *ExpandOp) submitForwardstream(c *container.Container) *terminal.Error {
-	terminal.MakeMsg(c, op.relayTerminal.id, terminal.MsgTypeData)
-	err := op.relayTerminal.crane.submitTerminalMsg(c)
+func (op *ExpandOp) submitForwardstream(c *container.Container, highPriority bool) (err *terminal.Error) {
+	if highPriority && op.opts.UsePriorityDataMsgs {
+		terminal.MakeMsg(c, op.relayTerminal.id, terminal.MsgTypePriorityData)
+		err = op.relayTerminal.crane.submitTerminalMsg(c, true)
+	} else {
+		terminal.MakeMsg(c, op.relayTerminal.id, terminal.MsgTypeData)
+		err = op.relayTerminal.crane.submitTerminalMsg(c, false)
+	}
 	if err != nil {
 		op.opTerminal.OpEnd(op, err.Wrap("failed to submit forward from relay op"))
 	}
 	return err
 }
 
-func (op *ExpandOp) submitBackstream(c *container.Container) *terminal.Error {
-	err := op.opTerminal.OpSend(op, c)
+func (op *ExpandOp) submitBackstream(c *container.Container, highPriority bool) *terminal.Error {
+	err := op.opTerminal.OpSend(op, c, 0, highPriority)
 	if err != nil {
 		op.opTerminal.OpEnd(op, err.Wrap("failed to submit backward from relay op"))
 	}
@@ -239,17 +296,36 @@ func (op *ExpandOp) forwardHandler(_ context.Context) error {
 		expandOpRelayedDataHistogram.Update(float64(atomic.LoadUint64(op.dataRelayed)))
 	}()
 
+	// Setup micro task done signal.
+	microTaskDone := func() {}
+	defer microTaskDone()
+
 	for {
+		// Signal that we've finished the micro task.
+		microTaskDone()
+
 		select {
 		case c := <-op.recvProxy():
 			// Debugging:
-			// log.Debugf("forwarding at %s: %s", op.FmtID(), spew.Sdump(c.CompileData()))
+			// log.Debugf("spn/testing: forwarding at %s: %s", op.FmtID(), spew.Sdump(c.CompileData()))
+
+			// Check if we should forward with high priority.
+			remainingPrioMsgs := atomic.AddInt32(op.prioMsgs, -1)
+			if remainingPrioMsgs >= 0 {
+				microTaskDone = module.SignalHighPriorityMicroTask()
+			} else {
+				microTaskDone = module.SignalMicroTask(terminal.DefaultMediumPriorityMaxDelay)
+				// Protect against wrapping.
+				if remainingPrioMsgs < -2_000_000_000 {
+					atomic.StoreInt32(op.prioMsgs, 0)
+				}
+			}
 
 			// Count relayed data for metrics.
 			atomic.AddUint64(op.dataRelayed, uint64(c.Length()))
 
 			// Receive data from the origin and forward it to the relay.
-			if err := op.relayTerminal.sendProxy(c); err != nil {
+			if err := op.relayTerminal.sendProxy(c, remainingPrioMsgs >= 0); err != nil {
 				op.relayTerminal.Abandon(err)
 				return nil
 			}
@@ -261,17 +337,36 @@ func (op *ExpandOp) forwardHandler(_ context.Context) error {
 }
 
 func (op *ExpandOp) backwardHandler(_ context.Context) error {
+	// Setup micro task done signal.
+	microTaskDone := func() {}
+	defer microTaskDone()
+
 	for {
+		// Signal that we've finished the micro task.
+		microTaskDone()
+
 		select {
 		case c := <-op.relayTerminal.recvProxy():
 			// Debugging:
-			// log.Debugf("backwarding at %s: %s", op.FmtID(), spew.Sdump(c.CompileData()))
+			// log.Debugf("spn/testing: backwarding at %s: %s", op.FmtID(), spew.Sdump(c.CompileData()))
+
+			// Check if we should forward with high priority.
+			remainingPrioMsgs := atomic.AddInt32(op.prioMsgs, -1)
+			if remainingPrioMsgs >= 0 {
+				microTaskDone = module.SignalHighPriorityMicroTask()
+			} else {
+				microTaskDone = module.SignalMicroTask(terminal.DefaultMediumPriorityMaxDelay)
+				// Protect against wrapping.
+				if remainingPrioMsgs < -2_000_000_000 {
+					atomic.StoreInt32(op.prioMsgs, 0)
+				}
+			}
 
 			// Count relayed data for metrics.
 			atomic.AddUint64(op.dataRelayed, uint64(c.Length()))
 
 			// Receive data from the relay and forward it to the origin.
-			if err := op.sendProxy(c); err != nil {
+			if err := op.sendProxy(c, remainingPrioMsgs >= 0); err != nil {
 				op.Abandon(err)
 				return nil
 			}
@@ -316,7 +411,7 @@ func (t *ExpansionRelayTerminal) Abandon(err *terminal.Error) {
 
 // FmtID returns the expansion ID hierarchy.
 func (op *ExpandOp) FmtID() string {
-	return fmt.Sprintf("%s>%d r> %s#%d", op.opTerminal.FmtID(), op.ID(), op.relayTerminal.crane.ID, op.relayTerminal.id)
+	return fmt.Sprintf("%s>%d <r> %s#%d", op.opTerminal.FmtID(), op.ID(), op.relayTerminal.crane.ID, op.relayTerminal.id)
 }
 
 // FmtID returns the expansion ID hierarchy.

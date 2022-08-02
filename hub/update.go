@@ -266,7 +266,7 @@ func ApplyAnnouncement(existingHub *Hub, data []byte, mapName string, scope Scop
 			return
 		}
 
-		log.Warningf("received an invalid announcement of %s: %s", hub.StringWithoutLocking(), err)
+		log.Warningf("spn/hub: received an invalid announcement of %s: %s", hub.StringWithoutLocking(), err)
 		// If a previously fully validated Hub publishes an update that breaks it, a
 		// soft-fail will accept the faulty changes, but mark is as invalid and
 		// forward it to neighbors. This way the invalid update is propagated through

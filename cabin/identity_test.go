@@ -1,7 +1,6 @@
 package cabin
 
 import (
-	"context"
 	"fmt"
 	"testing"
 
@@ -21,7 +20,7 @@ func TestIdentity(t *testing.T) {
 
 	// Create new identity.
 	identityTestKey := "core:spn/public/identity"
-	id, err := CreateIdentity(context.Background(), conf.MainMapName)
+	id, err := CreateIdentity(module.Ctx, conf.MainMapName)
 	if err != nil {
 		t.Fatal(err)
 	}

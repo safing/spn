@@ -61,7 +61,7 @@ func (m *Map) updateRegions(config []*hub.RegionConfig) {
 	for _, regionConfig := range config {
 		// Check if region has an ID.
 		if regionConfig.ID == "" {
-			log.Error("navigator: region is missing ID")
+			log.Error("spn/navigator: region is missing ID")
 			// Abort adding this region to the map.
 			continue
 		}
@@ -75,13 +75,13 @@ func (m *Map) updateRegions(config []*hub.RegionConfig) {
 
 		// Parse member policy.
 		if len(regionConfig.MemberPolicy) == 0 {
-			log.Errorf("navigator: member policy of region %s is missing", region.ID)
+			log.Errorf("spn/navigator: member policy of region %s is missing", region.ID)
 			// Abort adding this region to the map.
 			continue
 		}
 		memberPolicy, err := endpoints.ParseEndpoints(regionConfig.MemberPolicy)
 		if err != nil {
-			log.Errorf("navigator: failed to parse member policy of region %s: %s", region.ID, err)
+			log.Errorf("spn/navigator: failed to parse member policy of region %s: %s", region.ID, err)
 			// Abort adding this region to the map.
 			continue
 		}

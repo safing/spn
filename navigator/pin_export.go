@@ -22,8 +22,9 @@ type PinExport struct {
 	EntityV6 *intel.Entity
 	// TODO: add coords
 
-	States      []string // From pin.State
-	HopDistance int
+	States        []string // From pin.State
+	VerifiedOwner string
+	HopDistance   int
 
 	ConnectedTo   map[string]*LaneExport // Key is Hub ID.
 	Route         []string               // Includes Home Hub and this Pin's ID.
@@ -57,6 +58,7 @@ func (pin *Pin) Export() *PinExport {
 		EntityV4:      pin.EntityV4,
 		EntityV6:      pin.EntityV6,
 		States:        pin.State.Export(),
+		VerifiedOwner: pin.VerifiedOwner,
 		HopDistance:   pin.HopDistance,
 		SessionActive: pin.hasActiveTerminal() || pin.State.has(StateIsHomeHub),
 	}

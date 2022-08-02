@@ -22,7 +22,7 @@ import (
 var module *modules.Module
 
 func init() {
-	module = modules.Register("captain", prep, start, stop, "base", "cabin", "docks", "crew", "navigator", "sluice", "netenv")
+	module = modules.Register("captain", prep, start, stop, "base", "terminal", "cabin", "docks", "crew", "navigator", "sluice", "netenv")
 	subsystems.Register(
 		"spn",
 		"SPN",

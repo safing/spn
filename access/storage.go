@@ -19,7 +19,7 @@ func loadTokens() {
 		// Get handler of zone.
 		handler, ok := token.GetHandler(zone)
 		if !ok {
-			log.Warningf("access: could not find zone %s for loading tokens", zone)
+			log.Warningf("spn/access: could not find zone %s for loading tokens", zone)
 			continue
 		}
 
@@ -27,9 +27,9 @@ func loadTokens() {
 		r, err := db.Get(fmt.Sprintf(tokenStorageKeyTemplate, zone))
 		if err != nil {
 			if errors.Is(err, database.ErrNotFound) {
-				log.Debugf("access: no %s tokens to load", zone)
+				log.Debugf("spn/access: no %s tokens to load", zone)
 			} else {
-				log.Warningf("access: failed to load %s tokens: %s", zone, err)
+				log.Warningf("spn/access: failed to load %s tokens: %s", zone, err)
 			}
 			continue
 		}
@@ -37,16 +37,16 @@ func loadTokens() {
 		// Get wrapper.
 		wrapper, ok := r.(*record.Wrapper)
 		if !ok {
-			log.Warningf("access: failed to parse %s tokens: expected wrapper, got %T", zone, r)
+			log.Warningf("spn/access: failed to parse %s tokens: expected wrapper, got %T", zone, r)
 			continue
 		}
 
 		// Load into handler.
 		err = handler.Load(wrapper.Data)
 		if err != nil {
-			log.Warningf("access: failed to load %s tokens: %s", zone, err)
+			log.Warningf("spn/access: failed to load %s tokens: %s", zone, err)
 		}
-		log.Infof("access: loaded %d %s tokens", handler.Amount(), zone)
+		log.Infof("spn/access: loaded %d %s tokens", handler.Amount(), zone)
 	}
 }
 
@@ -55,7 +55,7 @@ func storeTokens() {
 		// Get handler of zone.
 		handler, ok := token.GetHandler(zone)
 		if !ok {
-			log.Warningf("access: could not find zone %s for storing tokens", zone)
+			log.Warningf("spn/access: could not find zone %s for storing tokens", zone)
 			continue
 		}
 
@@ -68,23 +68,23 @@ func storeTokens() {
 			// Remove possible old entry from database.
 			err := db.Delete(storageKey)
 			if err != nil {
-				log.Warningf("access: failed to delete possible old %s tokens from storage: %s", zone, err)
+				log.Warningf("spn/access: failed to delete possible old %s tokens from storage: %s", zone, err)
 			}
-			log.Debugf("access: no %s tokens to store", zone)
+			log.Debugf("spn/access: no %s tokens to store", zone)
 			continue
 		}
 
 		// Export data.
 		data, err := handler.Save()
 		if err != nil {
-			log.Warningf("access: failed to export %s tokens for storing: %s", zone, err)
+			log.Warningf("spn/access: failed to export %s tokens for storing: %s", zone, err)
 			continue
 		}
 
 		// Wrap data into raw record.
 		r, err := record.NewWrapper(storageKey, nil, dsd.RAW, data)
 		if err != nil {
-			log.Warningf("access: failed to prepare %s token export for storing: %s", zone, err)
+			log.Warningf("spn/access: failed to prepare %s token export for storing: %s", zone, err)
 			continue
 		}
 
@@ -98,11 +98,11 @@ func storeTokens() {
 		// Save to database.
 		err = db.Put(r)
 		if err != nil {
-			log.Warningf("access: failed to store %s tokens: %s", zone, err)
+			log.Warningf("spn/access: failed to store %s tokens: %s", zone, err)
 			continue
 		}
 
-		log.Infof("access: stored %d %s tokens", amount, zone)
+		log.Infof("spn/access: stored %d %s tokens", amount, zone)
 	}
 }
 
@@ -111,7 +111,7 @@ func clearTokens() {
 		// Get handler of zone.
 		handler, ok := token.GetHandler(zone)
 		if !ok {
-			log.Warningf("access: could not find zone %s for clearing tokens", zone)
+			log.Warningf("spn/access: could not find zone %s for clearing tokens", zone)
 			continue
 		}
 
@@ -120,12 +120,12 @@ func clearTokens() {
 	}
 
 	// Purge database storage prefix.
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(module.Ctx, 10*time.Second)
 	defer cancel()
 	n, err := db.Purge(ctx, query.New(fmt.Sprintf(tokenStorageKeyTemplate, "")))
 	if err != nil {
-		log.Warningf("access: failed to clear token storages: %s", err)
+		log.Warningf("spn/access: failed to clear token storages: %s", err)
 		return
 	}
-	log.Infof("access: cleared %d token storages", n)
+	log.Infof("spn/access: cleared %d token storages", n)
 }

@@ -80,7 +80,7 @@ func (ship *TestShip) Reverse() *TestShip {
 // Returns ErrSunk if the ship has already sunk earlier.
 func (ship *TestShip) Load(data []byte) error {
 	// Debugging:
-	// log.Debugf("ship: loading %s", spew.Sdump(data))
+	// log.Debugf("spn/ship: loading %s", spew.Sdump(data))
 
 	// Check if ship is alive.
 	if ship.sinking.IsSet() {
