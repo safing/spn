@@ -110,7 +110,7 @@ func NewConnectOp(tunnel *Tunnel) (*ConnectOp, *terminal.Error) {
 		tunnel:  tunnel,
 	}
 	op.OpBase.Init()
-	op.ctx, op.cancelCtx = context.WithCancel(context.Background())
+	op.ctx, op.cancelCtx = context.WithCancel(module.Ctx)
 	op.DuplexFlowQueue = terminal.NewDuplexFlowQueue(op.Ctx(), request.QueueSize, op.submitUpstream)
 
 	// Prepare init msg.
@@ -193,7 +193,7 @@ func runConnectOp(t terminal.OpTerminal, opID uint32, data *container.Container)
 	}
 	op.OpBase.Init()
 	op.OpBase.SetID(opID)
-	op.ctx, op.cancelCtx = context.WithCancel(context.Background())
+	op.ctx, op.cancelCtx = context.WithCancel(t.Ctx())
 	op.DuplexFlowQueue = terminal.NewDuplexFlowQueue(op.Ctx(), request.QueueSize, op.submitUpstream)
 
 	// Setup metrics.

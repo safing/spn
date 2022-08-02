@@ -269,7 +269,7 @@ func (t *TerminalBase) Handler(_ context.Context) error {
 		select {
 		case <-t.ctx.Done():
 			// Call Abandon just in case.
-			// Normally, the only the StopProcedure function should cancel the context.
+			// Normally, only the StopProcedure function should cancel the context.
 			t.ext.Abandon(nil)
 			return nil // Controlled worker exit.
 

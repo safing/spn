@@ -49,7 +49,7 @@ func NewGossipQueryOp(t terminal.OpTerminal) (*GossipQueryOp, *terminal.Error) {
 		t:      t,
 		client: true,
 	}
-	op.ctx, op.cancelCtx = context.WithCancel(context.Background())
+	op.ctx, op.cancelCtx = context.WithCancel(t.Ctx())
 	op.OpBase.Init()
 	err := t.OpInit(op, nil)
 	if err != nil {
@@ -61,7 +61,7 @@ func NewGossipQueryOp(t terminal.OpTerminal) (*GossipQueryOp, *terminal.Error) {
 func runGossipQueryOp(t terminal.OpTerminal, opID uint32, data *container.Container) (terminal.Operation, *terminal.Error) {
 	// Create, init, register and return.
 	op := &GossipQueryOp{t: t}
-	op.ctx, op.cancelCtx = context.WithCancel(context.Background())
+	op.ctx, op.cancelCtx = context.WithCancel(t.Ctx())
 	op.OpBase.Init()
 	op.OpBase.SetID(opID)
 

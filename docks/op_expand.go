@@ -208,7 +208,7 @@ func expand(t terminal.OpTerminal, opID uint32, data *container.Container) (term
 	}
 	op.OpBase.Init()
 	op.OpBase.SetID(opID)
-	op.ctx, op.cancelCtx = context.WithCancel(context.Background())
+	op.ctx, op.cancelCtx = context.WithCancel(t.Ctx())
 	op.relayTerminal.op = op
 
 	// Create flow control.

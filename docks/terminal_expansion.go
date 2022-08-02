@@ -1,7 +1,6 @@
 package docks
 
 import (
-	"context"
 	"fmt"
 
 	"github.com/tevino/abool"
@@ -37,7 +36,7 @@ func ExpandTo(t terminal.OpTerminal, routeTo string, encryptFor *hub.Hub) (*Expa
 
 	// Create base terminal for expansion.
 	tBase, initData, tErr := terminal.NewLocalBaseTerminal(
-		context.Background(),
+		module.Ctx,
 		0,
 		t.FmtID(),
 		encryptFor,

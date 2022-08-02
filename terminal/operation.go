@@ -141,6 +141,9 @@ type OpTerminal interface {
 
 	// Flush writes all pending data waiting to be sent.
 	Flush()
+
+	// Ctx returns the Terminal's context.
+	Ctx() context.Context
 }
 
 // OpInit initialized the operation with the given data.

@@ -22,7 +22,7 @@ var (
 )
 
 func init() {
-	module = modules.Register("docks", nil, start, stopAllCranes, "base", "cabin", "access")
+	module = modules.Register("docks", nil, start, stopAllCranes, "terminal", "cabin", "access")
 }
 
 func start() error {
