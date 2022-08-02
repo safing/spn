@@ -8,7 +8,7 @@ import (
 )
 
 var (
-	testCapacityTestVolume  = 100000000
+	testCapacityTestVolume  = 1_000_000
 	testCapacitytestMaxTime = 1 * time.Second
 )
 
@@ -29,7 +29,7 @@ func TestCapacityOp(t *testing.T) { //nolint:paralleltest // Performance test.
 
 	// Hit volume first.
 	testCapacityOp(t, &CapacityTestOptions{
-		TestVolume: 10000,
+		TestVolume: 100_000,
 		MaxTime:    testCapacitytestMaxTime,
 		testing:    true,
 	})
@@ -39,7 +39,7 @@ func testCapacityOp(t *testing.T, opts *CapacityTestOptions) {
 	t.Helper()
 
 	var (
-		capTestDelay            = 1 * time.Millisecond
+		capTestDelay            = 5 * time.Millisecond
 		capTestQueueSize uint32 = 10
 	)
 
