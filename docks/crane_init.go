@@ -1,6 +1,7 @@
 package docks
 
 import (
+	"context"
 	"time"
 
 	"github.com/safing/jess"
@@ -44,7 +45,7 @@ const (
 )
 
 // Start starts the crane.
-func (crane *Crane) Start() error {
+func (crane *Crane) Start(callerCtx context.Context) error {
 	log.Infof("spn/docks: %s is starting", crane)
 
 	// Submit metrics.
@@ -53,9 +54,9 @@ func (crane *Crane) Start() error {
 	// Start crane depending on situation.
 	var tErr *terminal.Error
 	if crane.ship.IsMine() {
-		tErr = crane.startLocal()
+		tErr = crane.startLocal(callerCtx)
 	} else {
-		tErr = crane.startRemote()
+		tErr = crane.startRemote(callerCtx)
 	}
 
 	// Stop crane again if starting failed.
@@ -69,7 +70,7 @@ func (crane *Crane) Start() error {
 	return nil
 }
 
-func (crane *Crane) startLocal() *terminal.Error {
+func (crane *Crane) startLocal(callerCtx context.Context) *terminal.Error {
 	module.StartWorker("crane unloader", crane.unloader)
 
 	if !crane.ship.IsSecure() {
@@ -94,10 +95,12 @@ func (crane *Crane) startLocal() *terminal.Error {
 		var reply *container.Container
 		select {
 		case reply = <-crane.unloading:
-		case <-time.After(5 * time.Second):
+		case <-time.After(30 * time.Second):
 			return terminal.ErrTimeout.With("waiting for hub info")
 		case <-crane.ctx.Done():
 			return terminal.ErrShipSunk.With("waiting for hub info")
+		case <-callerCtx.Done():
+			return terminal.ErrCanceled.With("waiting for hub info")
 		}
 
 		// Parse and import Announcement and Status.
@@ -110,7 +113,7 @@ func (crane *Crane) startLocal() *terminal.Error {
 			return terminal.ErrMalformedData.With("failed to get status: %w", err)
 		}
 		h, _, tErr := ImportAndVerifyHubInfo(
-			crane.ctx,
+			callerCtx,
 			crane.ConnectedHub.ID,
 			announcementData, statusData, conf.MainMapName, conf.MainMapScope,
 		)
@@ -174,7 +177,7 @@ func (crane *Crane) startLocal() *terminal.Error {
 	return nil
 }
 
-func (crane *Crane) startRemote() *terminal.Error {
+func (crane *Crane) startRemote(callerCtx context.Context) *terminal.Error {
 	var initMsg *container.Container
 
 	module.StartWorker("crane unloader", crane.unloader)
@@ -186,10 +189,12 @@ handling:
 		select {
 		case request = <-crane.unloading:
 
-		case <-time.After(5 * time.Second):
+		case <-time.After(30 * time.Second):
 			return terminal.ErrTimeout.With("waiting for crane init msg")
 		case <-crane.ctx.Done():
 			return terminal.ErrShipSunk.With("waiting for crane init msg")
+		case <-callerCtx.Done():
+			return terminal.ErrCanceled.With("waiting for crane init msg")
 		}
 
 		msgType, err := request.GetNextN8()

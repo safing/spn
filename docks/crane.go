@@ -108,8 +108,9 @@ type Crane struct {
 }
 
 // NewCrane returns a new crane.
-func NewCrane(ctx context.Context, ship ships.Ship, connectedHub *hub.Hub, id *cabin.Identity) (*Crane, error) {
-	ctx, cancelCtx := context.WithCancel(ctx)
+func NewCrane(ship ships.Ship, connectedHub *hub.Hub, id *cabin.Identity) (*Crane, error) {
+	// Cranes always run in module context.
+	ctx, cancelCtx := context.WithCancel(module.Ctx)
 
 	newCrane := &Crane{
 		ctx:           ctx,

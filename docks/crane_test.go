@@ -44,11 +44,11 @@ func testCraneWithCounter(t *testing.T, testID string, encrypting bool, loadSize
 
 	go func() {
 		var err error
-		crane1, err = NewCrane(context.TODO(), ship, connectedHub, nil)
+		crane1, err = NewCrane(ship, connectedHub, nil)
 		if err != nil {
 			panic(fmt.Sprintf("crane test %s could not create crane1: %s", testID, err))
 		}
-		err = crane1.Start()
+		err = crane1.Start(module.Ctx)
 		if err != nil {
 			panic(fmt.Sprintf("crane test %s could not start crane1: %s", testID, err))
 		}
@@ -56,11 +56,11 @@ func testCraneWithCounter(t *testing.T, testID string, encrypting bool, loadSize
 	}()
 	go func() {
 		var err error
-		crane2, err = NewCrane(context.TODO(), ship.Reverse(), nil, identity)
+		crane2, err = NewCrane(ship.Reverse(), nil, identity)
 		if err != nil {
 			panic(fmt.Sprintf("crane test %s could not create crane2: %s", testID, err))
 		}
-		err = crane2.Start()
+		err = crane2.Start(module.Ctx)
 		if err != nil {
 			panic(fmt.Sprintf("crane test %s could not start crane2: %s", testID, err))
 		}
@@ -164,11 +164,11 @@ func testCraneWithStreaming(t *testing.T, testID string, encrypting bool, loadSi
 
 	go func() {
 		var err error
-		crane1, err = NewCrane(context.TODO(), ship, connectedHub, nil)
+		crane1, err = NewCrane(ship, connectedHub, nil)
 		if err != nil {
 			panic(fmt.Sprintf("crane test %s could not create crane1: %s", testID, err))
 		}
-		err = crane1.Start()
+		err = crane1.Start(module.Ctx)
 		if err != nil {
 			panic(fmt.Sprintf("crane test %s could not start crane1: %s", testID, err))
 		}
@@ -176,11 +176,11 @@ func testCraneWithStreaming(t *testing.T, testID string, encrypting bool, loadSi
 	}()
 	go func() {
 		var err error
-		crane2, err = NewCrane(context.TODO(), ship.Reverse(), nil, identity)
+		crane2, err = NewCrane(ship.Reverse(), nil, identity)
 		if err != nil {
 			panic(fmt.Sprintf("crane test %s could not create crane2: %s", testID, err))
 		}
-		err = crane2.Start()
+		err = crane2.Start(module.Ctx)
 		if err != nil {
 			panic(fmt.Sprintf("crane test %s could not start crane2: %s", testID, err))
 		}
