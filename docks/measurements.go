@@ -94,12 +94,12 @@ func establishCraneForMeasuring(ctx context.Context, dst *hub.Hub) (*Crane, erro
 		return nil, fmt.Errorf("failed to launch ship: %w", err)
 	}
 
-	crane, err := NewCrane(ctx, ship, dst, nil)
+	crane, err := NewCrane(ship, dst, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create crane: %w", err)
 	}
 
-	err = crane.Start()
+	err = crane.Start(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to start crane: %w", err)
 	}

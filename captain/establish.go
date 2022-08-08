@@ -14,7 +14,7 @@ import (
 )
 
 // EstablishCrane establishes a crane to another Hub.
-func EstablishCrane(ctx context.Context, dst *hub.Hub) (*docks.Crane, error) {
+func EstablishCrane(callerCtx context.Context, dst *hub.Hub) (*docks.Crane, error) {
 	if conf.PublicHub() && dst.ID == publicIdentity.ID {
 		return nil, errors.New("connecting to self")
 	}
@@ -22,7 +22,7 @@ func EstablishCrane(ctx context.Context, dst *hub.Hub) (*docks.Crane, error) {
 		return nil, fmt.Errorf("route to %s already exists", dst.ID)
 	}
 
-	ship, err := ships.Launch(ctx, dst, nil, nil)
+	ship, err := ships.Launch(callerCtx, dst, nil, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to launch ship: %w", err)
 	}
@@ -32,12 +32,12 @@ func EstablishCrane(ctx context.Context, dst *hub.Hub) (*docks.Crane, error) {
 		ship.MarkPublic()
 	}
 
-	crane, err := docks.NewCrane(ctx, ship, dst, publicIdentity)
+	crane, err := docks.NewCrane(ship, dst, publicIdentity)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create crane: %w", err)
 	}
 
-	err = crane.Start()
+	err = crane.Start(callerCtx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to start crane: %w", err)
 	}

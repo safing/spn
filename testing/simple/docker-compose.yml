@@ -79,7 +79,7 @@ services:
     image: toolset.safing.network/dev
     entrypoint: "/opt/shared/entrypoint.sh"
     volumes:
-      - ${SPN_TEST_BIN}:/opt/hub6:ro
+      - ${SPN_TEST_OLD_BIN}:/opt/hub6:ro
       - ${SPN_TEST_DATA_DIR}/hub6:/opt/data
       - ${SPN_TEST_SHARED_DATA_DIR}:/opt/shared
     networks:
@@ -92,7 +92,7 @@ services:
     image: toolset.safing.network/dev
     entrypoint: "/opt/shared/entrypoint.sh"
     volumes:
-      - ${SPN_TEST_BIN}:/opt/hub7:ro
+      - ${SPN_TEST_OLD_BIN}:/opt/hub7:ro
       - ${SPN_TEST_DATA_DIR}/hub7:/opt/data
       - ${SPN_TEST_SHARED_DATA_DIR}:/opt/shared
     networks:
@@ -105,7 +105,7 @@ services:
     image: toolset.safing.network/dev
     entrypoint: "/opt/shared/entrypoint.sh"
     volumes:
-      - ${SPN_TEST_BIN}:/opt/hub8:ro
+      - ${SPN_TEST_OLD_BIN}:/opt/hub8:ro
       - ${SPN_TEST_DATA_DIR}/hub8:/opt/data
       - ${SPN_TEST_SHARED_DATA_DIR}:/opt/shared
     networks:
@@ -118,7 +118,7 @@ services:
     image: toolset.safing.network/dev
     entrypoint: "/opt/shared/entrypoint.sh"
     volumes:
-      - ${SPN_TEST_BIN}:/opt/hub9:ro
+      - ${SPN_TEST_OLD_BIN}:/opt/hub9:ro
       - ${SPN_TEST_DATA_DIR}/hub9:/opt/data
       - ${SPN_TEST_SHARED_DATA_DIR}:/opt/shared
     networks:
@@ -131,7 +131,7 @@ services:
     image: toolset.safing.network/dev
     entrypoint: "/opt/shared/entrypoint.sh"
     volumes:
-      - ${SPN_TEST_BIN}:/opt/hub10:ro
+      - ${SPN_TEST_OLD_BIN}:/opt/hub10:ro
       - ${SPN_TEST_DATA_DIR}/hub10:/opt/data
       - ${SPN_TEST_SHARED_DATA_DIR}:/opt/shared
     networks:

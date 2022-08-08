@@ -1,7 +1,6 @@
 package docks
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"runtime/pprof"
@@ -105,12 +104,12 @@ func testExpansion( //nolint:maintidx,thelper
 
 	go func() {
 		var err error
-		crane1, err = NewCrane(context.TODO(), ship1to2, connectedHub2, nil)
+		crane1, err = NewCrane(ship1to2, connectedHub2, nil)
 		if err != nil {
 			panic(fmt.Sprintf("expansion test %s could not create crane1: %s", testID, err))
 		}
 		crane1.ID = "c1"
-		err = crane1.Start()
+		err = crane1.Start(module.Ctx)
 		if err != nil {
 			panic(fmt.Sprintf("expansion test %s could not start crane1: %s", testID, err))
 		}
@@ -119,12 +118,12 @@ func testExpansion( //nolint:maintidx,thelper
 	}()
 	go func() {
 		var err error
-		crane2to1, err = NewCrane(context.TODO(), ship1to2.Reverse(), nil, identity2)
+		crane2to1, err = NewCrane(ship1to2.Reverse(), nil, identity2)
 		if err != nil {
 			panic(fmt.Sprintf("expansion test %s could not create crane2to1: %s", testID, err))
 		}
 		crane2to1.ID = "c2to1"
-		err = crane2to1.Start()
+		err = crane2to1.Start(module.Ctx)
 		if err != nil {
 			panic(fmt.Sprintf("expansion test %s could not start crane2to1: %s", testID, err))
 		}
@@ -133,12 +132,12 @@ func testExpansion( //nolint:maintidx,thelper
 	}()
 	go func() {
 		var err error
-		crane2to3, err = NewCrane(context.TODO(), ship2to3, connectedHub3, nil)
+		crane2to3, err = NewCrane(ship2to3, connectedHub3, nil)
 		if err != nil {
 			panic(fmt.Sprintf("expansion test %s could not create crane2to3: %s", testID, err))
 		}
 		crane2to3.ID = "c2to3"
-		err = crane2to3.Start()
+		err = crane2to3.Start(module.Ctx)
 		if err != nil {
 			panic(fmt.Sprintf("expansion test %s could not start crane2to3: %s", testID, err))
 		}
@@ -147,12 +146,12 @@ func testExpansion( //nolint:maintidx,thelper
 	}()
 	go func() {
 		var err error
-		crane3to2, err = NewCrane(context.TODO(), ship2to3.Reverse(), nil, identity3)
+		crane3to2, err = NewCrane(ship2to3.Reverse(), nil, identity3)
 		if err != nil {
 			panic(fmt.Sprintf("expansion test %s could not create crane3to2: %s", testID, err))
 		}
 		crane3to2.ID = "c3to2"
-		err = crane3to2.Start()
+		err = crane3to2.Start(module.Ctx)
 		if err != nil {
 			panic(fmt.Sprintf("expansion test %s could not start crane3to2: %s", testID, err))
 		}
@@ -161,12 +160,12 @@ func testExpansion( //nolint:maintidx,thelper
 	}()
 	go func() {
 		var err error
-		crane3to4, err = NewCrane(context.TODO(), ship3to4, connectedHub4, nil)
+		crane3to4, err = NewCrane(ship3to4, connectedHub4, nil)
 		if err != nil {
 			panic(fmt.Sprintf("expansion test %s could not create crane3to4: %s", testID, err))
 		}
 		crane3to4.ID = "c3to4"
-		err = crane3to4.Start()
+		err = crane3to4.Start(module.Ctx)
 		if err != nil {
 			panic(fmt.Sprintf("expansion test %s could not start crane3to4: %s", testID, err))
 		}
@@ -175,12 +174,12 @@ func testExpansion( //nolint:maintidx,thelper
 	}()
 	go func() {
 		var err error
-		crane4, err = NewCrane(context.TODO(), ship3to4.Reverse(), nil, identity4)
+		crane4, err = NewCrane(ship3to4.Reverse(), nil, identity4)
 		if err != nil {
 			panic(fmt.Sprintf("expansion test %s could not create crane4: %s", testID, err))
 		}
 		crane4.ID = "c4"
-		err = crane4.Start()
+		err = crane4.Start(module.Ctx)
 		if err != nil {
 			panic(fmt.Sprintf("expansion test %s could not start crane4: %s", testID, err))
 		}

@@ -123,14 +123,14 @@ func checkDockingPermission(ctx context.Context, ship ships.Ship) error {
 func handleDockingRequest(ship ships.Ship) {
 	log.Infof("spn/captain: pemitting %s to dock", ship)
 
-	crane, err := docks.NewCrane(module.Ctx, ship, nil, publicIdentity)
+	crane, err := docks.NewCrane(ship, nil, publicIdentity)
 	if err != nil {
 		log.Warningf("spn/captain: failed to commission crane for %s: %s", ship, err)
 		return
 	}
 
-	module.StartWorker("start crane", func(_ context.Context) error {
-		_ = crane.Start()
+	module.StartWorker("start crane", func(ctx context.Context) error {
+		_ = crane.Start(ctx)
 		// Crane handles errors internally.
 		return nil
 	})

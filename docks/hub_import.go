@@ -166,7 +166,7 @@ func verifyHubIP(ctx context.Context, h *hub.Hub, ip net.IP) error {
 	}
 
 	// Start crane for receiving reply.
-	crane, err := NewCrane(ctx, ship, h, nil)
+	crane, err := NewCrane(ship, h, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create crane: %w", err)
 	}
@@ -174,7 +174,7 @@ func verifyHubIP(ctx context.Context, h *hub.Hub, ip net.IP) error {
 	defer crane.Stop(nil)
 
 	// Verify Hub.
-	err = crane.VerifyConnectedHub()
+	err = crane.VerifyConnectedHub(ctx)
 	if err != nil {
 		return err
 	}

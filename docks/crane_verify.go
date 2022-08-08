@@ -1,6 +1,7 @@
 package docks
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"time"
@@ -16,7 +17,7 @@ const (
 )
 
 // VerifyConnectedHub verifies the connected Hub.
-func (crane *Crane) VerifyConnectedHub() error {
+func (crane *Crane) VerifyConnectedHub(callerCtx context.Context) error {
 	if !crane.ship.IsMine() || crane.nextTerminalID != 0 || crane.Public() {
 		return errors.New("hub verification can only be executed in init phase by the client")
 	}
@@ -48,6 +49,8 @@ func (crane *Crane) VerifyConnectedHub() error {
 		// matter how far away.
 		return terminal.ErrTimeout.With("waiting for verification reply")
 	case <-crane.ctx.Done():
+		return terminal.ErrShipSunk.With("waiting for verification reply")
+	case <-callerCtx.Done():
 		return terminal.ErrShipSunk.With("waiting for verification reply")
 	}
 
