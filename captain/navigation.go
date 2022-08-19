@@ -115,7 +115,7 @@ findCandidates:
 func connectToHomeHub(ctx context.Context, dst *hub.Hub) error {
 	// Set and clean up exceptions.
 	setExceptions(dst.Info.IPv4, dst.Info.IPv6)
-	defer setExceptions(nil, nil)
+	// defer setExceptions(nil, nil)
 
 	// Connect to hub.
 	crane, err := EstablishCrane(ctx, dst)
