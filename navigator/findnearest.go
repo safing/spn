@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/safing/portbase/log"
 	"github.com/safing/portmaster/intel/geoip"
 	"github.com/safing/spn/hub"
 )
@@ -163,14 +164,43 @@ func (m *Map) findNearestPins(locationV4, locationV6 *geoip.Location, matcher Pi
 
 		// Calculate IPv4 proximity and add Pin to the list.
 		if locationV4 != nil && pin.LocationV4 != nil {
-			proximity := pin.LocationV4.EstimateNetworkProximity(locationV4)
+			var proximity float32
+			switch {
+			case !locationV4.IsAnycast:
+				// Regular proximity calculation.
+				proximity = pin.LocationV4.EstimateNetworkProximity(locationV4)
+			case m.home != nil:
+				// If the destination is anycast, calculate distance to home hub instead, if possible.
+				proximity = proximityBetweenPins(pin, m.home)
+				log.Errorf("adding pin near anycast address: %s with prox %.0f", pin.Hub.Info.Name, proximity)
+			}
+
+			// If no proximity could be calculated, fall back to a default value.
+			if proximity == 0 {
+				proximity = 50 // out of 0-100
+			}
+
 			nearby.add(pin, proximity)
 		}
 
 		// Calculate IPv6 proximity and add Pin to the list.
 		if locationV6 != nil && pin.LocationV6 != nil {
-			// Calculate proximity and add Pin to the list.
-			proximity := pin.LocationV6.EstimateNetworkProximity(locationV6)
+			var proximity float32
+			switch {
+			case !locationV4.IsAnycast:
+				// Regular proximity calculation.
+				proximity = pin.LocationV6.EstimateNetworkProximity(locationV6)
+			case m.home != nil:
+				// If the destination is anycast, calculate distance to home hub instead, if possible.
+				proximity = proximityBetweenPins(pin, m.home)
+				log.Errorf("adding pin near anycast address: %s with prox %.0f", pin.Hub.Info.Name, proximity)
+			}
+
+			// If no proximity could be calculated, fall back to a default value.
+			if proximity == 0 {
+				proximity = 50 // out of 0-100
+			}
+
 			nearby.add(pin, proximity)
 		}
 
@@ -200,4 +230,24 @@ func (nb *nearbyPins) String() string {
 
 func (nb *nearbyPin) String() string {
 	return fmt.Sprintf("%s at %.2f prox", nb.pin, nb.proximity)
+}
+
+func proximityBetweenPins(a, b *Pin) float32 {
+	var x, y float32
+
+	// Get IPv4 network proximity.
+	if a.LocationV4 != nil && b.LocationV4 != nil {
+		x = a.LocationV4.EstimateNetworkProximity(b.LocationV4)
+	}
+
+	// Get IPv6 network proximity.
+	if a.LocationV6 != nil && b.LocationV6 != nil {
+		y = a.LocationV6.EstimateNetworkProximity(b.LocationV6)
+	}
+
+	// Return higher proximity.
+	if x > y {
+		return x
+	}
+	return y
 }
