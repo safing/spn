@@ -162,7 +162,7 @@ func (t *Tunnel) establish(ctx context.Context) (err error) {
 		routes, err = navigator.Main.FindRouteToHub(
 			sticksTo.Pin.Hub.ID,
 			t.connInfo.TunnelOpts,
-			10,
+			navigator.DefaultMaxFindMatches,
 		)
 		if err != nil {
 			log.Tracer(ctx).Tracef("spn/crew: failed to find route to stickied %s: %s", sticksTo.Pin.Hub, err)
@@ -178,7 +178,7 @@ func (t *Tunnel) establish(ctx context.Context) (err error) {
 		routes, err = navigator.Main.FindRoutes(
 			t.connInfo.Entity.IP,
 			t.connInfo.TunnelOpts,
-			10,
+			navigator.DefaultMaxFindMatches,
 		)
 		if err != nil {
 			return fmt.Errorf("failed to find routes to %s: %w", t.connInfo.Entity.IP, err)

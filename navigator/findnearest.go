@@ -10,6 +10,10 @@ import (
 	"github.com/safing/spn/hub"
 )
 
+// DefaultMaxFindMatches defines a default value of how many matches a find
+// operation in a map should return.
+const DefaultMaxFindMatches = 20
+
 // nearbyPins is a list of nearby Pins to a certain location.
 type nearbyPins struct {
 	pins         []*nearbyPin
