@@ -56,7 +56,7 @@ func (op *ConnectOp) Ctx() context.Context {
 
 // ConnectRequest holds all the information necessary for a connect operation.
 type ConnectRequest struct {
-	// TODO: Switch to json tags and CBOR encoding when everyone has the update.
+	// TODO: Switch to json tags when everyone has the update.
 	Domain              string            `cbor:"d,omitempty"`
 	IP                  net.IP            `cbor:"ip,omitempty"`
 	UsePriorityDataMsgs bool              `cbor:"pr,omitempty"`
@@ -114,8 +114,7 @@ func NewConnectOp(tunnel *Tunnel) (*ConnectOp, *terminal.Error) {
 	op.DuplexFlowQueue = terminal.NewDuplexFlowQueue(op.Ctx(), request.QueueSize, op.submitUpstream)
 
 	// Prepare init msg.
-	// TODO: Switch to json tags and CBOR encoding when everyone has the update.
-	data, err := dsd.Dump(request, dsd.JSON)
+	data, err := dsd.Dump(request, dsd.CBOR)
 	if err != nil {
 		return nil, terminal.ErrInternalError.With("failed to pack connect request: %w", err)
 	}
