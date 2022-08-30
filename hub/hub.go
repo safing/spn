@@ -67,7 +67,6 @@ type Hub struct { //nolint:maligned
 
 // Announcement is the main message type to publish Hub Information. This only changes if updated manually.
 type Announcement struct {
-
 	// Primary Key
 	// hash of public key
 	// must be checked if it matches the public key

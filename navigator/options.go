@@ -43,6 +43,10 @@ type Options struct { //nolint:maligned
 	// policy in order to be taken into account for the operation.
 	CheckHubExitPolicyWith *intel.Entity
 
+	// RequireVerifiedOwners specifies which verified owners are allowed to be used.
+	// If the list is empty, all owners are allowed.
+	RequireVerifiedOwners []string
+
 	// NoDefaults declares whether default and recommended Regard and Disregard states should not be used.
 	NoDefaults bool
 
@@ -150,6 +154,28 @@ func (o *Options) Matcher(hubType HubType, hubIntel *hub.Intel) PinMatcher {
 			return false
 		}
 
+		// Check verified owners.
+		if len(o.RequireVerifiedOwners) > 0 {
+			// Check if Pin has a verified owner at all.
+			if pin.VerifiedOwner == "" {
+				return false
+			}
+
+			// Check if verified owner is in the list.
+			inList := false
+			for _, allowed := range o.RequireVerifiedOwners {
+				if pin.VerifiedOwner == allowed {
+					inList = true
+					break
+				}
+			}
+
+			// Pin does not have a verified owner from the allowed list.
+			if !inList {
+				return false
+			}
+		}
+
 		// Check policies.
 	policyCheck:
 		for _, policy := range hubPolicies {
@@ -180,12 +206,12 @@ func (o *Options) Matcher(hubType HubType, hubIntel *hub.Intel) PinMatcher {
 
 		// Check entry/exit policies.
 		if checkHubEntryPolicyWith != nil &&
-			endpointListMatch(pin.Hub.GetInfo().EntryPolicy(), checkHubEntryPolicyWith) == endpoints.Denied {
+			endpointListMatch(pin.Hub.Info.EntryPolicy(), checkHubEntryPolicyWith) == endpoints.Denied {
 			// Hub does not allow entry from the given entity.
 			return false
 		}
 		if checkHubExitPolicyWith != nil &&
-			endpointListMatch(pin.Hub.GetInfo().EntryPolicy(), checkHubExitPolicyWith) == endpoints.Denied {
+			endpointListMatch(pin.Hub.Info.EntryPolicy(), checkHubExitPolicyWith) == endpoints.Denied {
 			// Hub does not allow exit to the given entity.
 			return false
 		}

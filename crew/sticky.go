@@ -2,12 +2,14 @@ package crew
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
 	"github.com/safing/portbase/log"
 	"github.com/safing/portbase/modules"
 	"github.com/safing/portmaster/network"
+	"github.com/safing/portmaster/network/packet"
 	"github.com/safing/spn/navigator"
 )
 
@@ -32,27 +34,80 @@ func (sh *stickyHub) isExpired() bool {
 	return time.Now().Add(-stickyTTL).After(sh.LastSeen)
 }
 
-func getStickiedHub(conn *network.Connection) *stickyHub {
+func makeStickyIPKey(conn *network.Connection) string {
+	if p := conn.Process().Profile(); p != nil {
+		return fmt.Sprintf(
+			"%s/%s>%s",
+			p.LocalProfile().Source,
+			p.LocalProfile().ID,
+			conn.Entity.IP,
+		)
+	}
+
+	return "?>" + string(conn.Entity.IP)
+}
+
+func makeStickyDomainKey(conn *network.Connection) string {
+	if p := conn.Process().Profile(); p != nil {
+		return fmt.Sprintf(
+			"%s/%s>%s",
+			p.LocalProfile().Source,
+			p.LocalProfile().ID,
+			conn.Entity.Domain,
+		)
+	}
+
+	return "?>" + conn.Entity.Domain
+}
+
+func getStickiedHub(conn *network.Connection) (sticksTo *stickyHub) {
 	stickyLock.Lock()
 	defer stickyLock.Unlock()
 
 	// Check if IP is sticky.
-	sticksTo, ok := stickyIPs[string(conn.Entity.IP)] // byte comparison
-	if ok && !sticksTo.isExpired() {
+	sticksTo = stickyIPs[makeStickyIPKey(conn)] // byte comparison
+	if sticksTo != nil && !sticksTo.isExpired() {
 		sticksTo.LastSeen = time.Now()
-		return sticksTo
 	}
 
-	// Check if Domain is sticky, if present.
-	if conn.Entity.Domain != "" {
-		sticksTo, ok := stickyDomains[conn.Entity.Domain]
+	// If the IP did not stick and we have a domain, check if that sticks.
+	if sticksTo == nil && conn.Entity.Domain != "" {
+		sticksTo, ok := stickyDomains[makeStickyDomainKey(conn)]
 		if ok && !sticksTo.isExpired() {
 			sticksTo.LastSeen = time.Now()
-			return sticksTo
 		}
 	}
 
-	return nil
+	// If nothing sticked, return now.
+	if sticksTo == nil {
+		return nil
+	}
+
+	// Get intel from map before locking pin to avoid simultaneous locking.
+	mapIntel := navigator.Main.GetIntel()
+
+	// Lock Pin for checking.
+	sticksTo.Pin.Lock()
+	defer sticksTo.Pin.Unlock()
+
+	// Check if the stickied Hub supports the needed IP version.
+	switch {
+	case conn.IPVersion == packet.IPv4 && sticksTo.Pin.EntityV4 == nil:
+		// Connection is IPv4, but stickied Hub has no IPv4.
+		return nil
+	case conn.IPVersion == packet.IPv6 && sticksTo.Pin.EntityV6 == nil:
+		// Connection is IPv4, but stickied Hub has no IPv4.
+		return nil
+	}
+
+	// Disregard stickied Hub if it is disregard with the current options.
+	matcher := conn.TunnelOpts.Matcher(navigator.DestinationHub, mapIntel)
+	if !matcher(sticksTo.Pin) {
+		return nil
+	}
+
+	// Return fully checked stickied Hub.
+	return sticksTo
 }
 
 func (t *Tunnel) stickDestinationToHub() {
@@ -60,21 +115,23 @@ func (t *Tunnel) stickDestinationToHub() {
 	defer stickyLock.Unlock()
 
 	// Stick to IP.
-	stickyIPs[string(t.connInfo.Entity.IP)] = &stickyHub{
+	ipKey := makeStickyIPKey(t.connInfo)
+	stickyIPs[ipKey] = &stickyHub{
 		Pin:      t.dstPin,
 		Route:    t.route,
 		LastSeen: time.Now(),
 	}
-	log.Infof("spn/crew: sticking %s to %s", t.connInfo.Entity.IP, t.dstPin.Hub)
+	log.Infof("spn/crew: sticking %s to %s", ipKey, t.dstPin.Hub)
 
 	// Stick to Domain, if present.
 	if t.connInfo.Entity.Domain != "" {
-		stickyDomains[t.connInfo.Entity.Domain] = &stickyHub{
+		domainKey := makeStickyDomainKey(t.connInfo)
+		stickyDomains[domainKey] = &stickyHub{
 			Pin:      t.dstPin,
 			Route:    t.route,
 			LastSeen: time.Now(),
 		}
-		log.Infof("spn/crew: sticking %s to %s", t.connInfo.Entity.Domain, t.dstPin.Hub)
+		log.Infof("spn/crew: sticking %s to %s", domainKey, t.dstPin.Hub)
 	}
 }
 
@@ -83,12 +140,13 @@ func (t *Tunnel) avoidDestinationHub() {
 	defer stickyLock.Unlock()
 
 	// Stick to Hub/IP Pair.
-	stickyIPs[string(t.connInfo.Entity.IP)] = &stickyHub{
+	ipKey := makeStickyIPKey(t.connInfo)
+	stickyIPs[ipKey] = &stickyHub{
 		Pin:      t.dstPin,
 		LastSeen: time.Now(),
 		Avoid:    true,
 	}
-	log.Warningf("spn/crew: avoiding %s for %s", t.dstPin.Hub, t.connInfo.Entity.IP)
+	log.Warningf("spn/crew: avoiding %s for %s", t.dstPin.Hub, ipKey)
 }
 
 func cleanStickyHubs(ctx context.Context, task *modules.Task) error {

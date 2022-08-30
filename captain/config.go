@@ -23,6 +23,15 @@ var (
 	cfgOptionDNSExitHubPolicy      config.StringArrayOption
 	cfgOptionDNSExitHubPolicyOrder = 147
 
+	// CfgOptionUseCommunityNodesKey is the configuration key for whether to use community nodes.
+	CfgOptionUseCommunityNodesKey   = "spn/useCommunityNodes"
+	cfgOptionUseCommunityNodes      config.BoolOption
+	cfgOptionUseCommunityNodesOrder = 148
+
+	// NonCommunityVerifiedOwners holds a list of verified owners that are not
+	// considered "community".
+	NonCommunityVerifiedOwners = []string{"Safing"}
+
 	// Special Access Code.
 	cfgOptionSpecialAccessCodeKey     = "spn/specialAccessCode"
 	cfgOptionSpecialAccessCodeDefault = "none"
@@ -40,11 +49,12 @@ func prepConfig() error {
 By default, the Portmaster tries to choose the nearest node as your Home Node in order to reduce your exposure to the open Internet.
 
 Reconnect to the SPN in order to apply new rules.`,
-		Help:           profile.SPNRulesHelp,
-		Sensitive:      true,
-		OptType:        config.OptTypeStringArray,
-		ExpertiseLevel: config.ExpertiseLevelExpert,
-		DefaultValue:   []string{},
+		Help:            profile.SPNRulesHelp,
+		Sensitive:       true,
+		OptType:         config.OptTypeStringArray,
+		RequiresRestart: true,
+		ExpertiseLevel:  config.ExpertiseLevelExpert,
+		DefaultValue:    []string{},
 		Annotations: config.Annotations{
 			config.CategoryAnnotation:                    "Routing",
 			config.DisplayOrderAnnotation:                cfgOptionHomeHubPolicyOrder,
@@ -89,6 +99,24 @@ This setting mainly exists for when you need to simulate your presence in anothe
 		return err
 	}
 	cfgOptionDNSExitHubPolicy = config.Concurrent.GetAsStringArray(CfgOptionDNSExitHubPolicyKey, []string{})
+
+	err = config.Register(&config.Option{
+		Name:            "Use Community Nodes",
+		Key:             CfgOptionUseCommunityNodesKey,
+		Description:     "Use nodes (servers) not operated by Safing themselves. The use of community nodes is recommended as it diversifies the ownership of the nodes you use for your connections and further strengthens your privacy. Plain connections (eg. http, smtp, ...) will never exit via community nodes, making this setting safe to use.",
+		Sensitive:       true,
+		OptType:         config.OptTypeBool,
+		RequiresRestart: true,
+		DefaultValue:    true,
+		Annotations: config.Annotations{
+			config.DisplayOrderAnnotation: cfgOptionUseCommunityNodesOrder,
+			config.CategoryAnnotation:     "Routing",
+		},
+	})
+	if err != nil {
+		return err
+	}
+	cfgOptionUseCommunityNodes = config.Concurrent.GetAsBool(CfgOptionUseCommunityNodesKey, true)
 
 	err = config.Register(&config.Option{
 		Name:         "Special Access Code",

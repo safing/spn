@@ -12,7 +12,7 @@ const (
 	DefaultMediumPriorityMaxDelay = 100 * time.Microsecond
 
 	// UsePriorityDataMsgs defines whether priority data messages should be used.
-	UsePriorityDataMsgs = false
+	UsePriorityDataMsgs = true
 )
 
 // DefaultCraneControllerOpts returns the default terminal options for a crane
