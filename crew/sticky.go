@@ -83,6 +83,9 @@ func getStickiedHub(conn *network.Connection) (sticksTo *stickyHub) {
 		return nil
 	}
 
+	// Get intel from map before locking pin to avoid simultaneous locking.
+	mapIntel := navigator.Main.GetIntel()
+
 	// Lock Pin for checking.
 	sticksTo.Pin.Lock()
 	defer sticksTo.Pin.Unlock()
@@ -98,7 +101,7 @@ func getStickiedHub(conn *network.Connection) (sticksTo *stickyHub) {
 	}
 
 	// Disregard stickied Hub if it is disregard with the current options.
-	matcher := conn.TunnelOpts.Matcher(navigator.DestinationHub, navigator.Main.GetIntel())
+	matcher := conn.TunnelOpts.Matcher(navigator.DestinationHub, mapIntel)
 	if !matcher(sticksTo.Pin) {
 		return nil
 	}
