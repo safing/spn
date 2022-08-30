@@ -6,7 +6,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/safing/portbase/log"
 	"github.com/safing/portmaster/intel/geoip"
 	"github.com/safing/spn/hub"
 )
@@ -172,7 +171,6 @@ func (m *Map) findNearestPins(locationV4, locationV6 *geoip.Location, matcher Pi
 			case m.home != nil:
 				// If the destination is anycast, calculate distance to home hub instead, if possible.
 				proximity = proximityBetweenPins(pin, m.home)
-				log.Errorf("adding pin near anycast address: %s with prox %.0f", pin.Hub.Info.Name, proximity)
 			}
 
 			// If no proximity could be calculated, fall back to a default value.
@@ -187,13 +185,12 @@ func (m *Map) findNearestPins(locationV4, locationV6 *geoip.Location, matcher Pi
 		if locationV6 != nil && pin.LocationV6 != nil {
 			var proximity float32
 			switch {
-			case !locationV4.IsAnycast:
+			case !locationV6.IsAnycast:
 				// Regular proximity calculation.
 				proximity = pin.LocationV6.EstimateNetworkProximity(locationV6)
 			case m.home != nil:
 				// If the destination is anycast, calculate distance to home hub instead, if possible.
 				proximity = proximityBetweenPins(pin, m.home)
-				log.Errorf("adding pin near anycast address: %s with prox %.0f", pin.Hub.Info.Name, proximity)
 			}
 
 			// If no proximity could be calculated, fall back to a default value.

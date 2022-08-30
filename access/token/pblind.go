@@ -265,7 +265,7 @@ func (pbh *PBlindHandler) CreateTokenRequest(requestSetup *PBlindSetupResponse) 
 
 		// Generate secret token.
 		token := make([]byte, pblindSecretSize)
-		n, err := rand.Read(token)
+		n, err := rand.Read(token) //nolint:gosec // False positive - check the imports.
 		if err != nil {
 			return nil, fmt.Errorf("failed to get random token #%d: %w", i, err)
 		}
@@ -394,7 +394,7 @@ func (pbh *PBlindHandler) ProcessIssuedTokens(issuedTokens *IssuedPBlindTokens) 
 	// Step 2: Randomize received tokens
 
 	if pbh.opts.RandomizeOrder {
-		rInt, err := rand.Int(rand.Reader, big.NewInt(math.MaxInt64))
+		rInt, err := rand.Int(rand.Reader, big.NewInt(math.MaxInt64)) //nolint:gosec // False positive - check the imports.
 		if err != nil {
 			return fmt.Errorf("failed to get seed for shuffle: %w", err)
 		}
