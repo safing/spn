@@ -61,12 +61,17 @@ func establishHomeHub(ctx context.Context) error {
 		CheckHubEntryPolicyWith: myEntity,
 	}
 
+	// Add requirement to only use Safing nodes when not using community nodes.
+	if !cfgOptionUseCommunityNodes() {
+		opts.RequireVerifiedOwners = NonCommunityVerifiedOwners
+	}
+
 	// Find nearby hubs.
 findCandidates:
 	candidates, err := navigator.Main.FindNearestHubs(
 		locations.BestV4().LocationOrNil(),
 		locations.BestV6().LocationOrNil(),
-		opts, navigator.HomeHub, 10,
+		opts, navigator.HomeHub, navigator.DefaultMaxFindMatches,
 	)
 	if err != nil {
 		if errors.Is(err, navigator.ErrEmptyMap) {
