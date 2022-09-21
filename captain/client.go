@@ -358,17 +358,8 @@ func clientSetActiveConnectionStatus(ctx context.Context) clientComponentResult 
 		return clientResultReconnect
 	}
 
-	// Update notification, if not already correctly set.
-	notificationID := "spn:connected-to-home-hub"
-	_, currentID, _ := module.FailureStatus()
-	if currentID != notificationID {
-		notifications.NotifyInfo(
-			"spn:connected-to-home-hub",
-			"Connected to SPN",
-			fmt.Sprintf("You are connected to the SPN at %s. This notification is persistent for awareness.", homeTerminal.RemoteAddr()),
-			spnPageButton,
-		).AttachToModule(module)
-	}
+	// Resolve any connection error.
+	module.Resolve("")
 
 	// Update SPN Status with connection information, if not already correctly set.
 	spnStatus.Lock()
