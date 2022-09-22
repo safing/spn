@@ -128,8 +128,13 @@ func (ln *UDPListener) setConn(conn *UDPConn) {
 
 func (ln *UDPListener) reader(_ context.Context) error {
 	for {
+		// TODO: Find good buf size.
+		// With a buf size of 512 we have seen this error on Windows:
+		// wsarecvmsg: A message sent on a datagram socket was larger than the internal message buffer or some other network limit, or the buffer used to receive a datagram into was smaller than the datagram itself.
+		// UDP is not (yet) heavily used, so we can go for the 1500 bytes size for now.
+
 		// Read data from connection.
-		buf := make([]byte, 512)
+		buf := make([]byte, 1500) // TODO: see comment above.
 		oob := make([]byte, ln.oobSize)
 		n, oobn, _, addr, err := ln.sock.ReadMsgUDP(buf, oob)
 		if err != nil {
