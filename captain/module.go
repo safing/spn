@@ -1,6 +1,7 @@
 package captain
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -18,6 +19,8 @@ import (
 	"github.com/safing/spn/ships"
 	_ "github.com/safing/spn/sluice"
 )
+
+const controlledFailureExitCode = 24
 
 var module *modules.Module
 
@@ -87,12 +90,25 @@ func start() error {
 		log.Errorf("spn/captain: failed to update SPN intel: %s", err)
 	}
 
-	// identity and piers
+	// Initialize identity and piers.
 	if conf.PublicHub() {
-		// load identity
+		// Load identity.
 		if err := loadPublicIdentity(); err != nil {
+			// We cannot recover from this, set controlled failure (do not retry).
+			modules.SetExitStatusCode(controlledFailureExitCode)
+
 			return err
 		}
+
+		// Check if any networks are configured.
+		if !conf.HubHasIPv4() && !conf.HubHasIPv6() {
+			// We cannot recover from this, set controlled failure (do not retry).
+			modules.SetExitStatusCode(controlledFailureExitCode)
+
+			return errors.New("no IP addresses for Hub configured (or detected)")
+		}
+
+		// Start management of identity and piers.
 		if err := prepPublicIdentityMgmt(); err != nil {
 			return err
 		}

@@ -1,7 +1,9 @@
 package sluice
 
 import (
+	"github.com/safing/portbase/log"
 	"github.com/safing/portbase/modules"
+	"github.com/safing/portmaster/netenv"
 	"github.com/safing/spn/conf"
 )
 
@@ -23,8 +25,13 @@ func start() error {
 	if conf.Client() {
 		StartSluice("tcp4", "0.0.0.0:717")
 		StartSluice("udp4", "0.0.0.0:717")
-		StartSluice("tcp6", "[::]:717")
-		StartSluice("udp6", "[::]:717")
+
+		if netenv.IPv6Enabled() {
+			StartSluice("tcp6", "[::]:717")
+			StartSluice("udp6", "[::]:717")
+		} else {
+			log.Warningf("spn/sluice: no IPv6 stack detected, disabling IPv6 SPN entry endpoints")
+		}
 	}
 
 	return nil

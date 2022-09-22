@@ -3,14 +3,14 @@ package main
 import (
 	"os"
 
-	"github.com/safing/portbase/config"
 	"github.com/safing/portbase/info"
 	"github.com/safing/portbase/metrics"
+	"github.com/safing/portbase/modules"
 	"github.com/safing/portbase/run"
 	_ "github.com/safing/portmaster/core/base"
 	"github.com/safing/portmaster/updates"
 	"github.com/safing/portmaster/updates/helper"
-	"github.com/safing/spn/captain"
+	_ "github.com/safing/spn/captain"
 	"github.com/safing/spn/conf"
 )
 
@@ -20,10 +20,12 @@ func main() {
 	// Configure metrics.
 	_ = metrics.SetNamespace("hub")
 
-	// configure SPN
+	// Configure SPN mode.
 	conf.EnablePublicHub(true)
 	conf.EnableClient(false)
-	_ = config.SetDefaultConfigOption(captain.CfgOptionEnableSPNKey, true)
+
+	// Disable module management, as we want to start all modules.
+	modules.DisableModuleManagement()
 
 	// adapt portmaster updates module
 	updates.UserAgent = "Hub"

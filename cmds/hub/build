@@ -43,15 +43,17 @@ if [[ "$BUILD_SOURCE" == "" ]]; then
   exit 1
 fi
 
-echo "Please notice, that this build script includes metadata into the build."
-echo "This information is useful for debugging and license compliance."
-echo "Run the compiled binary with the -version flag to see the information included."
-
+# set build options
+export CGO_ENABLED=0
 if [[ $1 == "dev" ]]; then
   shift
   export CGO_ENABLED=1
   DEV="-race"
 fi
+
+echo "Please notice, that this build script includes metadata into the build."
+echo "This information is useful for debugging and license compliance."
+echo "Run the compiled binary with the -version flag to see the information included."
 
 # build
 BUILD_PATH="github.com/safing/portbase/info"

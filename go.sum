@@ -255,6 +255,8 @@ github.com/safing/jess v0.2.3/go.mod h1:soP57JeyIE/R3Wy/pzpEQzrAOlH2Nw1JLb9GychQ
 github.com/safing/portbase v0.11.0/go.mod h1:Xb0htNFFEb6BlkloWyVbQoUguUMGrTVmEDwwpAAMS5g=
 github.com/safing/portbase v0.15.1 h1:s4AzyMSF26/b0CPmyHvKJSG9nW+u42+eIxlIKyp+J1U=
 github.com/safing/portbase v0.15.1/go.mod h1:5bHi99fz7Hh/wOsZUOI631WF9ePSHk57c4fdlOMS91Y=
+github.com/safing/portbase v0.15.2 h1:/FC9CQe+2Nvtrh3aoeWvSmYRO+ofMWwkiCnIhee5IH4=
+github.com/safing/portbase v0.15.2/go.mod h1:5bHi99fz7Hh/wOsZUOI631WF9ePSHk57c4fdlOMS91Y=
 github.com/safing/portmaster v0.9.4 h1:cY2phKYk9xQwAKVYBgM0QOpeRpbx73iGVs/b40axq6U=
 github.com/safing/portmaster v0.9.4/go.mod h1:zBb+VloaPBHGW7rxZdEV9DnRtPuHQbXyuv8UPAHaxuU=
 github.com/safing/portmaster v0.9.5-interdep h1:Ha9gEX515TsHsONg7WBI0+muc8utY9u9SqgzuA749Xk=
