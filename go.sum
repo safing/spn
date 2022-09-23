@@ -256,8 +256,8 @@ github.com/safing/jess v0.2.3/go.mod h1:soP57JeyIE/R3Wy/pzpEQzrAOlH2Nw1JLb9GychQ
 github.com/safing/portbase v0.11.0/go.mod h1:Xb0htNFFEb6BlkloWyVbQoUguUMGrTVmEDwwpAAMS5g=
 github.com/safing/portbase v0.15.2 h1:/FC9CQe+2Nvtrh3aoeWvSmYRO+ofMWwkiCnIhee5IH4=
 github.com/safing/portbase v0.15.2/go.mod h1:5bHi99fz7Hh/wOsZUOI631WF9ePSHk57c4fdlOMS91Y=
-github.com/safing/portmaster v0.9.5 h1:oWnBPK07c7DguuUdS3ieFymI0ZeeNBsHlCtD+CC0eZI=
-github.com/safing/portmaster v0.9.5/go.mod h1:DveoBDdsqtZcJR0X7MwgWsdNIBgloUU36/p7ZgaB3t0=
+github.com/safing/portmaster v0.9.6 h1:VrOhDYYmvE/TAhkojWUFhmUnULKsUytImdF6e1Ph6Ro=
+github.com/safing/portmaster v0.9.6/go.mod h1:tXJAPInaefOu64zQk9fkYRiSe0vO7P47dOFBR8esZ5w=
 github.com/satori/go.uuid v1.2.0 h1:0uYX9dsZ2yD7q2RtLRtPSdGDWzjeM3TbMJP9utgA0ww=
 github.com/satori/go.uuid v1.2.0/go.mod h1:dA0hQrYB0VpLJoorglMZABFdXlWrHn1NEOzdhQKdks0=
 github.com/sean-/seed v0.0.0-20170313163322-e2103e2c3529/go.mod h1:DxrIzT+xaE7yg65j358z/aeFdxmN0P9QXhEzd20vsDc=
