@@ -25,7 +25,7 @@ const (
 	HealthCheckPath       = "/api/v1/health"
 
 	defaultDataFormat     = dsd.CBOR
-	defaultRequestTimeout = 10 * time.Second
+	defaultRequestTimeout = 30 * time.Second
 )
 
 var (
