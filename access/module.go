@@ -53,7 +53,7 @@ func prep() error {
 
 func start() error {
 	// Initialize zones.
-	if err := initializeZones(); err != nil {
+	if err := InitializeZones(); err != nil {
 		return err
 	}
 

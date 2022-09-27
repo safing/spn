@@ -37,7 +37,10 @@ func EnableTestMode() {
 	enableTestMode.Set()
 }
 
-func initializeZones() error {
+// InitializeZones initialized the permission zones.
+// It initializes the test zones, if EnableTestMode was called before.
+// Must only be called once.
+func InitializeZones() error {
 	// Check if we are testing.
 	if enableTestMode.IsSet() {
 		return initializeTestZone()
