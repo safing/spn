@@ -103,7 +103,7 @@ func (t *Tunnel) connectWorker(ctx context.Context) (err error) {
 
 	t.connInfo.Lock()
 	defer t.connInfo.Unlock()
-	addTunnelContextToConnection(t.connInfo, t.route)
+	addTunnelContextToConnection(t)
 	t.connInfo.Save()
 
 	tracer.Infof("spn/crew: connected %s via %s", t.connInfo, t.dstPin.Hub)
@@ -326,6 +326,8 @@ type TunnelContext struct {
 	Path       []*TunnelContextHop
 	PathCost   float32
 	RoutingAlg string
+
+	tunnel *Tunnel
 }
 
 // GetExitNodeID returns the ID of the exit node.
@@ -336,6 +338,14 @@ func (tc *TunnelContext) GetExitNodeID() string {
 	}
 
 	return tc.Path[len(tc.Path)-1].ID
+}
+
+// StopTunnel stops the tunnel.
+func (tc *TunnelContext) StopTunnel() error {
+	if tc.tunnel != nil && tc.tunnel.conn != nil {
+		return tc.tunnel.conn.Close()
+	}
+	return nil
 }
 
 // TunnelContextHop holds hop data for TunnelContext.
@@ -354,17 +364,18 @@ type TunnelContextHopIPInfo struct {
 	ASOwner string
 }
 
-func addTunnelContextToConnection(connInfo *network.Connection, route *navigator.Route) {
+func addTunnelContextToConnection(t *Tunnel) {
 	// Create and add basic info.
 	tunnelCtx := &TunnelContext{
-		Path:       make([]*TunnelContextHop, len(route.Path)),
-		PathCost:   route.TotalCost,
-		RoutingAlg: route.Algorithm,
+		Path:       make([]*TunnelContextHop, len(t.route.Path)),
+		PathCost:   t.route.TotalCost,
+		RoutingAlg: t.route.Algorithm,
+		tunnel:     t,
 	}
-	connInfo.TunnelContext = tunnelCtx
+	t.connInfo.TunnelContext = tunnelCtx
 
 	// Add path info.
-	for i, hop := range route.Path {
+	for i, hop := range t.route.Path {
 		// Add hub info.
 		hopCtx := &TunnelContextHop{
 			ID:   hop.HubID,
