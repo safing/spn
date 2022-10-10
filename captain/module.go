@@ -24,8 +24,11 @@ const controlledFailureExitCode = 24
 
 var module *modules.Module
 
+const onSPNConnectEvent = "spn connect"
+
 func init() {
 	module = modules.Register("captain", prep, start, stop, "base", "terminal", "cabin", "docks", "crew", "navigator", "sluice", "netenv")
+	module.RegisterEvent(onSPNConnectEvent, false)
 	subsystems.Register(
 		"spn",
 		"SPN",

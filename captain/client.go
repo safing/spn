@@ -144,6 +144,8 @@ reconnect:
 		ready.Set()
 		netenv.ConnectedToSPN.Set()
 
+		module.TriggerEvent(onSPNConnectEvent, nil)
+
 		// Back off before starting initial health checks.
 		select {
 		case <-time.After(clientInitialHealthCheckDelay):
