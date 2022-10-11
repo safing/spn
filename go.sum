@@ -126,8 +126,8 @@ github.com/safing/jess v0.3.1/go.mod h1:aj73Eot1zm2ETkJuw9hJlIO8bRom52uBbsCHemvl
 github.com/safing/portbase v0.15.2/go.mod h1:5bHi99fz7Hh/wOsZUOI631WF9ePSHk57c4fdlOMS91Y=
 github.com/safing/portbase v0.16.2 h1:ZlCZBZkKmgJDR+sHSRbFc9mM8m9qYtu8agE1xCirvQU=
 github.com/safing/portbase v0.16.2/go.mod h1:mzNCWqPbO7vIYbbK5PElGbudwd2vx4YPNawymL8Aro8=
-github.com/safing/portmaster v0.9.9 h1:B0mTB+idN+Jm6vPVBVAXrhSLJVgTJ/KASWD8kkdazLI=
-github.com/safing/portmaster v0.9.9/go.mod h1:C0ZO+gaUz5D69ZJJU8MefrbmVK9v7RKMHcA0ps/kllw=
+github.com/safing/portmaster v0.9.10 h1:CTIIbgcKoLuo5mi4YvKylLate7cLwkACF9sXa8JSYBY=
+github.com/safing/portmaster v0.9.10/go.mod h1:iH+4g97NXuFYCcAbpR6mUUbLM503z80MZp8p9H5IDog=
 github.com/satori/go.uuid v1.2.0 h1:0uYX9dsZ2yD7q2RtLRtPSdGDWzjeM3TbMJP9utgA0ww=
 github.com/satori/go.uuid v1.2.0/go.mod h1:dA0hQrYB0VpLJoorglMZABFdXlWrHn1NEOzdhQKdks0=
 github.com/seehuhn/fortuna v1.0.1 h1:lu9+CHsmR0bZnx5Ay646XvCSRJ8PJTi5UYJwDBX68H0=
