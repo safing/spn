@@ -3,7 +3,7 @@ package captain
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
+	"os"
 	"sync"
 
 	"github.com/safing/portbase/updater"
@@ -49,7 +49,7 @@ func updateSPNIntel(ctx context.Context, _ interface{}) (err error) {
 	if err != nil {
 		return fmt.Errorf("failed to get SPN intel update: %w", err)
 	}
-	intelData, err := ioutil.ReadFile(intelResource.Path())
+	intelData, err := os.ReadFile(intelResource.Path())
 	if err != nil {
 		return fmt.Errorf("failed to load SPN intel update: %w", err)
 	}

@@ -4,7 +4,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"io/ioutil"
+	"io/fs"
 	"os"
 
 	"github.com/safing/portbase/formats/dsd"
@@ -59,7 +59,7 @@ func processBootstrapFileFlag() error {
 
 	_, err := os.Stat(bootstrapFileFlag)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, fs.ErrNotExist) {
 			return createBootstrapFile(bootstrapFileFlag)
 		}
 		return fmt.Errorf("failed to access bootstrap hub file: %w", err)
@@ -80,7 +80,7 @@ func bootstrapWithUpdates() error {
 // loadBootstrapFile loads a file with bootstrap hub entries and imports them.
 func loadBootstrapFile(filename string) (err error) {
 	// Load bootstrap file from disk and parse it.
-	data, err := ioutil.ReadFile(filename)
+	data, err := os.ReadFile(filename)
 	if err != nil {
 		return fmt.Errorf("failed to load bootstrap file: %w", err)
 	}
@@ -142,7 +142,7 @@ func createBootstrapFile(filename string) error {
 	}
 
 	// save to disk
-	err = ioutil.WriteFile(filename, fileData, 0o0664) //nolint:gosec // Should be able to be read by others.
+	err = os.WriteFile(filename, fileData, 0o0664) //nolint:gosec // Should be able to be read by others.
 	if err != nil {
 		return err
 	}
