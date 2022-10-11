@@ -12,7 +12,7 @@ require (
 	github.com/safing/jess v0.3.1
 	github.com/safing/portbase v0.16.2
 	github.com/safing/portmaster v0.9.9
-	github.com/spf13/cobra v1.5.0
+	github.com/spf13/cobra v1.6.0
 	github.com/stretchr/testify v1.8.0
 	github.com/tevino/abool v1.2.0
 	golang.org/x/net v0.0.0-20221004154528-8021a29435af
