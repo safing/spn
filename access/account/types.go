@@ -54,7 +54,8 @@ type User struct {
 func (u *User) MayUseSPN() bool {
 	return u.State == UserStateApproved &&
 		u.Subscription != nil &&
-		time.Now().Before(u.Subscription.EndsAt)
+		u.Subscription.EndsAt != nil &&
+		time.Now().Before(*u.Subscription.EndsAt)
 }
 
 // Device describes a device of an SPN user.
@@ -65,8 +66,8 @@ type Device struct {
 
 // Subscription describes an SPN subscription.
 type Subscription struct {
-	EndsAt time.Time `json:"ends_at"`
-	State  string    `json:"state"`
+	EndsAt *time.Time `json:"ends_at"`
+	State  string     `json:"state"`
 }
 
 // Plan describes an SPN subscription plan.
