@@ -1,7 +1,7 @@
 > **Check out the main project repository [safing/portmaster](https://github.com/safing/portmaster)**
 
 > Part of [Portmaster Unlimited](https://safing.io/pricing)
-# It's Time to [Ditch VPNs](https://https://safing.io/spn)
+# It's Time to [Ditch VPNs](https://safing.io/spn)
 
 Stop paying for out-dated technology that was never intended to protect your privacy. Get peace of mind with SPN. Built from scratch and designed to truly protect your privacy from mass surveillance.
 
@@ -16,7 +16,7 @@ Stop paying for out-dated technology that was never intended to protect your pri
 
 ## Feature Comparison
 
-|| [Most VPNs](https://safing.io/blog/2022/09/06/spn-vs-vpns/) | SPN | Tor |
+| [Full SPN vs VPN](https://safing.io/blog/2022/09/06/spn-vs-vpns/) | Most VPNs | SPN | Tor |
 |---|:---:|:---:|:---:|
 | Multiple Identities (simultaneous) | ❌ | ✅ | ✅ |
 | Automatic Geo-Unblocking | ❌ | ✅ | ❌ |
@@ -25,7 +25,7 @@ Stop paying for out-dated technology that was never intended to protect your pri
 | Open Source | ❌ | ✅ | ✅ |
 | Built for Privacy | ❌ | ✅ | ✅ |
 
-Read the [SPN vs VPN Comparison Blog](https://safing.io/blog/2022/09/06/spn-vs-vpns/)
+### Full [SPN vs VPN](https://safing.io/blog/2022/09/06/spn-vs-vpns/) Comparison
 
 ## About Safing
 
@@ -37,7 +37,7 @@ Read the [SPN vs VPN Comparison Blog](https://safing.io/blog/2022/09/06/spn-vs-v
 
 ## Community Node
 
-SPN runs with community nodes, strengthening the network through diversity in server ownership. Here's a guide on [Hosting a Community Node](https://docs.safing.io/spn/hosting-a-community-node)
+In addition to Safing's servers, the SPN also uses community nodes, strengthening the network through diversity in server ownership. Here's a guide on [Hosting a Community Node](https://docs.safing.io/spn/hosting-a-community-node)
 
 ## Portmaster's Architecture
 
