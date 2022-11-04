@@ -402,12 +402,11 @@ pinLoop:
 
 		// Check for discontinued Hubs.
 		if m.intel != nil {
-			for _, hubID := range m.intel.DiscontinuedHubs {
-				if pin.Hub.ID == hubID {
-					toDelete = append(toDelete, pin.Hub.ID)
-					log.Infof("spn/navigator: deleting discontinued %s", pin.Hub)
-					continue pinLoop
-				}
+			hubIntel, ok := m.intel.Hubs[pin.Hub.ID]
+			if ok && hubIntel.Discontinued {
+				toDelete = append(toDelete, pin.Hub.ID)
+				log.Infof("spn/navigator: deleting discontinued %s", pin.Hub)
+				continue pinLoop
 			}
 		}
 		// Check for obsoleted Hubs.

@@ -222,7 +222,9 @@ func createFakeHub(group string, randomFailes bool, mapIntel *hub.Intel) *hub.Hu
 	// Set advisory-based states.
 	if gofakeit.Number(0, 10) == 0 {
 		// Make Trusted State
-		mapIntel.TrustedHubs = append(mapIntel.TrustedHubs, h.ID)
+		mapIntel.Hubs[h.ID] = &hub.HubIntel{
+			Trusted: true,
+		}
 	}
 	if gofakeit.Number(0, 100) == 0 {
 		// Discourage any usage.
