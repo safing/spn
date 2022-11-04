@@ -64,17 +64,6 @@ func registerAPIEndpoints() error {
 }
 
 func handleLogin(w http.ResponseWriter, r *http.Request) {
-	// Check if we are already authenticated.
-	user, err := GetUser()
-	if err == nil && user.State != account.UserStateNone {
-		http.Error(
-			w,
-			fmt.Sprintf("Already logged in as %s as device %s", user.Username, user.Device.Name),
-			http.StatusConflict,
-		)
-		return
-	}
-
 	// Get username and password.
 	username, password, ok := r.BasicAuth()
 	// Request, if omitted.
