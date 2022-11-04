@@ -508,13 +508,13 @@ func graphNodeLabel(pin *Pin) (s string) {
 	switch {
 	case pin.State == StateNone:
 		comment = "dead"
-	case pin.State.has(StateIsHomeHub):
+	case pin.State.Has(StateIsHomeHub):
 		comment = "Home"
-	case pin.State.hasAnyOf(StateSummaryDisregard):
+	case pin.State.HasAnyOf(StateSummaryDisregard):
 		comment = "disregarded"
-	case !pin.State.has(StateSummaryRegard):
+	case !pin.State.Has(StateSummaryRegard):
 		comment = "not regarded"
-	case pin.State.has(StateTrusted):
+	case pin.State.Has(StateTrusted):
 		comment = "trusted"
 	}
 	if comment != "" {
@@ -615,13 +615,13 @@ func graphNodeColor(pin *Pin) string {
 		return graphColorError
 	case pin.Hub.Status.Load >= 80:
 		return graphColorWarning
-	case pin.State.has(StateIsHomeHub):
+	case pin.State.Has(StateIsHomeHub):
 		return graphColorHomeAndConnected
-	case pin.State.hasAnyOf(StateSummaryDisregard):
+	case pin.State.HasAnyOf(StateSummaryDisregard):
 		return graphColorDisregard
-	case !pin.State.has(StateSummaryRegard):
+	case !pin.State.Has(StateSummaryRegard):
 		return graphColorNotRegard
-	case pin.State.has(StateTrusted):
+	case pin.State.Has(StateTrusted):
 		return graphColorTrusted
 	default:
 		return graphColorDefaultNode

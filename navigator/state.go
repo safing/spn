@@ -100,8 +100,8 @@ var allStates = []PinState{
 	StateIsHomeHub,
 }
 
-// add returns a new PinState with the given states added.
-func (pinState PinState) add(states PinState) PinState {
+// Add returns a new PinState with the given states added.
+func (pinState PinState) Add(states PinState) PinState {
 	// OR:
 	//   0011
 	// | 0101
@@ -109,8 +109,8 @@ func (pinState PinState) add(states PinState) PinState {
 	return pinState | states
 }
 
-// remove returns a new PinState with the given states removed.
-func (pinState PinState) remove(states PinState) PinState {
+// Remove returns a new PinState with the given states removed.
+func (pinState PinState) Remove(states PinState) PinState {
 	// AND NOT:
 	//    0011
 	// &^ 0101
@@ -118,8 +118,8 @@ func (pinState PinState) remove(states PinState) PinState {
 	return pinState &^ states
 }
 
-// has returns whether the state has all of the given states.
-func (pinState PinState) has(states PinState) bool {
+// Has returns whether the state has all of the given states.
+func (pinState PinState) Has(states PinState) bool {
 	// AND:
 	//   0011
 	// & 0101
@@ -128,8 +128,8 @@ func (pinState PinState) has(states PinState) bool {
 	return pinState&states == states
 }
 
-// hasAnyOf returns whether the state has any of the given states.
-func (pinState PinState) hasAnyOf(states PinState) bool {
+// HasAnyOf returns whether the state has any of the given states.
+func (pinState PinState) HasAnyOf(states PinState) bool {
 	// AND:
 	//   0011
 	// & 0101
@@ -138,8 +138,8 @@ func (pinState PinState) hasAnyOf(states PinState) bool {
 	return (pinState & states) != 0
 }
 
-// hasNoneOf returns whether the state does not have any of the given states.
-func (pinState PinState) hasNoneOf(states PinState) bool {
+// HasNoneOf returns whether the state does not have any of the given states.
+func (pinState PinState) HasNoneOf(states PinState) bool {
 	// AND:
 	//   0011
 	// & 0101
@@ -150,12 +150,12 @@ func (pinState PinState) hasNoneOf(states PinState) bool {
 
 // addStates adds the given states on the Pin.
 func (pin *Pin) addStates(states PinState) {
-	pin.State = pin.State.add(states)
+	pin.State = pin.State.Add(states)
 }
 
 // removeStates removes the given states on the Pin.
 func (pin *Pin) removeStates(states PinState) {
-	pin.State = pin.State.remove(states)
+	pin.State = pin.State.Remove(states)
 }
 
 func (m *Map) updateStateSuperseded(pin *Pin) {
@@ -273,11 +273,11 @@ func (m *Map) recalculateReachableHubs() error {
 
 func (pin *Pin) markReachable(hopDistance int) {
 	switch {
-	case !pin.State.has(StateReachable):
+	case !pin.State.Has(StateReachable):
 		// Pin wasn't reachable before.
 	case hopDistance < pin.HopDistance:
 		// New path has a shorter distance.
-	case pin.State.hasAnyOf(StateSummaryDisregard): //nolint:staticcheck
+	case pin.State.HasAnyOf(StateSummaryDisregard): //nolint:staticcheck
 		// Ignore disregarded pins for reachability calculation.
 		return
 	default:
@@ -307,7 +307,7 @@ func (pinState PinState) Export() []string {
 	// Collect state names.
 	var stateNames []string
 	for _, state := range allStates {
-		if pinState.has(state) {
+		if pinState.Has(state) {
 			stateNames = append(stateNames, state.Name())
 		}
 	}

@@ -38,7 +38,7 @@ func (m *Map) Stats() *MapStats {
 
 		// Check all states.
 		for _, state := range allStates {
-			if pin.State.has(state) {
+			if pin.State.Has(state) {
 				stats.States[state]++
 			}
 		}

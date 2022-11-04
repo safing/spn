@@ -60,7 +60,7 @@ func (pin *Pin) Export() *PinExport {
 		States:        pin.State.Export(),
 		VerifiedOwner: pin.VerifiedOwner,
 		HopDistance:   pin.HopDistance,
-		SessionActive: pin.hasActiveTerminal() || pin.State.has(StateIsHomeHub),
+		SessionActive: pin.hasActiveTerminal() || pin.State.Has(StateIsHomeHub),
 	}
 
 	// Export lanes.

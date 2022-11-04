@@ -378,10 +378,10 @@ func (m *Map) updateHubLane(pin *Pin, lane *hub.Lane, peer *Pin) {
 
 	// Check for reachability.
 
-	if pin.State.has(StateReachable) {
+	if pin.State.Has(StateReachable) {
 		peer.markReachable(pin.HopDistance + 1)
 	}
-	if peer.State.has(StateReachable) {
+	if peer.State.Has(StateReachable) {
 		pin.markReachable(peer.HopDistance + 1)
 	}
 }
@@ -396,7 +396,7 @@ func (m *Map) updateStates(ctx context.Context, task *modules.Task) error {
 pinLoop:
 	for _, pin := range m.all {
 		// Update StateFailing.
-		if pin.State.has(StateFailing) && now.After(pin.FailingUntil) {
+		if pin.State.Has(StateFailing) && now.After(pin.FailingUntil) {
 			pin.removeStates(StateFailing)
 		}
 
@@ -410,7 +410,7 @@ pinLoop:
 			}
 		}
 		// Check for obsoleted Hubs.
-		if pin.State.hasNoneOf(StateActive) && pin.Hub.Obsolete() {
+		if pin.State.HasNoneOf(StateActive) && pin.Hub.Obsolete() {
 			toDelete = append(toDelete, pin.Hub.ID)
 			log.Infof("spn/navigator: deleting obsolete %s", pin.Hub)
 		}

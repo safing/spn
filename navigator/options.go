@@ -109,20 +109,20 @@ func (o *Options) Matcher(hubType HubType, hubIntel *hub.Intel) PinMatcher {
 	// Add default states.
 	if !o.NoDefaults {
 		// Add default States.
-		regard = regard.add(StateSummaryRegard)
-		disregard = disregard.add(StateSummaryDisregard)
+		regard = regard.Add(StateSummaryRegard)
+		disregard = disregard.Add(StateSummaryDisregard)
 
 		// Add type based Advisories.
 		switch hubType {
 		case HomeHub:
 			// Home Hubs don't need to be reachable and don't need keys ready to be used.
-			regard = regard.remove(StateReachable)
-			regard = regard.remove(StateActive)
-			disregard = disregard.add(StateUsageAsHomeDiscouraged)
+			regard = regard.Remove(StateReachable)
+			regard = regard.Remove(StateActive)
+			disregard = disregard.Add(StateUsageAsHomeDiscouraged)
 		case TransitHub:
 			// Transit Hubs get no additional states.
 		case DestinationHub:
-			disregard = disregard.add(StateUsageAsDestinationDiscouraged)
+			disregard = disregard.Add(StateUsageAsDestinationDiscouraged)
 		}
 	}
 
@@ -150,7 +150,7 @@ func (o *Options) Matcher(hubType HubType, hubIntel *hub.Intel) PinMatcher {
 
 	return func(pin *Pin) bool {
 		// Check required Pin States.
-		if !pin.State.has(regard) || pin.State.hasAnyOf(disregard) {
+		if !pin.State.Has(regard) || pin.State.HasAnyOf(disregard) {
 			return false
 		}
 

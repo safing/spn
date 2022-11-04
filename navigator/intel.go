@@ -117,7 +117,7 @@ func (m *Map) updateIntelStatuses(pin *Pin) {
 }
 
 func checkStatusList(pin *Pin, state PinState, requireTrusted bool, endpointList endpoints.Endpoints) {
-	if requireTrusted && !pin.State.has(StateTrusted) {
+	if requireTrusted && !pin.State.Has(StateTrusted) {
 		pin.addStates(state)
 		return
 	}
