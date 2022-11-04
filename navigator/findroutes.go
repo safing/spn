@@ -96,7 +96,7 @@ func (m *Map) findRoutes(dsts *nearbyPins, opts *Options, maxRoutes int) (*Route
 	var done bool
 	transitMatcher := opts.Matcher(TransitHub, m.intel)
 	destinationMatcher := opts.Matcher(DestinationHub, m.intel)
-	routingProfile := getRoutingProfile(opts.RoutingProfile)
+	routingProfile := GetRoutingProfile(opts.RoutingProfile)
 
 	// Create routes collector.
 	routes := &Routes{

@@ -74,7 +74,8 @@ var (
 	}
 )
 
-func getRoutingProfile(id string) *RoutingProfile {
+// GetRoutingProfile returns the routing profile with the given ID.
+func GetRoutingProfile(id string) *RoutingProfile {
 	switch id {
 	case RoutingProfileHomeID:
 		return RoutingProfileHome
