@@ -52,7 +52,7 @@ var (
 		ID:           "single-hop",
 		Name:         "Speed Focused",
 		MinHops:      1,
-		MaxHops:      2,
+		MaxHops:      3,
 		MaxExtraHops: 1,
 		MaxExtraCost: 10000,
 	}
@@ -60,7 +60,7 @@ var (
 		ID:           "double-hop",
 		Name:         "Balanced",
 		MinHops:      2,
-		MaxHops:      3,
+		MaxHops:      4,
 		MaxExtraHops: 2,
 		MaxExtraCost: 10000,
 	}
@@ -68,7 +68,7 @@ var (
 		ID:           "triple-hop",
 		Name:         "Privacy Focused",
 		MinHops:      3,
-		MaxHops:      4,
+		MaxHops:      5,
 		MaxExtraHops: 3,
 		MaxExtraCost: 10000,
 	}
