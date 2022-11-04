@@ -6,6 +6,7 @@ import (
 	"github.com/safing/portbase/config"
 	"github.com/safing/portmaster/profile"
 	"github.com/safing/portmaster/profile/endpoints"
+	"github.com/safing/spn/navigator"
 )
 
 var (
@@ -37,6 +38,9 @@ var (
 	cfgOptionSpecialAccessCodeDefault = "none"
 	cfgOptionSpecialAccessCode        config.StringOption //nolint:unused // Linter, you drunk?
 	cfgOptionSpecialAccessCodeOrder   = 160
+
+	// Config options for use.
+	cfgOptionRoutingAlgorithm config.StringOption
 )
 
 func prepConfig() error {
@@ -134,6 +138,9 @@ This setting mainly exists for when you need to simulate your presence in anothe
 		return err
 	}
 	cfgOptionSpecialAccessCode = config.Concurrent.GetAsString(cfgOptionSpecialAccessCodeKey, "")
+
+	// Config options for use.
+	cfgOptionRoutingAlgorithm = config.Concurrent.GetAsString(profile.CfgOptionRoutingAlgorithmKey, navigator.DefaultRoutingProfileID)
 
 	return nil
 }
