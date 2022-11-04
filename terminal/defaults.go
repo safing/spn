@@ -6,7 +6,7 @@ import (
 
 const (
 	// DefaultMediumPriorityMaxDelay defines the default maximum delay to use when
-	// waiting for an execution slow when starting or signaling a microtask.
+	// waiting for an execution slow-down when starting or signaling a microtask.
 	// A connection carrying 1500B packets would still achieve over 100Mbit/s if
 	// enough processing power and bandwidth is available.
 	DefaultMediumPriorityMaxDelay = 100 * time.Microsecond
