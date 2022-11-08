@@ -2,31 +2,28 @@ package unit
 
 import (
 	"github.com/tevino/abool"
-
-	"github.com/safing/portbase/container"
 )
 
-// Unit describes a collection of data (containers) moving through the SPN
-// network stack.
+// Unit describes a "work unit" and is meant to be embedded into another struct
+// used for passing data moving through multiple processing steps.
 type Unit struct {
 	id           uint64
+	scheduler    *Scheduler
 	finished     abool.AtomicBool
 	highPriority abool.AtomicBool
 	paused       abool.AtomicBool
-
-	Data *container.Container
 }
 
-// New returns a new unit holding a reference to the given container.
-func New(c *container.Container) *Unit {
+// NewUnit returns a new unit within the scheduler.
+func (s *Scheduler) NewUnit() *Unit {
 	return &Unit{
-		id:   currentUnitID.Add(1),
-		Data: c,
+		id:        s.currentUnitID.Add(1),
+		scheduler: s,
 	}
 }
 
-// Start blocks until the unit may be processed.
-func (u *Unit) Start() {
+// WaitForUnitSlot blocks until the unit may be processed.
+func (u *Unit) WaitForUnitSlot() {
 	// Unpause.
 	u.unpause()
 
@@ -37,32 +34,32 @@ func (u *Unit) Start() {
 
 	for {
 		// Check if we are allowed to process in the current slot.
-		if u.id <= clearanceUpTo.Load() {
+		if u.id <= u.scheduler.clearanceUpTo.Load() {
 			return
 		}
 
 		// Debug logging:
-		// fmt.Printf("unit %d waiting for clearance at %d\n", u.id, clearanceUpTo.Load())
+		// fmt.Printf("unit %d waiting for clearance at %d\n", u.id, u.scheduler.clearanceUpTo.Load())
 
 		// Wait for next slot.
-		<-nextSlotSignal()
+		<-u.scheduler.nextSlotSignal()
 	}
 }
 
-// Finish signals the unit scheduler that this unit has finished processing.
-func (u *Unit) Finish() {
+// FinishUnit signals the unit scheduler that this unit has finished processing.
+func (u *Unit) FinishUnit() {
 	if u.finished.SetToIf(false, true) {
-		finished.Add(1)
+		u.scheduler.finished.Add(1)
 	}
 	u.removeHighPriority()
 	u.unpause()
 }
 
-// Pause signals the unit scheduler that this unit is paused and not being
+// PauseUnit signals the unit scheduler that this unit is paused and not being
 // processed at the moment.
-func (u *Unit) Pause() {
+func (u *Unit) PauseUnit() {
 	if u.finished.IsNotSet() && u.paused.SetToIf(false, true) {
-		pausedUnits.Add(1)
+		u.scheduler.pausedUnits.Add(1)
 	}
 }
 
@@ -70,25 +67,25 @@ func (u *Unit) Pause() {
 // is now waiting for processing.
 func (u *Unit) unpause() {
 	if u.paused.SetToIf(true, false) {
-		pausedUnits.Add(-1)
+		u.scheduler.pausedUnits.Add(-1)
 	}
 }
 
-// MakeHighPriority marks the unit as high priority.
-func (u *Unit) MakeHighPriority() {
+// MakeUnitHighPriority marks the unit as high priority.
+func (u *Unit) MakeUnitHighPriority() {
 	if u.highPriority.SetToIf(false, true) {
-		highPrioUnits.Add(1)
+		u.scheduler.highPrioUnits.Add(1)
 	}
 }
 
-// HighPriority returns whether the unit has high priority.
-func (u *Unit) HighPriority() bool {
+// IsHighPriorityUnit returns whether the unit has high priority.
+func (u *Unit) IsHighPriorityUnit() bool {
 	return u.highPriority.IsSet()
 }
 
 // removeHighPriority removes the high priority mark.
 func (u *Unit) removeHighPriority() {
 	if u.highPriority.SetToIf(true, false) {
-		highPrioUnits.Add(-1)
+		u.scheduler.highPrioUnits.Add(-1)
 	}
 }

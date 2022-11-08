@@ -7,91 +7,148 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"github.com/tevino/abool"
 )
 
 const (
-	slotDuration = 10 * time.Millisecond
-	minSlotPace  = 1000
+	defaultSlotDuration = 10 * time.Millisecond
+	defaultMinSlotPace  = 1000
 
-	adjustFractionPerStreak = 1000 // 0.1%
+	defaultAdjustFractionPerStreak        = 1000 // 0.1%
+	defaultHighPriorityMaxReserveFraction = 2    // 50%
 )
 
-var (
-	// With just 100B per packet, a uint64 is enough for over 1800 Exabyte. No need for overflow support.
-	currentUnitID = atomic.Uint64{}
-	finished      = atomic.Uint64{}
-	clearanceUpTo = atomic.Uint64{}
+// Scheduler creates and schedules units.
+// Must be created using NewScheduler().
+type Scheduler struct {
+	// Configuration.
+	config SchedulerConfig
 
-	slotPace      = atomic.Int64{}
-	pausedUnits   = atomic.Int64{}
-	highPrioUnits = atomic.Int64{}
+	// Units IDs Limit / Thresholds.
 
-	slotSignalA      = make(chan struct{})
-	slotSignalB      = make(chan struct{})
+	// currentUnitID holds the last assigned Unit ID.
+	currentUnitID atomic.Uint64
+	// finished holds the amount of units that were finished.
+	// Not necessarily all Unit IDs below this value are actually finished.
+	finished atomic.Uint64
+	// clearanceUpTo holds the current threshold up to which Unit ID Units may be processed.
+	clearanceUpTo atomic.Uint64
+
+	// Pace and amount of unit states.
+
+	// slotPace holds the current pace. This is the base value for clearance
+	// calcuation, not the value of the current cleared Units itself.
+	slotPace atomic.Int64
+	// pausedUnits holds the amount of unfinished Units which are currently marked as "paused".
+	// These Units are waiting for an external condition.
+	pausedUnits atomic.Int64
+	// highPrioUnits holds the amount of unfinished Units which were marked as high priority.
+	highPrioUnits atomic.Int64
+
+	// Slot management.
+	slotSignalA      chan struct{}
+	slotSignalB      chan struct{}
 	slotSignalSwitch bool
 	slotSignalsLock  sync.RWMutex
-
-	schedulerRunning = abool.New()
-)
-
-func init() {
-	clearanceUpTo.Store(minSlotPace)
-	slotPace.Store(minSlotPace)
 }
 
-func nextSlotSignal() chan struct{} {
-	slotSignalsLock.RLock()
-	defer slotSignalsLock.RUnlock()
+// SchedulerConfig holds scheduler configuration.
+type SchedulerConfig struct {
+	// SlotDuration defines the duration of one slot.
+	SlotDuration time.Duration
 
-	if slotSignalSwitch {
-		return slotSignalA
+	// MinSlotPace defines the minimum slot pace.
+	// The slot pace will never fall below this value.
+	MinSlotPace int64
+
+	// AdjustFractionPerStreak defines the fraction of the pace the pace itself changes in either direction to match the current use and load.
+	AdjustFractionPerStreak int64
+
+	// HighPriorityMaxReserveFraction defines the fraction of the pace that may - at maximum - be reserved for high priority units.
+	HighPriorityMaxReserveFraction int64
+}
+
+// NewScheduler returns a new scheduler.
+func NewScheduler(config *SchedulerConfig) *Scheduler {
+	// Fallback to empty config if none is given.
+	if config == nil {
+		config = &SchedulerConfig{}
 	}
-	return slotSignalB
+
+	// Create new scheduler.
+	s := &Scheduler{
+		config:      *config,
+		slotSignalA: make(chan struct{}),
+		slotSignalB: make(chan struct{}),
+	}
+
+	// Fill in defaults.
+	if s.config.SlotDuration == 0 {
+		s.config.SlotDuration = defaultSlotDuration
+	}
+	if s.config.MinSlotPace == 0 {
+		s.config.MinSlotPace = defaultMinSlotPace
+	}
+	if s.config.AdjustFractionPerStreak == 0 {
+		s.config.AdjustFractionPerStreak = defaultAdjustFractionPerStreak
+	}
+	if s.config.HighPriorityMaxReserveFraction == 0 {
+		s.config.HighPriorityMaxReserveFraction = defaultHighPriorityMaxReserveFraction
+	}
+
+	// Initialize scheduler fields.
+	s.clearanceUpTo.Store(uint64(s.config.MinSlotPace))
+	s.slotPace.Store(s.config.MinSlotPace)
+
+	return s
 }
 
-func announceNextSlot() {
-	slotSignalsLock.Lock()
-	defer slotSignalsLock.Unlock()
+func (s *Scheduler) nextSlotSignal() chan struct{} {
+	s.slotSignalsLock.RLock()
+	defer s.slotSignalsLock.RUnlock()
+
+	if s.slotSignalSwitch {
+		return s.slotSignalA
+	}
+	return s.slotSignalB
+}
+
+func (s *Scheduler) announceNextSlot() {
+	s.slotSignalsLock.Lock()
+	defer s.slotSignalsLock.Unlock()
 
 	// Close new slot signal and refresh previous one.
-	if slotSignalSwitch {
-		close(slotSignalA)
-		slotSignalB = make(chan struct{})
+	if s.slotSignalSwitch {
+		close(s.slotSignalA)
+		s.slotSignalB = make(chan struct{})
 	} else {
-		close(slotSignalB)
-		slotSignalA = make(chan struct{})
+		close(s.slotSignalB)
+		s.slotSignalA = make(chan struct{})
 	}
 
 	// Switch to next slot.
-	slotSignalSwitch = !slotSignalSwitch
+	s.slotSignalSwitch = !s.slotSignalSwitch
 }
 
-func slotScheduler(ctx context.Context) error {
-	// Only run one scheduler at once.
-	if !schedulerRunning.SetToIf(false, true) {
-		return errors.New("scheduler is already running")
-	}
-	defer schedulerRunning.UnSet()
-
+// SlotScheduler manages the slot and schedules units.
+// Must only be started once.
+func (s *Scheduler) SlotScheduler(ctx context.Context) error {
 	// Start slot ticker.
-	ticker := time.NewTicker(slotDuration)
+	ticker := time.NewTicker(s.config.SlotDuration)
 	defer ticker.Stop()
 
 	// Give clearance to all when stopping.
-	defer clearanceUpTo.Store(math.MaxUint64)
+	defer s.clearanceUpTo.Store(math.MaxUint64)
 
 	var (
 		lastClearanceAmount int64
-		finishedAtStart     = finished.Load()
+		finishedAtStart     = s.finished.Load()
 		increaseStreak      int64
 		decreaseStreak      int64
 	)
 	for range ticker.C {
 		// Calculate how many units were finished in slot.
 		// Only load "finished" once, so we don't miss anything.
-		finishedAtEnd := finished.Load()
+		finishedAtEnd := s.finished.Load()
 		finishedInSlot := int64(finishedAtEnd - finishedAtStart)
 
 		// Adapt pace.
@@ -99,44 +156,44 @@ func slotScheduler(ctx context.Context) error {
 			// Adjust based on streak.
 			increaseStreak++
 			decreaseStreak = 0
-			slotPace.Add((slotPace.Load() / adjustFractionPerStreak) * increaseStreak)
+			s.slotPace.Add((s.slotPace.Load() / s.config.AdjustFractionPerStreak) * increaseStreak)
 
 			// Debug logging:
-			// fmt.Printf("+++ slot pace: %d (finished in slot: %d, last clearance: %d, increaseStreak: %d)\n", slotPace.Load(), finishedInSlot, lastClearanceAmount, increaseStreak)
+			// fmt.Printf("+++ slot pace: %d (finished in slot: %d, last clearance: %d, increaseStreak: %d)\n", s.slotPace.Load(), finishedInSlot, lastClearanceAmount, increaseStreak)
 		} else {
 			// Adjust based on streak.
 			decreaseStreak++
 			increaseStreak = 0
-			slotPace.Add(-((slotPace.Load() / adjustFractionPerStreak) * decreaseStreak))
+			s.slotPace.Add(-((s.slotPace.Load() / s.config.AdjustFractionPerStreak) * decreaseStreak))
 
 			// Enforce minimum.
-			if slotPace.Load() < minSlotPace {
-				slotPace.Store(minSlotPace)
+			if s.slotPace.Load() < s.config.MinSlotPace {
+				s.slotPace.Store(s.config.MinSlotPace)
 				decreaseStreak = 0
 			}
 
 			// Debug logging:
-			// fmt.Printf("--- slot pace: %d (finished in slot: %d, last clearance: %d, decreaseStreak: %d)\n", slotPace.Load(), finishedInSlot, lastClearanceAmount, decreaseStreak)
+			// fmt.Printf("--- slot pace: %d (finished in slot: %d, last clearance: %d, decreaseStreak: %d)\n", s.slotPace.Load(), finishedInSlot, lastClearanceAmount, decreaseStreak)
 		}
 
 		// Set new slot clearance.
 		// First, add current pace and paused units.
-		newClearance := slotPace.Load() + pausedUnits.Load()
+		newClearance := s.slotPace.Load() + s.pausedUnits.Load()
 		// Second, subtract up to 20% of clearance for high priority units.
-		highPrio := highPrioUnits.Load()
+		highPrio := s.highPrioUnits.Load()
 		if highPrio > newClearance/5 {
 			newClearance -= newClearance / 5
 		} else {
 			newClearance -= highPrio
 		}
 		// Third, add finished to set new clearance limit.
-		clearanceUpTo.Store(finishedAtEnd + uint64(newClearance))
+		s.clearanceUpTo.Store(finishedAtEnd + uint64(newClearance))
 		// Lastly, save new clearance for comparison for next slot.
 		lastClearanceAmount = newClearance
 
 		// Go to next slot.
 		finishedAtStart = finishedAtEnd
-		announceNextSlot()
+		s.announceNextSlot()
 
 		// Check if we are stopping.
 		select {
