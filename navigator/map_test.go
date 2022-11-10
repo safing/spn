@@ -61,7 +61,9 @@ func createRandomTestMap(seed int64, size int) *Map {
 	var hubs []*hub.Hub
 
 	// Create Intel data structure.
-	mapIntel := &hub.Intel{}
+	mapIntel := &hub.Intel{
+		Hubs: make(map[string]*hub.HubIntel),
+	}
 
 	// Define periodic values.
 	var currentGroup string
