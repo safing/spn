@@ -219,15 +219,17 @@ func (op *ConnectOp) submitUpstream(c *container.Container, highPriority bool) *
 const (
 	readBufSize = 1500
 
-	// High priority below 1MB.
+	// High priority up to first 1MB.
 	highPrioLimit = 1_000_000
 
-	// Medium priority below 100MB with max of 24Mbit/s _under load_.
+	// Medium priority up to first 100MB with max of 24 Mbit/s _under load_ with 1500B packets.
 	mediumPrioLimit    = 100_000_000
-	mediumPrioMaxDelay = time.Second / (24 / 8 * 1_000_000 / readBufSize)
+	mediumPrioMaxMbit  = 24
+	mediumPrioMaxDelay = time.Second / ((mediumPrioMaxMbit / 8) * 1_000_000 / readBufSize)
 
-	// Low priority above 100MB with max of 8 Mbit/s _under load_.
-	lowPrioMaxDelay = time.Second / (8 / 8 * 1_000_000 / readBufSize) //nolint:gocritic,staticcheck
+	// Low priority after 100MB with max of 8 Mbit/s _under load_ with 1500B packets.
+	lowPrioMaxMbit  = 8
+	lowPrioMaxDelay = time.Second / ((lowPrioMaxMbit / 8) * 1_000_000 / readBufSize)
 )
 
 func (op *ConnectOp) connReader(_ context.Context) error {

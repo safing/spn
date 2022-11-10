@@ -18,15 +18,6 @@ type Intel struct {
 
 	// Hubs holds intel regarding specific Hubs.
 	Hubs map[string]*HubIntel
-	// TrustedHubs is a list of Hub IDs that are specially designated for more sensitive tasls, such as handling unencrypted traffic.
-	// Deprecated: Use "Hubs" instead.
-	TrustedHubs []string
-	// DiscontinuedHubs is a list of Hub IDs that have been discontinued and should be marked as offline and removed.
-	// Deprecated: Use "Hubs" instead.
-	DiscontinuedHubs []string
-	// InfoOverrides is used to override certain Hub information.
-	// Deprecated: Use "Hubs" instead.
-	InfoOverrides map[string]*InfoOverride
 
 	// AdviseOnlyTrustedHubs advises to only use trusted Hubs regardless of intended purpose.
 	AdviseOnlyTrustedHubs bool

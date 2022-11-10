@@ -26,12 +26,25 @@ func (m *Map) UpdateIntel(update *hub.Intel) error {
 
 	// Update pins with new intel data.
 	for _, pin := range m.all {
-		m.updateIntelStatuses(pin)
+		// Add/Update location data from IP addresses.
+		pin.updateLocationData()
+
+		// Override Pin Data.
 		m.updateInfoOverrides(pin)
+
+		// Update Trust and Advisory Statuses.
+		m.updateIntelStatuses(pin)
+
+		// Push changes.
+		// TODO: Only set when pin changed.
+		pin.pushChanges.Set()
 	}
 
 	// Configure the map's regions.
 	m.updateRegions(m.intel.Regions)
+
+	// Push pin changes.
+	m.PushPinChanges()
 
 	log.Infof("spn/navigator: updated intel on map %s", m.Name)
 
@@ -104,7 +117,7 @@ func (m *Map) updateIntelStatuses(pin *Pin) {
 }
 
 func checkStatusList(pin *Pin, state PinState, requireTrusted bool, endpointList endpoints.Endpoints) {
-	if requireTrusted && !pin.State.has(StateTrusted) {
+	if requireTrusted && !pin.State.Has(StateTrusted) {
 		pin.addStates(state)
 		return
 	}
@@ -123,7 +136,7 @@ func checkStatusList(pin *Pin, state PinState, requireTrusted bool, endpointList
 
 func (m *Map) updateInfoOverrides(pin *Pin) {
 	// Check if Intel data is loaded and if there are any overrides.
-	if m.intel == nil || m.intel.InfoOverrides == nil {
+	if m.intel == nil {
 		return
 	}
 
@@ -146,40 +159,56 @@ func (m *Map) updateInfoOverrides(pin *Pin) {
 	if overrides.CountryCode != "" {
 		if pin.LocationV4 != nil {
 			pin.LocationV4.Country.ISOCode = overrides.CountryCode
+		}
+		if pin.EntityV4 != nil {
 			pin.EntityV4.Country = overrides.CountryCode
 		}
 		if pin.LocationV6 != nil {
 			pin.LocationV6.Country.ISOCode = overrides.CountryCode
+		}
+		if pin.EntityV6 != nil {
 			pin.EntityV6.Country = overrides.CountryCode
 		}
 	}
 	if overrides.Coordinates != nil {
 		if pin.LocationV4 != nil {
 			pin.LocationV4.Coordinates = *overrides.Coordinates
+		}
+		if pin.EntityV4 != nil {
 			pin.EntityV4.Coordinates = overrides.Coordinates
 		}
 		if pin.LocationV6 != nil {
 			pin.LocationV6.Coordinates = *overrides.Coordinates
+		}
+		if pin.EntityV6 != nil {
 			pin.EntityV6.Coordinates = overrides.Coordinates
 		}
 	}
 	if overrides.ASN != 0 {
 		if pin.LocationV4 != nil {
 			pin.LocationV4.AutonomousSystemNumber = overrides.ASN
+		}
+		if pin.EntityV4 != nil {
 			pin.EntityV4.ASN = overrides.ASN
 		}
 		if pin.LocationV6 != nil {
 			pin.LocationV6.AutonomousSystemNumber = overrides.ASN
+		}
+		if pin.EntityV6 != nil {
 			pin.EntityV6.ASN = overrides.ASN
 		}
 	}
 	if overrides.ASOrg != "" {
 		if pin.LocationV4 != nil {
 			pin.LocationV4.AutonomousSystemOrganization = overrides.ASOrg
+		}
+		if pin.EntityV4 != nil {
 			pin.EntityV4.ASOrg = overrides.ASOrg
 		}
 		if pin.LocationV6 != nil {
 			pin.LocationV6.AutonomousSystemOrganization = overrides.ASOrg
+		}
+		if pin.EntityV6 != nil {
 			pin.EntityV6.ASOrg = overrides.ASOrg
 		}
 	}

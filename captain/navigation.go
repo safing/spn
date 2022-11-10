@@ -66,6 +66,12 @@ func establishHomeHub(ctx context.Context) error {
 		opts.RequireVerifiedOwners = NonCommunityVerifiedOwners
 	}
 
+	// Require a trusted home node when the routing profile requires less than two hops.
+	routingProfile := navigator.GetRoutingProfile(cfgOptionRoutingAlgorithm())
+	if routingProfile.MinHops < 2 {
+		opts.Regard = opts.Regard.Add(navigator.StateTrusted)
+	}
+
 	// Find nearby hubs.
 findCandidates:
 	candidates, err := navigator.Main.FindNearestHubs(

@@ -61,6 +61,17 @@ func registerAPIEndpoints() error {
 	}
 
 	if err := api.RegisterEndpoint(api.Endpoint{
+		Path:        `spn/map/{map:[A-Za-z0-9]{1,255}}/intel/update`,
+		Write:       api.PermitSelf,
+		BelongsTo:   module,
+		ActionFunc:  handleIntelUpdateRequest,
+		Name:        "Update map intelligence.",
+		Description: "Updates the intel data of the map.",
+	}); err != nil {
+		return err
+	}
+
+	if err := api.RegisterEndpoint(api.Endpoint{
 		Path:        `spn/map/{map:[A-Za-z0-9]{1,255}}/optimization`,
 		Read:        api.PermitUser,
 		BelongsTo:   module,
@@ -148,6 +159,28 @@ func handleMapPinsRequest(ar *api.Request) (i interface{}, err error) {
 	}
 
 	return exportedPins, nil
+}
+
+func handleIntelUpdateRequest(ar *api.Request) (msg string, err error) {
+	// Get map.
+	m, ok := getMapForAPI(ar.URLVars["map"])
+	if !ok {
+		return "", errors.New("map not found")
+	}
+
+	// Parse new intel data.
+	newIntel, err := hub.ParseIntel(ar.InputData)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse intel data: %w", err)
+	}
+
+	// Apply intel data.
+	err = m.UpdateIntel(newIntel)
+	if err != nil {
+		return "", fmt.Errorf("failed to apply intel data: %w", err)
+	}
+
+	return "successfully applied given intel data", nil
 }
 
 func handleMapOptimizationRequest(ar *api.Request) (i interface{}, err error) {
@@ -475,13 +508,13 @@ func graphNodeLabel(pin *Pin) (s string) {
 	switch {
 	case pin.State == StateNone:
 		comment = "dead"
-	case pin.State.has(StateIsHomeHub):
+	case pin.State.Has(StateIsHomeHub):
 		comment = "Home"
-	case pin.State.hasAnyOf(StateSummaryDisregard):
+	case pin.State.HasAnyOf(StateSummaryDisregard):
 		comment = "disregarded"
-	case !pin.State.has(StateSummaryRegard):
+	case !pin.State.Has(StateSummaryRegard):
 		comment = "not regarded"
-	case pin.State.has(StateTrusted):
+	case pin.State.Has(StateTrusted):
 		comment = "trusted"
 	}
 	if comment != "" {
@@ -582,13 +615,13 @@ func graphNodeColor(pin *Pin) string {
 		return graphColorError
 	case pin.Hub.Status.Load >= 80:
 		return graphColorWarning
-	case pin.State.has(StateIsHomeHub):
+	case pin.State.Has(StateIsHomeHub):
 		return graphColorHomeAndConnected
-	case pin.State.hasAnyOf(StateSummaryDisregard):
+	case pin.State.HasAnyOf(StateSummaryDisregard):
 		return graphColorDisregard
-	case !pin.State.has(StateSummaryRegard):
+	case !pin.State.Has(StateSummaryRegard):
 		return graphColorNotRegard
-	case pin.State.has(StateTrusted):
+	case pin.State.Has(StateTrusted):
 		return graphColorTrusted
 	default:
 		return graphColorDefaultNode
