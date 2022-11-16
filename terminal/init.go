@@ -150,7 +150,7 @@ func NewLocalBaseTerminal(
 	parentID string,
 	remoteHub *hub.Hub,
 	initMsg *TerminalOpts,
-	submitUpstream func(msg *Msg) *Error,
+	upstream Upstream,
 ) (
 	t *TerminalBase,
 	initData *container.Container,
@@ -163,7 +163,7 @@ func NewLocalBaseTerminal(
 	}
 
 	// Create baseline.
-	t, err = createTerminalBase(ctx, id, parentID, false, initMsg, submitUpstream)
+	t, err = createTerminalBase(ctx, id, parentID, false, initMsg, upstream)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -202,7 +202,7 @@ func NewRemoteBaseTerminal(
 	parentID string,
 	identity *cabin.Identity,
 	initData *container.Container,
-	submitUpstream func(msg *Msg) *Error,
+	upstream Upstream,
 ) (
 	t *TerminalBase,
 	initMsg *TerminalOpts,
@@ -215,7 +215,7 @@ func NewRemoteBaseTerminal(
 	}
 
 	// Create baseline.
-	t, err = createTerminalBase(ctx, id, parentID, true, initMsg, submitUpstream)
+	t, err = createTerminalBase(ctx, id, parentID, true, initMsg, upstream)
 	if err != nil {
 		return nil, nil, err
 	}

@@ -8,8 +8,8 @@ import (
 
 // OperationBase provides the basic operation functionality.
 type OperationBase struct {
-	id       uint32
 	terminal Terminal
+	id       uint32
 	stopped  abool.AtomicBool
 }
 

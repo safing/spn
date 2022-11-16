@@ -29,6 +29,10 @@ func start() error {
 
 // FmtID formats the terminal ID together with the parent's ID.
 func (t *TerminalBase) FmtID() string {
+	if t.ext != nil {
+		return t.ext.FmtID()
+	}
+
 	return fmtTerminalID(t.parentID, t.id)
 }
 

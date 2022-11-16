@@ -1,16 +1,6 @@
 package terminal
 
-import (
-	"time"
-)
-
 const (
-	// DefaultMediumPriorityMaxDelay defines the default maximum delay to use when
-	// waiting for an execution slow-down when starting or signaling a microtask.
-	// A connection carrying 1500B packets would still achieve over 100Mbit/s if
-	// enough processing power and bandwidth is available.
-	DefaultMediumPriorityMaxDelay = 100 * time.Microsecond
-
 	// UsePriorityDataMsgs defines whether priority data messages should be used.
 	UsePriorityDataMsgs = true
 )
@@ -32,7 +22,7 @@ func DefaultHomeHubTerminalOpts() *TerminalOpts {
 	return &TerminalOpts{
 		Padding:             0, // Crane already applies padding.
 		FlowControl:         FlowControlDFQ,
-		SubmitControl:       SubmitControlFair,
+		SubmitControl:       SubmitControlPlain,
 		UsePriorityDataMsgs: UsePriorityDataMsgs,
 	}
 }
@@ -43,7 +33,7 @@ func DefaultExpansionTerminalOpts() *TerminalOpts {
 	return &TerminalOpts{
 		Padding:             8,
 		FlowControl:         FlowControlDFQ,
-		SubmitControl:       SubmitControlFair,
+		SubmitControl:       SubmitControlPlain,
 		UsePriorityDataMsgs: UsePriorityDataMsgs,
 	}
 }

@@ -27,29 +27,41 @@ type Terminal interface { //nolint:golint // Being explicit is helpful here.
 	Ctx() context.Context
 
 	// Deliver delivers a message to the terminal.
+	// Should not be overridden by implementations.
 	Deliver(msg *Msg) *Error
-	// Send is used to send a message through the terminal.
+	// Send is used by others to send a message through the terminal.
+	// Should not be overridden by implementations.
 	Send(msg *Msg, timeout time.Duration) *Error
+	// submit is used by the terminal itself to submits a message to upstream.
+	submit(msg *Msg, timeout time.Duration)
 	// Flush sends all messages waiting in the terminal.
+	// Should not be overridden by implementations.
 	Flush()
-	// Abandon shuts down the terminal.
-	Abandon(err *Error)
 
 	// StartOperation starts the given operation by assigning it an ID and sending the given operation initialization data.
+	// Should not be overridden by implementations.
 	StartOperation(attachedTerminal Terminal, op Operation, initData *container.Container, timeout time.Duration) *Error
 	// StopOperation stops the given operation.
+	// Should not be overridden by implementations.
 	StopOperation(op Operation, err *Error)
 
+	// Abandon shuts down the terminal unregistering it from upstream and calling HandleAbandon().
+	// Should not be overridden by implementations.
+	Abandon(err *Error)
+	// HandleAbandon gives the terminal the ability to cleanly shut down.
+	// The returned error is the error to send to the other side.
+	// Should never be called directly. Call Abandon() instead.
+	// Meant to be overridden by implementations.
+	HandleAbandon(err *Error) (errorToSend *Error)
+
 	// FmtID formats the terminal ID (including parent IDs).
+	// May be overridden by implementations.
 	FmtID() string
 }
 
-// TerminalExtension is the interface that extended terminal implementations
-// need to adhere to.
-type TerminalExtension interface { //nolint:golint // Being explicit is helpful here.
-	Terminal
-
-	Abandon(err *Error)
+// Upstream defines the the interface for upstream (parent) components.
+type Upstream interface {
+	Send(msg *Msg, timeout time.Duration) *Error
 }
 
 // TerminalBase contains the basic functions of a terminal.
@@ -63,11 +75,10 @@ type TerminalBase struct { //nolint:golint,maligned // Being explicit is helpful
 	// parentID is the id of the parent component.
 	parentID string
 
-	// submitUpstream is used to submit messages to upstream.
-	submitUpstream func(msg *Msg) *Error
-	// ext holds the extended Terminal to supply the communication interface and
-	// override behavior.
-	ext TerminalExtension
+	// upstream represents the upstream (parent) terminal.
+	upstream Upstream
+	// ext holds the extended terminal so that the base terminal can access custom functions.
+	ext Terminal
 	// flowControl holds the flow control system.
 	flowControl FlowControl
 	// submitControl holds the submit control system.
@@ -78,8 +89,6 @@ type TerminalBase struct { //nolint:golint,maligned // Being explicit is helpful
 	deliverProxy func(msg *Msg) *Error
 	// recvProxy is populated with the configured recv function
 	recvProxy func() <-chan *Msg
-	// sendProxy is populated with the configured send function
-	sendProxy func(msg *Msg) *Error
 
 	// ctx is the context of the Terminal.
 	ctx context.Context
@@ -138,12 +147,12 @@ func createTerminalBase(
 	parentID string,
 	remote bool,
 	initMsg *TerminalOpts,
-	submitUpstream func(msg *Msg) *Error,
+	upstream Upstream,
 ) (*TerminalBase, *Error) {
 	t := &TerminalBase{
 		id:              id,
 		parentID:        parentID,
-		submitUpstream:  submitUpstream,
+		upstream:        upstream,
 		waitForFlush:    abool.New(),
 		flush:           make(chan func()),
 		idleTicker:      time.NewTicker(time.Minute),
@@ -154,21 +163,6 @@ func createTerminalBase(
 		opts:            initMsg,
 		Abandoning:      abool.New(),
 	}
-	// Proxy the submit upstream call and shutdown the terminal in case of an error.
-	originalSubmitUpstream := t.submitUpstream
-	t.submitUpstream = func(msg *Msg) *Error {
-		// Set ID and Type.
-		msg.FlowID = t.id
-		// Submit to original upstream.
-		err := originalSubmitUpstream(msg)
-		if err != nil {
-			msg.FinishUnit()
-			t.Abandon(err.Wrap("failed to submit to upstream"))
-		}
-		return err
-	}
-	// Set self as extension, as it is optional.
-	t.ext = t
 	// Stop ticking to disable timeout.
 	t.idleTicker.Stop()
 	// Shift next operation ID if remote.
@@ -181,15 +175,13 @@ func createTerminalBase(
 	// Create flow control.
 	switch initMsg.FlowControl {
 	case FlowControlDFQ:
-		t.flowControl = NewDuplexFlowQueue(t.Ctx(), initMsg.FlowControlSize, t.submitUpstream)
+		t.flowControl = NewDuplexFlowQueue(t.Ctx(), initMsg.FlowControlSize, t.upstream.Send)
 		t.deliverProxy = t.flowControl.Deliver
 		t.recvProxy = t.flowControl.Receive
-		t.sendProxy = t.flowControl.Send
 	case FlowControlNone:
 		deliver := make(chan *Msg, initMsg.FlowControlSize)
 		t.deliverProxy = MakeDirectDeliveryDeliverFunc(ctx, deliver)
 		t.recvProxy = MakeDirectDeliveryRecvFunc(deliver)
-		t.sendProxy = t.submitUpstream
 	case FlowControlDefault:
 		fallthrough
 	default:
@@ -223,7 +215,7 @@ func (t *TerminalBase) Ctx() context.Context {
 
 // SetTerminalExtension sets the Terminal's extension. This function is not
 // guarded and may only be used during initialization.
-func (t *TerminalBase) SetTerminalExtension(ext TerminalExtension) {
+func (t *TerminalBase) SetTerminalExtension(ext Terminal) {
 	t.ext = ext
 }
 
@@ -237,14 +229,6 @@ func (t *TerminalBase) SetTimeout(d time.Duration) {
 // overridden by an actual implementation.
 func (t *TerminalBase) Deliver(msg *Msg) *Error {
 	return t.deliverProxy(msg)
-}
-
-// Abandon abandons the Terminal with the given error.
-func (t *TerminalBase) Abandon(err *Error) {
-	if t.Abandoning.SetToIf(false, true) {
-		// Send stop msg and end all operations.
-		t.StartAbandonProcedure(err, err.IsExternal(), nil)
-	}
 }
 
 // StartWorkers starts the necessary workers to operate the Terminal.
@@ -268,21 +252,21 @@ const (
 // Handler receives and handles messages and must be started as a worker in the
 // module where the Terminal is used.
 func (t *TerminalBase) Handler(_ context.Context) error {
-	defer t.ext.Abandon(ErrInternalError.With("handler died"))
+	defer t.Abandon(ErrInternalError.With("handler died"))
 
 	for {
 		select {
 		case <-t.ctx.Done():
 			// Call Abandon just in case.
 			// Normally, only the StopProcedure function should cancel the context.
-			t.ext.Abandon(nil)
+			t.Abandon(nil)
 			return nil // Controlled worker exit.
 
 		case <-t.idleTicker.C:
 			// If nothing happens for a while, end the session.
 			if atomic.AddUint32(t.idleCounter, 1) > timeoutTicks {
 				// Abandon the terminal and reset the counter.
-				t.ext.Abandon(ErrNoActivity)
+				t.Abandon(ErrNoActivity)
 				atomic.StoreUint32(t.idleCounter, 0)
 			}
 
@@ -290,7 +274,7 @@ func (t *TerminalBase) Handler(_ context.Context) error {
 			if u.Data.HoldsData() {
 				err := t.handleReceive(u)
 				if err != nil && !errors.Is(err, ErrStopping) {
-					t.ext.Abandon(err.Wrap("failed to handle"))
+					t.Abandon(err.Wrap("failed to handle"))
 				}
 			}
 			u.FinishUnit()
@@ -298,6 +282,25 @@ func (t *TerminalBase) Handler(_ context.Context) error {
 			// Register activity.
 			atomic.StoreUint32(t.idleCounter, 0)
 		}
+	}
+}
+
+func (t *TerminalBase) submit(msg *Msg, timeout time.Duration) {
+	// Add terminal ID as flow ID.
+	msg.FlowID = t.ID()
+
+	// Submit to correct next step.
+	var err *Error
+	if t.flowControl != nil {
+		err = t.flowControl.Send(msg)
+	} else {
+		err = t.upstream.Send(msg, timeout)
+	}
+
+	// Handle any error.
+	if err.IsError() {
+		msg.FinishUnit()
+		t.Abandon(err.Wrap("failed to submit to upstream"))
 	}
 }
 
@@ -312,14 +315,14 @@ func (t *TerminalBase) Sender(_ context.Context) error {
 		case <-t.ctx.Done():
 			// Call Abandon just in case.
 			// Normally, the only the StopProcedure function should cancel the context.
-			t.ext.Abandon(nil)
+			t.Abandon(nil)
 			return nil // Controlled worker exit.
 		case <-t.encryptionReady:
 		}
 	}
 
 	// Be sure to call Stop even in case of sudden death.
-	defer t.ext.Abandon(ErrInternalError.With("sender died"))
+	defer t.Abandon(ErrInternalError.With("sender died"))
 
 	var msgBufferMsg *Msg
 	var msgBufferLen int
@@ -366,14 +369,14 @@ handling:
 		case <-t.ctx.Done():
 			// Call Stop just in case.
 			// Normally, the only the StopProcedure function should cancel the context.
-			t.ext.Abandon(nil)
+			t.Abandon(nil)
 			return nil // Controlled worker exit.
 
 		case <-t.idleTicker.C:
 			// If nothing happens for a while, end the session.
 			if atomic.AddUint32(t.idleCounter, 1) > timeoutTicks {
 				// Abandon the terminal and reset the counter.
-				t.ext.Abandon(ErrNoActivity)
+				t.Abandon(ErrNoActivity)
 				atomic.StoreUint32(t.idleCounter, 0)
 			}
 
@@ -478,7 +481,7 @@ handling:
 
 			// Handle error after state updates.
 			if err != nil {
-				t.ext.Abandon(err.With("failed to send"))
+				t.Abandon(err.With("failed to send"))
 				continue handling
 			}
 		}
@@ -637,7 +640,7 @@ func (t *TerminalBase) handleOpMsg(data *container.Container) *Error {
 
 	switch msgType {
 	case MsgTypeInit:
-		t.handleOperationStart(t.ext, opID, data)
+		t.handleOperationStart(opID, data)
 
 	case MsgTypeData, MsgTypePriorityData:
 		op, ok := t.GetActiveOp(opID)
@@ -743,21 +746,30 @@ func (t *TerminalBase) sendOpMsgs(msg *Msg) *Error {
 	}
 
 	// Send data.
-	return t.sendProxy(msg)
+	t.submit(msg, 0)
+	return nil
 }
 
-// StartAbandonProcedure sends a stop message with the given error if wanted, ends
-// all operations with a nil error, executes the given finalizeFunc and finally
-// cancels the terminal context. This function is usually not called directly,
-// but at the end of an Abandon() implementation.
-func (t *TerminalBase) StartAbandonProcedure(err *Error, sendError bool, finalizeFunc func()) {
-	module.StartWorker("terminal abandon procedure", func(_ context.Context) error {
-		t.handleAbandonProcedure(err, sendError, finalizeFunc)
-		return nil
-	})
+// Abandon shuts down the terminal unregistering it from upstream and calling HandleAbandon().
+// Should not be overridden by implementations.
+func (t *TerminalBase) Abandon(err *Error) {
+	if t.Abandoning.SetToIf(false, true) {
+		module.StartWorker("terminal abandon procedure", func(_ context.Context) error {
+			t.handleAbandonProcedure(err)
+			return nil
+		})
+	}
 }
 
-func (t *TerminalBase) handleAbandonProcedure(err *Error, sendError bool, finalizeFunc func()) {
+// HandleAbandon gives the terminal the ability to cleanly shut down.
+// The returned error is the error to send to the other side.
+// Should never be called directly. Call Abandon() instead.
+// Meant to be overridden by implementations.
+func (t *TerminalBase) HandleAbandon(err *Error) (errorToSend *Error) {
+	return err
+}
+
+func (t *TerminalBase) handleAbandonProcedure(err *Error) {
 	// End all operations.
 	for _, op := range t.allOps() {
 		t.StopOperation(op, nil)
@@ -770,28 +782,31 @@ func (t *TerminalBase) handleAbandonProcedure(err *Error, sendError bool, finali
 		if i == 1000 {
 			log.Warningf(
 				"spn/terminal: terminal %s is continuing shutdown with %d active operations",
-				t.ext.FmtID(),
+				t.FmtID(),
 				t.GetActiveOpCount(),
 			)
 		}
 	}
 
-	if sendError {
-		// Create new message.
+	// Call operation stop handle function for proper shutdown cleaning up.
+	if t.ext != nil {
+		err = t.ext.HandleAbandon(err)
+	}
+
+	// Send error to the connected Operation, if the error is internal.
+	if !err.IsExternal() {
+		if err == nil {
+			err = ErrStopping
+		}
+
 		msg := NewMsg(err.Pack())
 		msg.FlowID = t.ID()
 		msg.Type = MsgTypeStop
 
-		// Directly submit to upstream.
-		tErr := t.submitUpstream(msg)
-		if tErr != nil {
-			log.Warningf("spn/terminal: terminal %s failed to send stop msg: %s", t.ext.FmtID(), tErr)
+		tErr := t.submitControl.Submit(msg, 1*time.Second)
+		if tErr.IsError() {
+			log.Warningf("spn/terminal: terminal %s failed to send stop msg: %s", t.FmtID(), tErr)
 		}
-	}
-
-	// Call specialized finalizing function.
-	if finalizeFunc != nil {
-		finalizeFunc()
 	}
 
 	// Flush all messages before stopping.

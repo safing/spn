@@ -97,6 +97,7 @@ func startCounterOp(t Terminal, opID uint32, data *container.Container) (Operati
 	return op, nil
 }
 
+// Type returns the operation's type ID.
 func (op *CounterOp) Type() string {
 	return CounterOpType
 }

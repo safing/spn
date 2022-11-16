@@ -103,7 +103,7 @@ func lockOpRegistry() {
 	opRegistryLocked.Set()
 }
 
-func (t *TerminalBase) handleOperationStart(attachedTerminal Terminal, opID uint32, initData *container.Container) {
+func (t *TerminalBase) handleOperationStart(opID uint32, initData *container.Container) {
 	// Check if the terminal is being abandoned.
 	if t.Abandoning.IsSet() {
 		t.StopOperation(newUnknownOp(opID, ""), ErrStopping.With("terminal is being abandoned"))
@@ -131,7 +131,7 @@ func (t *TerminalBase) handleOperationStart(attachedTerminal Terminal, opID uint
 	}
 
 	// Run the operation.
-	op, opErr := factory.Start(attachedTerminal, opID, initData)
+	op, opErr := factory.Start(t, opID, initData)
 	switch {
 	case opErr != nil:
 		// Something went wrong.
@@ -214,7 +214,7 @@ func (t *TerminalBase) StopOperation(op Operation, err *Error) {
 			msg.FlowID = op.ID()
 			msg.Type = MsgTypeStop
 
-			tErr := t.submitControl.Submit(msg, 1*time.Minute) // We have time.
+			tErr := t.submitControl.Submit(msg, 10*time.Second)
 			if tErr.IsError() {
 				log.Warningf("spn/terminal: failed to send stop msg: %s", tErr)
 			}

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/safing/portbase/formats/varint"
 	"github.com/safing/portbase/modules"
@@ -65,7 +66,7 @@ type DuplexFlowQueue struct {
 	ctx context.Context
 
 	// upstream is the channel to put messages into to send them upstream.
-	submitUpstream func(msg *Msg) *Error
+	submitUpstream func(msg *Msg, timeout time.Duration) *Error
 
 	// sendQueue holds the messages that are waiting to be sent.
 	sendQueue chan *Msg
@@ -98,7 +99,7 @@ type DuplexFlowQueue struct {
 func NewDuplexFlowQueue(
 	ctx context.Context,
 	queueSize uint32,
-	submitUpstream func(msg *Msg) *Error,
+	submitUpstream func(msg *Msg, timeout time.Duration) *Error,
 ) *DuplexFlowQueue {
 	dfq := &DuplexFlowQueue{
 		ctx:              ctx,
@@ -213,7 +214,7 @@ sending:
 				spaceToReport := dfq.reportableRecvSpace()
 				if spaceToReport > 0 {
 					msg := NewMsg(varint.Pack64(uint64(spaceToReport)))
-					_ = dfq.submitUpstream(msg)
+					_ = dfq.submitUpstream(msg, 0)
 				}
 				continue sending
 
@@ -255,7 +256,7 @@ sending:
 			msg.Data.Prepend(varint.Pack64(uint64(dfq.reportableRecvSpace())))
 
 			// Submit for sending upstream.
-			_ = dfq.submitUpstream(msg)
+			_ = dfq.submitUpstream(msg, 0)
 			// Decrease the send space and set flag if depleted.
 			if dfq.decrementSendSpace() <= 0 {
 				sendSpaceDepleted = true
@@ -274,7 +275,7 @@ sending:
 			spaceToReport := dfq.reportableRecvSpace()
 			if spaceToReport > 0 {
 				msg := NewMsg(varint.Pack64(uint64(spaceToReport)))
-				_ = dfq.submitUpstream(msg)
+				_ = dfq.submitUpstream(msg, 0)
 			}
 
 		case newFlushFinishedFn := <-dfq.flush:
