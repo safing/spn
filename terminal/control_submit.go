@@ -4,8 +4,6 @@ import (
 	"context"
 	"runtime"
 	"time"
-
-	"github.com/safing/portbase/container"
 )
 
 const (
@@ -15,14 +13,13 @@ const (
 
 // SubmitControl defines the submit control interface.
 type SubmitControl interface {
-	Submit(data *container.Container, highPriority bool, timeout time.Duration) *Error
+	Submit(msg *Msg, timeout time.Duration) *Error
 	Recv() <-chan SubmitControlItem
 }
 
 // SubmitControlItem defines the submit control item interface.
 type SubmitControlItem interface {
-	Accept() *container.Container
-	HighPriority() bool
+	Accept() *Msg
 }
 
 // SubmitControlType represents a submit control type.
@@ -45,7 +42,7 @@ func (sct SubmitControlType) DefaultSize() uint32 {
 
 	switch sct {
 	case SubmitControlPlain:
-		return 0
+		return 100
 	case SubmitControlFair:
 		return 100
 	case SubmitControlDefault:
@@ -63,8 +60,7 @@ type PlainChannel struct {
 
 // PlainChannelItem is an item for the PlainChannel.
 type PlainChannelItem struct {
-	data         *container.Container
-	highPriority bool
+	msg *Msg
 }
 
 // NewPlainChannel returns a new PlainChannel.
@@ -76,7 +72,7 @@ func NewPlainChannel(ctx context.Context, size int) *PlainChannel {
 }
 
 // Submit submits data to the channel.
-func (pc *PlainChannel) Submit(data *container.Container, highPriority bool, timeout time.Duration) *Error {
+func (pc *PlainChannel) Submit(msg *Msg, timeout time.Duration) *Error {
 	// Prepare submit timeout.
 	var submitTimeout <-chan time.Time
 	if timeout > 0 {
@@ -85,11 +81,14 @@ func (pc *PlainChannel) Submit(data *container.Container, highPriority bool, tim
 
 	// Submit message to buffer, if space is available.
 	select {
-	case pc.queue <- &PlainChannelItem{data, highPriority}:
+	case pc.queue <- &PlainChannelItem{msg}:
+		msg.PauseUnit()
 		return nil
 	case <-submitTimeout:
+		msg.FinishUnit()
 		return ErrTimeout.With("plain channel submit timeout")
 	case <-pc.ctx.Done():
+		msg.FinishUnit()
 		return ErrStopping
 	}
 }
@@ -101,13 +100,8 @@ func (pc *PlainChannel) Recv() <-chan SubmitControlItem {
 
 // Accept is called by the channel owner when an item from the channel is
 // accepted to receive the data.
-func (pci *PlainChannelItem) Accept() *container.Container {
-	return pci.data
-}
-
-// HighPriority signifies if the submitted item should be handled with high priority.
-func (pci *PlainChannelItem) HighPriority() bool {
-	return pci.highPriority
+func (pci *PlainChannelItem) Accept() *Msg {
+	return pci.msg
 }
 
 // FairChannel is a submit control using a fairly queued channel.
@@ -118,9 +112,8 @@ type FairChannel struct {
 
 // FairChannelItem is an item for the FairChannel.
 type FairChannelItem struct {
-	data         *container.Container
-	read         chan struct{}
-	highPriority bool
+	msg  *Msg
+	read chan struct{}
 }
 
 // NewFairChannel returns a new FairChannel.
@@ -132,11 +125,10 @@ func NewFairChannel(ctx context.Context, size int) *FairChannel {
 }
 
 // Submit submits data to the channel.
-func (fc *FairChannel) Submit(data *container.Container, highPriority bool, timeout time.Duration) *Error {
+func (fc *FairChannel) Submit(msg *Msg, timeout time.Duration) *Error {
 	item := &FairChannelItem{
-		data:         data,
-		read:         make(chan struct{}),
-		highPriority: highPriority,
+		msg:  msg,
+		read: make(chan struct{}),
 	}
 
 	// Prepare submit timeout.
@@ -148,11 +140,14 @@ func (fc *FairChannel) Submit(data *container.Container, highPriority bool, time
 	// Submit message to buffer, if space is available.
 	select {
 	case fc.queue <- item:
+		msg.PauseUnit()
 		runtime.Gosched()
 		// Continue
 	case <-submitTimeout:
+		msg.FinishUnit()
 		return ErrTimeout.With("fair channel submit timeout")
 	case <-fc.ctx.Done():
+		msg.FinishUnit()
 		return ErrStopping
 	}
 
@@ -162,8 +157,10 @@ func (fc *FairChannel) Submit(data *container.Container, highPriority bool, time
 		runtime.Gosched()
 		return nil
 	case <-submitTimeout:
-		return ErrTimeout.With("fair channel submit timeout")
+		msg.FinishUnit()
+		return ErrTimeout.With("fair channel submit confirmation timeout")
 	case <-fc.ctx.Done():
+		msg.FinishUnit()
 		return ErrStopping
 	}
 }
@@ -175,12 +172,7 @@ func (fc *FairChannel) Recv() <-chan SubmitControlItem {
 
 // Accept is called by the channel owner when an item from the channel is
 // accepted to receive the data.
-func (fci *FairChannelItem) Accept() *container.Container {
+func (fci *FairChannelItem) Accept() *Msg {
 	close(fci.read)
-	return fci.data
-}
-
-// HighPriority signifies if the submitted item should be handled with high priority.
-func (fci *FairChannelItem) HighPriority() bool {
-	return fci.highPriority
+	return fci.msg
 }

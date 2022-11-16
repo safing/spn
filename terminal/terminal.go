@@ -19,20 +19,35 @@ import (
 
 const timeoutTicks = 5
 
-// TerminalInterface is the generic interface for upstream implementations.
-type TerminalInterface interface { //nolint:golint // Being explicit is helpful here.
+// Terminal represents a terminal.
+type Terminal interface { //nolint:golint // Being explicit is helpful here.
+	// ID returns the terminal ID.
 	ID() uint32
+	// Ctx returns the terminal context.
 	Ctx() context.Context
-	Deliver(c *container.Container) *Error
-	Abandon(err *Error)
-	FmtID() string
+
+	// Deliver delivers a message to the terminal.
+	Deliver(msg *Msg) *Error
+	// Send is used to send a message through the terminal.
+	Send(msg *Msg, timeout time.Duration) *Error
+	// Flush sends all messages waiting in the terminal.
 	Flush()
+	// Abandon shuts down the terminal.
+	Abandon(err *Error)
+
+	// StartOperation starts the given operation by assigning it an ID and sending the given operation initialization data.
+	StartOperation(attachedTerminal Terminal, op Operation, initData *container.Container, timeout time.Duration) *Error
+	// StopOperation stops the given operation.
+	StopOperation(op Operation, err *Error)
+
+	// FmtID formats the terminal ID (including parent IDs).
+	FmtID() string
 }
 
 // TerminalExtension is the interface that extended terminal implementations
 // need to adhere to.
 type TerminalExtension interface { //nolint:golint // Being explicit is helpful here.
-	OpTerminal
+	Terminal
 
 	Abandon(err *Error)
 }
@@ -49,10 +64,7 @@ type TerminalBase struct { //nolint:golint,maligned // Being explicit is helpful
 	parentID string
 
 	// submitUpstream is used to submit messages to upstream.
-	submitUpstream func(c *container.Container, highPriority bool) *Error
-	// addTerminalIDType specifies if the terminal should add its own terminal ID
-	// and message type for messages submitted to upstream.
-	addTerminalIDType bool
+	submitUpstream func(msg *Msg) *Error
 	// ext holds the extended Terminal to supply the communication interface and
 	// override behavior.
 	ext TerminalExtension
@@ -63,11 +75,11 @@ type TerminalBase struct { //nolint:golint,maligned // Being explicit is helpful
 	submitControl SubmitControl
 
 	// deliverProxy is populated with the configured deliver function
-	deliverProxy func(c *container.Container) *Error
+	deliverProxy func(msg *Msg) *Error
 	// recvProxy is populated with the configured recv function
-	recvProxy func() <-chan *container.Container
+	recvProxy func() <-chan *Msg
 	// sendProxy is populated with the configured send function
-	sendProxy func(c *container.Container, highPriority bool) *Error
+	sendProxy func(msg *Msg) *Error
 
 	// ctx is the context of the Terminal.
 	ctx context.Context
@@ -126,38 +138,31 @@ func createTerminalBase(
 	parentID string,
 	remote bool,
 	initMsg *TerminalOpts,
-	submitUpstream func(c *container.Container, highPriority bool) *Error,
-	addTerminalIDType bool,
+	submitUpstream func(msg *Msg) *Error,
 ) (*TerminalBase, *Error) {
 	t := &TerminalBase{
-		id:                id,
-		parentID:          parentID,
-		submitUpstream:    submitUpstream,
-		addTerminalIDType: addTerminalIDType,
-		waitForFlush:      abool.New(),
-		flush:             make(chan func()),
-		idleTicker:        time.NewTicker(time.Minute),
-		idleCounter:       new(uint32),
-		encryptionReady:   make(chan struct{}),
-		operations:        make(map[uint32]Operation),
-		nextOpID:          new(uint32),
-		opts:              initMsg,
-		Abandoning:        abool.New(),
+		id:              id,
+		parentID:        parentID,
+		submitUpstream:  submitUpstream,
+		waitForFlush:    abool.New(),
+		flush:           make(chan func()),
+		idleTicker:      time.NewTicker(time.Minute),
+		idleCounter:     new(uint32),
+		encryptionReady: make(chan struct{}),
+		operations:      make(map[uint32]Operation),
+		nextOpID:        new(uint32),
+		opts:            initMsg,
+		Abandoning:      abool.New(),
 	}
 	// Proxy the submit upstream call and shutdown the terminal in case of an error.
 	originalSubmitUpstream := t.submitUpstream
-	t.submitUpstream = func(c *container.Container, highPriority bool) *Error {
-		// Make data message.
-		if t.addTerminalIDType {
-			if highPriority {
-				MakeMsg(c, t.id, MsgTypePriorityData)
-			} else {
-				MakeMsg(c, t.id, MsgTypeData)
-			}
-		}
+	t.submitUpstream = func(msg *Msg) *Error {
+		// Set ID and Type.
+		msg.FlowID = t.id
 		// Submit to original upstream.
-		err := originalSubmitUpstream(c, highPriority)
+		err := originalSubmitUpstream(msg)
 		if err != nil {
+			msg.FinishUnit()
 			t.Abandon(err.Wrap("failed to submit to upstream"))
 		}
 		return err
@@ -181,7 +186,7 @@ func createTerminalBase(
 		t.recvProxy = t.flowControl.Receive
 		t.sendProxy = t.flowControl.Send
 	case FlowControlNone:
-		deliver := make(chan *container.Container, initMsg.FlowControlSize)
+		deliver := make(chan *Msg, initMsg.FlowControlSize)
 		t.deliverProxy = MakeDirectDeliveryDeliverFunc(ctx, deliver)
 		t.recvProxy = MakeDirectDeliveryRecvFunc(deliver)
 		t.sendProxy = t.submitUpstream
@@ -230,8 +235,8 @@ func (t *TerminalBase) SetTimeout(d time.Duration) {
 
 // Deliver on TerminalBase only exists to conform to the interface. It must be
 // overridden by an actual implementation.
-func (t *TerminalBase) Deliver(c *container.Container) *Error {
-	return t.deliverProxy(c)
+func (t *TerminalBase) Deliver(msg *Msg) *Error {
+	return t.deliverProxy(msg)
 }
 
 // Abandon abandons the Terminal with the given error.
@@ -281,13 +286,14 @@ func (t *TerminalBase) Handler(_ context.Context) error {
 				atomic.StoreUint32(t.idleCounter, 0)
 			}
 
-		case c := <-t.recvProxy():
-			if c.HoldsData() {
-				err := t.handleReceive(c)
+		case u := <-t.recvProxy():
+			if u.Data.HoldsData() {
+				err := t.handleReceive(u)
 				if err != nil && !errors.Is(err, ErrStopping) {
 					t.ext.Abandon(err.Wrap("failed to handle"))
 				}
 			}
+			u.FinishUnit()
 
 			// Register activity.
 			atomic.StoreUint32(t.idleCounter, 0)
@@ -315,13 +321,12 @@ func (t *TerminalBase) Sender(_ context.Context) error {
 	// Be sure to call Stop even in case of sudden death.
 	defer t.ext.Abandon(ErrInternalError.With("sender died"))
 
-	msgBuffer := container.New()
+	var msgBufferMsg *Msg
 	var msgBufferLen int
 	var msgBufferLimitReached bool
 	var sendMsgs bool
 	var sendMaxWait *time.Timer
 	var flushFinished func()
-	var highPriority bool
 
 	// Only receive message when not sending the current msg buffer.
 	recvOpMsgs := func() <-chan SubmitControlItem {
@@ -373,11 +378,24 @@ handling:
 			}
 
 		case submittedItem := <-recvOpMsgs():
-			c := submittedItem.Accept()
+			msg := submittedItem.Accept()
+			if msg == nil {
+				continue handling
+			}
 
-			// Add container to current buffer.
-			msgBufferLen += c.Length()
-			msgBuffer.AppendContainer(c)
+			// Add unit to buffer unit, or use it as new buffer.
+			if msgBufferMsg != nil {
+				// Pack, append and finish additional message.
+				msgBufferMsg.Consume(msg)
+			} else {
+				// Pack operation message.
+				msg.Pack()
+				// Convert to message of terminal.
+				msgBufferMsg = msg
+				msgBufferMsg.FlowID = t.ID()
+				msgBufferMsg.Type = MsgTypeData
+			}
+			msgBufferLen += msg.Data.Length()
 
 			// Check if there is enough data to hit the sending threshold.
 			if msgBufferLen >= sendThresholdLength {
@@ -389,11 +407,6 @@ handling:
 			// Check if we have reached the maximum buffer size.
 			if msgBufferLen >= sendMaxLength {
 				msgBufferLimitReached = true
-			}
-
-			// Check if the submitted item is prioritized.
-			if submittedItem.HighPriority() {
-				highPriority = true
 			}
 
 			// Register activity.
@@ -437,15 +450,18 @@ handling:
 			// Send if there is anything to send.
 			var err *Error
 			if msgBufferLen > 0 {
-				err = t.sendOpMsgs(
-					msgBuffer,
-					t.opts.UsePriorityDataMsgs && highPriority,
-				)
+				// Update message type to include priority.
+				if msgBufferMsg.Type == MsgTypeData &&
+					msgBufferMsg.IsHighPriorityUnit() &&
+					UsePriorityDataMsgs {
+					msgBufferMsg.Type = MsgTypePriorityData
+				}
+
+				err = t.sendOpMsgs(msgBufferMsg)
 			}
-			highPriority = false
 
 			// Reset buffer.
-			msgBuffer = container.New()
+			msgBufferMsg = nil
 			msgBufferLen = 0
 
 			// Reset send wait timer.
@@ -561,44 +577,43 @@ func (t *TerminalBase) decrypt(c *container.Container) (*container.Container, *E
 	return container.New(decryptedData), nil
 }
 
-func (t *TerminalBase) handleReceive(c *container.Container) *Error {
-	done := module.SignalHighPriorityMicroTask()
-	defer done()
+func (t *TerminalBase) handleReceive(msg *Msg) *Error {
+	defer msg.FinishUnit()
 
 	// Debugging:
 	// log.Errorf("spn/terminal %s handling tmsg: %s", t.FmtID(), spew.Sdump(c.CompileData()))
 
 	// Check if message is empty. This will be the case if a message was only
 	// for updated the available space of the flow queue.
-	if !c.HoldsData() {
+	if !msg.Data.HoldsData() {
 		return nil
 	}
 
 	// Decrypt if enabled.
 	var tErr *Error
-	c, tErr = t.decrypt(c)
+	msg.Data, tErr = t.decrypt(msg.Data)
 	if tErr != nil {
 		return tErr
 	}
 
 	// Handle operation messages.
-	for c.HoldsData() {
+	for msg.Data.HoldsData() {
 		// Get next message length.
-		msgLength, err := c.GetNextN32()
+		msgLength, err := msg.Data.GetNextN32()
 		if err != nil {
 			return ErrMalformedData.With("failed to get operation msg length: %w", err)
 		}
 		if msgLength == 0 {
 			// Remainder is padding.
 			// Padding can only be at the end of the segment.
-			t.handlePaddingMsg(c)
+			t.handlePaddingMsg(msg.Data)
 			return nil
 		}
 
 		// Get op msg data.
-		msgData, err := c.GetAsContainer(int(msgLength))
+		msgData, err := msg.Data.GetAsContainer(int(msgLength))
 		if err != nil {
-			return ErrMalformedData.With("failed to get operation msg data (%d/%d bytes): %w", c.Length(), msgLength, err)
+			return ErrMalformedData.With("failed to get operation msg data (%d/%d bytes): %w", msg.Data.Length(), msgLength, err)
 		}
 
 		// Handle op msg.
@@ -622,65 +637,64 @@ func (t *TerminalBase) handleOpMsg(data *container.Container) *Error {
 
 	switch msgType {
 	case MsgTypeInit:
-		t.runOperation(t.ctx, t.ext, opID, data)
+		t.handleOperationStart(t.ext, opID, data)
 
 	case MsgTypeData, MsgTypePriorityData:
 		op, ok := t.GetActiveOp(opID)
 		if ok {
-			var err *Error
-			if msgType == MsgTypeData {
-				// Deliver regularly.
-				err = op.Deliver(data)
-			} else if highPrio, ok := op.(HighPriorityDelivery); ok {
-				// Deliver with high priority regularly.
-				err = highPrio.DeliverHighPriority(data)
-			} else {
-				// Deliver regularly when high priority is not supported.
-				err = op.Deliver(data)
+			// Create message from data.
+			msg := NewEmptyMsg()
+			msg.FlowID = opID
+			msg.Type = msgType
+			msg.Data = data
+			if msg.Type == MsgTypePriorityData {
+				msg.MakeUnitHighPriority()
 			}
-			if err != nil {
-				if err.IsOK() {
-					t.OpEnd(op, err)
-				} else {
-					t.OpEnd(op, err.Wrap("data delivery failed"))
-				}
+
+			// Deliver message to operation.
+			tErr := op.Deliver(msg)
+			if tErr.IsError() {
+				msg.FinishUnit()
+				t.StopOperation(op, tErr)
 			}
+			return nil
+		}
+
+		// If an active op is not found, this is likely just left-overs from a
+		// stopped or failed operation.
+		// log.Tracef("spn/terminal: %s received data msg for unknown op %d", fmtTerminalID(t.parentID, t.id), opID)
+
+		// Send a stop error if this happens too often.
+		if opID == t.lastUnknownOpID {
+			// OpID is the same as last time.
+			t.lastUnknownOpMsgs++
+
+			// Log an warning (via StopOperation) and send a stop message every thousand.
+			if t.lastUnknownOpMsgs%1000 == 0 {
+				t.StopOperation(newUnknownOp(opID, ""), ErrUnknownOperationID.With("received %d unsolicited data msgs", t.lastUnknownOpMsgs))
+			}
+
+			// TODO: Abandon terminal at over 10000?
 		} else {
-			// If an active op is not found, this is likely just left-overs from a
-			// ended or failed operation.
-			log.Tracef("spn/terminal: %s received data msg for unknown op %d", fmtTerminalID(t.parentID, t.id), opID)
-
-			// Send a stop error if this happens too often.
-			if opID == t.lastUnknownOpID {
-				// OpID is the same as last time.
-				t.lastUnknownOpMsgs++
-
-				// Log an warning (via OpEnd) and send a stop message every thousand.
-				if t.lastUnknownOpMsgs%1000 == 0 {
-					t.OpEnd(newUnknownOp(opID, ""), ErrUnknownOperationID.With("received %d unsolicited data msgs", t.lastUnknownOpMsgs))
-				}
-				// TODO: Stop terminal at over 10000?
-			} else {
-				// OpID changed, set new ID and reset counter.
-				t.lastUnknownOpID = opID
-				t.lastUnknownOpMsgs = 1
-			}
+			// OpID changed, set new ID and reset counter.
+			t.lastUnknownOpID = opID
+			t.lastUnknownOpMsgs = 1
 		}
 
 	case MsgTypeStop:
 		// Parse received error.
 		opErr, parseErr := ParseExternalError(data.CompileData())
 		if parseErr != nil {
-			log.Warningf("spn/terminal: %s failed to parse end error: %s", fmtTerminalID(t.parentID, t.id), parseErr)
+			log.Warningf("spn/terminal: %s failed to parse stop error: %s", fmtTerminalID(t.parentID, t.id), parseErr)
 			opErr = ErrUnknownError.AsExternal()
 		}
 
 		// End operation.
 		op, ok := t.GetActiveOp(opID)
 		if ok {
-			t.OpEnd(op, opErr)
+			t.StopOperation(op, opErr)
 		} else {
-			log.Tracef("spn/terminal: %s received end msg for unknown op %d", fmtTerminalID(t.parentID, t.id), opID)
+			log.Tracef("spn/terminal: %s received stop msg for unknown op %d", fmtTerminalID(t.parentID, t.id), opID)
 		}
 
 	default:
@@ -698,22 +712,15 @@ func (t *TerminalBase) handlePaddingMsg(c *container.Container) {
 	}
 }
 
-func (t *TerminalBase) sendOpMsgs(c *container.Container, highPriority bool) *Error {
-	// Wait for execution slow depending on priority.
-	if highPriority {
-		done := module.SignalHighPriorityMicroTask()
-		defer done()
-	} else {
-		done := module.SignalMicroTask(DefaultMediumPriorityMaxDelay)
-		defer done()
-	}
+func (t *TerminalBase) sendOpMsgs(msg *Msg) *Error {
+	msg.WaitForUnitSlot()
 
 	// Add Padding if needed.
 	if t.opts.Padding > 0 {
-		paddingNeeded := (int(t.opts.Padding) - c.Length()) % int(t.opts.Padding)
+		paddingNeeded := (int(t.opts.Padding) - msg.Data.Length()) % int(t.opts.Padding)
 		if paddingNeeded > 0 {
 			// Add padding message header.
-			c.Append([]byte{0})
+			msg.Data.Append([]byte{0})
 			paddingNeeded--
 
 			// Add needed padding data.
@@ -723,33 +730,20 @@ func (t *TerminalBase) sendOpMsgs(c *container.Container, highPriority bool) *Er
 					log.Debugf("spn/terminal: %s failed to get random data, using zeros instead", t.FmtID())
 					padding = make([]byte, paddingNeeded)
 				}
-				c.Append(padding)
+				msg.Data.Append(padding)
 			}
 		}
 	}
 
 	// Encrypt operative data.
 	var tErr *Error
-	c, tErr = t.encrypt(c)
+	msg.Data, tErr = t.encrypt(msg.Data)
 	if tErr != nil {
 		return tErr
 	}
 
 	// Send data.
-	return t.sendProxy(c, highPriority)
-}
-
-func (t *TerminalBase) addToOpMsgSendBuffer(
-	opID uint32,
-	msgType MsgType,
-	data *container.Container,
-	timeout time.Duration,
-) *Error {
-	// Add header.
-	MakeMsg(data, opID, msgType)
-
-	// Submit with submit control.
-	return t.submitControl.Submit(data, msgType == MsgTypePriorityData, timeout)
+	return t.sendProxy(msg)
 }
 
 // StartAbandonProcedure sends a stop message with the given error if wanted, ends
@@ -766,7 +760,7 @@ func (t *TerminalBase) StartAbandonProcedure(err *Error, sendError bool, finaliz
 func (t *TerminalBase) handleAbandonProcedure(err *Error, sendError bool, finalizeFunc func()) {
 	// End all operations.
 	for _, op := range t.allOps() {
-		t.OpEnd(op, nil)
+		t.StopOperation(op, nil)
 	}
 
 	// Wait 20s for all operations to end.
@@ -783,11 +777,13 @@ func (t *TerminalBase) handleAbandonProcedure(err *Error, sendError bool, finali
 	}
 
 	if sendError {
-		stopMsg := container.New(err.Pack())
-		MakeMsg(stopMsg, t.id, MsgTypeStop)
+		// Create new message.
+		msg := NewMsg(err.Pack())
+		msg.FlowID = t.ID()
+		msg.Type = MsgTypeStop
 
 		// Directly submit to upstream.
-		tErr := t.submitUpstream(stopMsg, false)
+		tErr := t.submitUpstream(msg)
 		if tErr != nil {
 			log.Warningf("spn/terminal: terminal %s failed to send stop msg: %s", t.ext.FmtID(), tErr)
 		}
@@ -822,9 +818,9 @@ func (t *TerminalBase) allOps() []Operation {
 // given delivery channel.
 func MakeDirectDeliveryDeliverFunc(
 	ctx context.Context,
-	deliver chan *container.Container,
-) func(c *container.Container) *Error {
-	return func(c *container.Container) *Error {
+	deliver chan *Msg,
+) func(c *Msg) *Error {
+	return func(c *Msg) *Error {
 		select {
 		case deliver <- c:
 			return nil
@@ -837,9 +833,9 @@ func MakeDirectDeliveryDeliverFunc(
 // MakeDirectDeliveryRecvFunc makes a delivery receive function with the given
 // delivery channel.
 func MakeDirectDeliveryRecvFunc(
-	deliver chan *container.Container,
-) func() <-chan *container.Container {
-	return func() <-chan *container.Container {
+	deliver chan *Msg,
+) func() <-chan *Msg {
+	return func() <-chan *Msg {
 		return deliver
 	}
 }

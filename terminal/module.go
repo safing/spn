@@ -5,6 +5,7 @@ import (
 
 	"github.com/safing/portbase/modules"
 	"github.com/safing/portbase/rng"
+	"github.com/safing/spn/unit"
 )
 
 var (
@@ -18,6 +19,9 @@ func init() {
 
 func start() error {
 	rngFeeder = rng.NewFeeder()
+
+	scheduler = unit.NewScheduler(nil)
+	module.StartServiceWorker("msg unit scheduler", 0, scheduler.SlotScheduler)
 
 	lockOpRegistry()
 	return nil

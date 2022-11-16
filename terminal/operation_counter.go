@@ -6,8 +6,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/tevino/abool"
-
 	"github.com/safing/portbase/container"
 	"github.com/safing/portbase/formats/dsd"
 	"github.com/safing/portbase/formats/varint"
@@ -19,8 +17,8 @@ const CounterOpType string = "debug/count"
 
 // CounterOp sends increasing numbers on both sides.
 type CounterOp struct { //nolint:maligned
-	t      OpTerminal
-	id     uint32
+	OperationBase
+
 	wg     sync.WaitGroup
 	server bool
 	opts   *CounterOpts
@@ -28,7 +26,6 @@ type CounterOp struct { //nolint:maligned
 	counterLock   sync.Mutex
 	ClientCounter uint64
 	ServerCounter uint64
-	ended         *abool.AtomicBool
 	Error         error
 }
 
@@ -43,19 +40,17 @@ type CounterOpts struct {
 }
 
 func init() {
-	RegisterOpType(OpParams{
+	RegisterOpType(OperationFactory{
 		Type:  CounterOpType,
-		RunOp: runCounterOp,
+		Start: startCounterOp,
 	})
 }
 
 // NewCounterOp returns a new CounterOp.
-func NewCounterOp(t OpTerminal, opts CounterOpts) (*CounterOp, *Error) {
+func NewCounterOp(t Terminal, opts CounterOpts) (*CounterOp, *Error) {
 	// Create operation.
 	op := &CounterOp{
-		t:     t,
-		opts:  &opts,
-		ended: abool.New(),
+		opts: &opts,
 	}
 	op.wg.Add(1)
 
@@ -66,7 +61,7 @@ func NewCounterOp(t OpTerminal, opts CounterOpts) (*CounterOp, *Error) {
 	}
 
 	// Initialize operation.
-	tErr := t.OpInit(op, container.New(data))
+	tErr := t.StartOperation(t, op, container.New(data), 3*time.Second)
 	if tErr != nil {
 		return nil, tErr
 	}
@@ -78,14 +73,12 @@ func NewCounterOp(t OpTerminal, opts CounterOpts) (*CounterOp, *Error) {
 	return op, nil
 }
 
-func runCounterOp(t OpTerminal, opID uint32, data *container.Container) (Operation, *Error) {
+func startCounterOp(t Terminal, opID uint32, data *container.Container) (Operation, *Error) {
 	// Create operation.
 	op := &CounterOp{
-		t:      t,
-		id:     opID,
 		server: true,
-		ended:  abool.New(),
 	}
+	op.InitOperationBase(t, opID)
 	op.wg.Add(1)
 
 	// Parse arguments.
@@ -104,28 +97,8 @@ func runCounterOp(t OpTerminal, opID uint32, data *container.Container) (Operati
 	return op, nil
 }
 
-// ID returns the ID of the operation.
-func (op *CounterOp) ID() uint32 {
-	return op.id
-}
-
-// SetID sets the ID of the operation.
-func (op *CounterOp) SetID(id uint32) {
-	op.id = id
-}
-
-// Type returns the type ID.
 func (op *CounterOp) Type() string {
 	return CounterOpType
-}
-
-// HasEnded returns whether the operation has ended.
-func (op *CounterOp) HasEnded(end bool) bool {
-	if end {
-		// Return false if we just only it to ended.
-		return !op.ended.SetToIf(false, true)
-	}
-	return op.ended.IsSet()
 }
 
 func (op *CounterOp) getCounter(sending, increase bool) uint64 {
@@ -162,10 +135,13 @@ func (op *CounterOp) isDone() bool {
 }
 
 // Deliver delivers data to the operation.
-func (op *CounterOp) Deliver(data *container.Container) *Error {
-	nextStep, err := data.GetNextN64()
+func (op *CounterOp) Deliver(msg *Msg) *Error {
+	msg.WaitForUnitSlot()
+	defer msg.FinishUnit()
+
+	nextStep, err := msg.Data.GetNextN64()
 	if err != nil {
-		op.t.OpEnd(op, ErrMalformedData.With("failed to parse next number: %w", err))
+		op.Stop(op, ErrMalformedData.With("failed to parse next number: %w", err))
 		return nil
 	}
 
@@ -187,20 +163,20 @@ func (op *CounterOp) Deliver(data *container.Container) *Error {
 			nextStep,
 			counter,
 		)
-		op.t.OpEnd(op, ErrIntegrity.With("counters mismatched"))
+		op.Stop(op, ErrIntegrity.With("counters mismatched"))
 		return nil
 	}
 
 	// Check if we are done.
 	if op.isDone() {
-		op.t.OpEnd(op, nil)
+		op.Stop(op, nil)
 	}
 
 	return nil
 }
 
-// End ends the operation.
-func (op *CounterOp) End(err *Error) (errorToSend *Error) {
+// HandleStop handles stopping the operation.
+func (op *CounterOp) HandleStop(err *Error) (errorToSend *Error) {
 	// Check if counting finished.
 	if !op.isDone() {
 		err := fmt.Errorf(
@@ -218,7 +194,7 @@ func (op *CounterOp) End(err *Error) (errorToSend *Error) {
 
 // SendCounter sends the next counter.
 func (op *CounterOp) SendCounter() *Error {
-	if op.ended.IsSet() {
+	if op.Stopped() {
 		return ErrStopping
 	}
 
@@ -234,7 +210,7 @@ func (op *CounterOp) SendCounter() *Error {
 	// 	defer log.Errorf("spn/terminal: counter %s>%d sent, now at %d", op.t.FmtID(), op.id, counter)
 	// }
 
-	return op.t.OpSend(op, container.New(varint.Pack64(counter)), 0, false)
+	return op.Send(op.NewMsg(varint.Pack64(counter)), 3*time.Second)
 }
 
 // Wait waits for the Counter Op to finish.
@@ -257,13 +233,13 @@ func (op *CounterOp) CounterWorker(ctx context.Context) error {
 			// Something went wrong.
 			err := fmt.Errorf("counter op %d: failed to send counter: %w", op.id, err)
 			op.Error = err
-			op.t.OpEnd(op, ErrInternalError.With(err.Error()))
+			op.Stop(op, ErrInternalError.With(err.Error()))
 			return nil
 		}
 
 		// Maybe flush message.
 		if op.opts.Flush {
-			op.t.Flush()
+			op.terminal.Flush()
 		}
 
 		// Check if we are done with sending.

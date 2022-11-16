@@ -13,50 +13,76 @@ import (
 	"github.com/safing/portbase/utils"
 )
 
-// DefaultOperationTimeout is the default time duration after which an idle
-// operation times out and is ended or regarded as failed.
-const DefaultOperationTimeout = 10 * time.Second
-
 // Operation is an interface for all operations.
 type Operation interface {
+	// InitOperationBase initialize the operation with the ID and attached terminal.
+	// Should not be overridden by implementations.
+	InitOperationBase(t Terminal, opID uint32)
+
+	// ID returns the ID of the operation.
+	// Should not be overridden by implementations.
 	ID() uint32
-	SetID(id uint32)
+
+	// Type returns the operation's type ID.
+	// Should be overridden by implementations to return correct type ID.
 	Type() string
-	Deliver(data *container.Container) *Error
-	HasEnded(end bool) bool
-	End(err *Error) (errorToSend *Error)
+
+	// Deliver delivers a message to the operation.
+	// Meant to be overridden by implementations.
+	Deliver(msg *Msg) *Error
+
+	// NewMsg creates a new message from this operation.
+	// Should not be overridden by implementations.
+	NewMsg(data []byte) *Msg
+
+	// Send sends a message to the other side.
+	// Should not be overridden by implementations.
+	Send(msg *Msg, timeout time.Duration) *Error
+
+	// Stopped returns whether the operation has stopped.
+	// Should not be overridden by implementations.
+	Stopped() bool
+
+	// markStopped marks the operation as stopped.
+	// It returns whether the stop flag was set.
+	markStopped() bool
+
+	// Stop stops the operation by unregistering it from the terminal and calling HandleStop().
+	// Should not be overridden by implementations.
+	Stop(self Operation, err *Error)
+
+	// HandleStop gives the operation the ability to cleanly shut down.
+	// The returned error is the error to send to the other side.
+	// Should never be called directly. Call Stop() instead.
+	// Meant to be overridden by implementations.
+	HandleStop(err *Error) (errorToSend *Error)
 }
 
-// HighPriorityDelivery is an interface for high priority data delivery.
-type HighPriorityDelivery interface {
-	DeliverHighPriority(data *container.Container) *Error
-}
-
-// OpParams defines an operation.
-type OpParams struct {
-	// Type is the type name of an operation.
+// OperationFactory defines an operation factory.
+type OperationFactory struct {
+	// Type is the type id of an operation.
 	Type string
 	// Requires defines the required permissions to run an operation.
 	Requires Permission
-	// RunOp is the function that start a new operation.
-	RunOp OpRunner
+	// Start is the function that starts a new operation.
+	Start OperationStarter
 }
 
-// OpRunner is used to initialize operations remotely.
-type OpRunner func(t OpTerminal, opID uint32, initData *container.Container) (Operation, *Error)
+// OperationStarter is used to initialize operations remotely.
+type OperationStarter func(attachedTerminal Terminal, opID uint32, initData *container.Container) (Operation, *Error)
 
 var (
-	opRegistry       = make(map[string]*OpParams)
+	opRegistry       = make(map[string]*OperationFactory)
 	opRegistryLock   sync.Mutex
 	opRegistryLocked = abool.New()
 )
 
 // RegisterOpType registers a new operation type and may only be called during
 // Go's init and a module's prep phase.
-func RegisterOpType(params OpParams) {
+func RegisterOpType(factory OperationFactory) {
 	// Check if we can still register an operation type.
 	if opRegistryLocked.IsSet() {
-		log.Errorf("spn/terminal: failed to register operation %s: operation registry is already locked", params.Type)
+		log.Errorf("spn/terminal: failed to register operation %s: operation registry is already locked", factory.Type)
 		return
 	}
 
@@ -64,92 +90,67 @@ func RegisterOpType(params OpParams) {
 	defer opRegistryLock.Unlock()
 
 	// Check if the operation type was already registered.
-	if _, ok := opRegistry[params.Type]; ok {
-		log.Errorf("spn/terminal: failed to register operation type %s: type already registered", params.Type)
+	if _, ok := opRegistry[factory.Type]; ok {
+		log.Errorf("spn/terminal: failed to register operation type %s: type already registered", factory.Type)
 		return
 	}
 
 	// Save to registry.
-	opRegistry[params.Type] = &params
+	opRegistry[factory.Type] = &factory
 }
 
 func lockOpRegistry() {
 	opRegistryLocked.Set()
 }
 
-func (t *TerminalBase) runOperation(_ context.Context, opTerminal OpTerminal, opID uint32, initData *container.Container) {
+func (t *TerminalBase) handleOperationStart(attachedTerminal Terminal, opID uint32, initData *container.Container) {
 	// Check if the terminal is being abandoned.
 	if t.Abandoning.IsSet() {
-		t.OpEnd(newUnknownOp(opID, ""), ErrStopping.With("terminal is being abandoned"))
+		t.StopOperation(newUnknownOp(opID, ""), ErrStopping.With("terminal is being abandoned"))
 		return
 	}
 
 	// Extract the requested operation name.
 	opType, err := initData.GetNextBlock()
 	if err != nil {
-		t.OpEnd(newUnknownOp(opID, ""), ErrMalformedData.With("failed to get init data: %w", err))
+		t.StopOperation(newUnknownOp(opID, ""), ErrMalformedData.With("failed to get init data: %w", err))
 		return
 	}
 
-	// Get the operation parameters from the registry.
-	params, ok := opRegistry[string(opType)]
+	// Get the operation factory from the registry.
+	factory, ok := opRegistry[string(opType)]
 	if !ok {
-		t.OpEnd(newUnknownOp(opID, ""), ErrUnknownOperationType.With(utils.SafeFirst16Bytes(opType)))
+		t.StopOperation(newUnknownOp(opID, ""), ErrUnknownOperationType.With(utils.SafeFirst16Bytes(opType)))
 		return
 	}
 
 	// Check if the Terminal has the required permission to run the operation.
-	if !t.HasPermission(params.Requires) {
-		t.OpEnd(newUnknownOp(opID, params.Type), ErrPermissinDenied)
+	if !t.HasPermission(factory.Requires) {
+		t.StopOperation(newUnknownOp(opID, factory.Type), ErrPermissinDenied)
 		return
 	}
 
 	// Run the operation.
-	op, opErr := params.RunOp(opTerminal, opID, initData)
+	op, opErr := factory.Start(attachedTerminal, opID, initData)
 	switch {
 	case opErr != nil:
 		// Something went wrong.
-		t.OpEnd(newUnknownOp(opID, params.Type), opErr)
+		t.StopOperation(newUnknownOp(opID, factory.Type), opErr)
 	case op == nil:
 		// The Operation was successful and is done already.
-		log.Debugf("spn/terminal: operation %s %s executed", params.Type, fmtOperationID(t.parentID, t.id, opID))
-		t.OpEnd(newUnknownOp(opID, params.Type), nil)
+		log.Debugf("spn/terminal: operation %s %s executed", factory.Type, fmtOperationID(t.parentID, t.id, opID))
+		t.StopOperation(newUnknownOp(opID, factory.Type), nil)
 	default:
 		// The operation started successfully and requires persistence.
 		t.SetActiveOp(opID, op)
-		log.Debugf("spn/terminal: operation %s %s started", params.Type, fmtOperationID(t.parentID, t.id, opID))
+		log.Debugf("spn/terminal: operation %s %s started", factory.Type, fmtOperationID(t.parentID, t.id, opID))
 	}
 }
 
-// OpTerminal provides Operations with the necessary interface to interact with
-// the Terminal.
-type OpTerminal interface {
-	// OpInit initialized the operation with the given data.
-	OpInit(op Operation, data *container.Container) *Error
-
-	// OpSend sends data.
-	// Setting highPriority will use MsgTypePriorityData.
-	// If a timeout is set, sending will fail after the given timeout passed.
-	OpSend(op Operation, data *container.Container, timeout time.Duration, highPriority bool) *Error
-
-	// OpEnd sends the end signal and calls End(ErrNil) on the Operation.
-	// The Operation should cease operation after calling this function.
-	OpEnd(op Operation, err *Error)
-
-	// FmtID returns the formatted ID the Operation's Terminal.
-	FmtID() string
-
-	// Flush writes all pending data waiting to be sent.
-	Flush()
-
-	// Ctx returns the Terminal's context.
-	Ctx() context.Context
-}
-
-// OpInit initialized the operation with the given data.
-func (t *TerminalBase) OpInit(op Operation, data *container.Container) *Error {
-	// Get next operation ID and set it on the operation.
-	op.SetID(atomic.AddUint32(t.nextOpID, 8))
+// StartOperation starts the given operation by assigning it an ID and sending the given operation initialization data.
+func (t *TerminalBase) StartOperation(attachedTerminal Terminal, op Operation, initData *container.Container, timeout time.Duration) *Error {
+	// Get the next operation ID and set it on the operation with the terminal.
+	op.InitOperationBase(attachedTerminal, atomic.AddUint32(t.nextOpID, 8))
 
 	// Always add operation to the active operations, as we need to receive a
 	// reply in any case.
@@ -158,53 +159,62 @@ func (t *TerminalBase) OpInit(op Operation, data *container.Container) *Error {
 	log.Debugf("spn/terminal: operation %s %s started", op.Type(), fmtOperationID(t.parentID, t.id, op.ID()))
 
 	// Add or create the operation type block.
-	if data == nil {
-		data = container.New()
-		data.AppendAsBlock([]byte(op.Type()))
+	if initData == nil {
+		initData = container.New()
+		initData.AppendAsBlock([]byte(op.Type()))
 	} else {
-		data.PrependAsBlock([]byte(op.Type()))
+		initData.PrependAsBlock([]byte(op.Type()))
 	}
 
-	return t.addToOpMsgSendBuffer(op.ID(), MsgTypeInit, data, 10*time.Second)
+	// Create msg.
+	msg := NewEmptyMsg()
+	msg.FlowID = op.ID()
+	msg.Type = MsgTypeInit
+	msg.Data = initData
+	msg.MakeUnitHighPriority()
+
+	return op.Send(msg, timeout)
 }
 
-// OpSend sends data.
-// Setting highPriority will use MsgTypePriorityData.
+// Send sends data via this terminal.
 // If a timeout is set, sending will fail after the given timeout passed.
-func (t *TerminalBase) OpSend(op Operation, data *container.Container, timeout time.Duration, highPriority bool) *Error {
-	if highPriority {
-		return t.addToOpMsgSendBuffer(op.ID(), MsgTypePriorityData, data, timeout)
-	}
-	return t.addToOpMsgSendBuffer(op.ID(), MsgTypeData, data, timeout)
+func (t *TerminalBase) Send(msg *Msg, timeout time.Duration) *Error {
+	return t.submitControl.Submit(msg, timeout)
 }
 
-// OpEnd sends the end signal with an optional error and then deletes the
-// operation from the Terminal state and calls End(ErrNil) on the Operation.
-// The Operation should cease operation after calling this function.
-// Should only be called by an operation.
-func (t *TerminalBase) OpEnd(op Operation, err *Error) {
-	// Check if the operation has already ended.
-	if op.HasEnded(true) {
+// StopOperation sends the end signal with an optional error and then deletes
+// the operation from the Terminal state and calls HandleStop() on the Operation.
+func (t *TerminalBase) StopOperation(op Operation, err *Error) {
+	// Check if the operation has already stopped.
+	if !op.markStopped() {
 		return
 	}
 
 	// Log reason the Operation is ending. Override stopping error with nil.
 	switch {
 	case err == nil:
-		log.Debugf("spn/terminal: operation %s %s ended", op.Type(), fmtOperationID(t.parentID, t.id, op.ID()))
+		log.Debugf("spn/terminal: operation %s %s stopped", op.Type(), fmtOperationID(t.parentID, t.id, op.ID()))
 	case err.IsOK() || err.Is(ErrTryAgainLater):
-		log.Debugf("spn/terminal: operation %s %s ended: %s", op.Type(), fmtOperationID(t.parentID, t.id, op.ID()), err)
+		log.Debugf("spn/terminal: operation %s %s stopped: %s", op.Type(), fmtOperationID(t.parentID, t.id, op.ID()), err)
 	default:
 		log.Warningf("spn/terminal: operation %s %s failed: %s", op.Type(), fmtOperationID(t.parentID, t.id, op.ID()), err)
 	}
 
-	module.StartWorker("end operation", func(_ context.Context) error {
-		// Call operation end function for proper shutdown cleaning up.
-		err = op.End(err)
+	module.StartWorker("stop operation", func(_ context.Context) error {
+		// Call operation stop handle function for proper shutdown cleaning up.
+		err = op.HandleStop(err)
 
 		// Send error to the connected Operation, if the error is internal.
 		if !err.IsExternal() {
-			tErr := t.addToOpMsgSendBuffer(op.ID(), MsgTypeStop, container.New(err.Pack()), 0)
+			if err == nil {
+				err = ErrStopping
+			}
+
+			msg := NewMsg(err.Pack())
+			msg.FlowID = op.ID()
+			msg.Type = MsgTypeStop
+
+			tErr := t.submitControl.Submit(msg, 1*time.Minute) // We have time.
 			if tErr.IsError() {
 				log.Warningf("spn/terminal: failed to send stop msg: %s", tErr)
 			}
@@ -251,47 +261,26 @@ func (t *TerminalBase) GetActiveOpCount() int {
 	return len(t.operations)
 }
 
-func newUnknownOp(id uint32, opType string) *unknownOp {
-	return &unknownOp{
-		id:     id,
-		opType: opType,
-		ended:  abool.New(),
+func newUnknownOp(id uint32, typeID string) *unknownOp {
+	op := &unknownOp{
+		typeID: typeID,
 	}
+	op.id = id
+	return op
 }
 
 type unknownOp struct {
-	id     uint32
-	opType string
-	ended  *abool.AtomicBool
-}
-
-func (op *unknownOp) ID() uint32 {
-	return op.id
-}
-
-func (op *unknownOp) SetID(id uint32) {
-	op.id = id
+	OperationBase
+	typeID string
 }
 
 func (op *unknownOp) Type() string {
-	if op.opType != "" {
-		return op.opType
+	if op.typeID != "" {
+		return op.typeID
 	}
 	return "unknown"
 }
 
-func (op *unknownOp) Deliver(data *container.Container) *Error {
+func (op *unknownOp) Deliver(msg *Msg) *Error {
 	return ErrIncorrectUsage.With("unknown op shim cannot receive")
-}
-
-func (op *unknownOp) End(err *Error) (errorToSend *Error) {
-	return err
-}
-
-func (op *unknownOp) HasEnded(end bool) bool {
-	if end {
-		// Return false if we just only it to ended.
-		return !op.ended.SetToIf(false, true)
-	}
-	return op.ended.IsSet()
 }

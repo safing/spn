@@ -70,8 +70,8 @@ func testTerminals(t *testing.T, identity *cabin.Identity, terminalOpts *Termina
 	var err *Error
 	term1, initData, err = NewLocalTestTerminal(
 		module.Ctx, 127, "c1", dstHub, terminalOpts, createTestForwardingFunc(
-			t, "c1", "c2", func(c *container.Container) *Error {
-				return term2.Deliver(c)
+			t, "c1", "c2", func(msg *Msg) *Error {
+				return term2.Deliver(msg)
 			},
 		),
 	)
@@ -80,8 +80,8 @@ func testTerminals(t *testing.T, identity *cabin.Identity, terminalOpts *Termina
 	}
 	term2, _, err = NewRemoteTestTerminal(
 		module.Ctx, 127, "c2", identity, initData, createTestForwardingFunc(
-			t, "c2", "c1", func(c *container.Container) *Error {
-				return term1.Deliver(c)
+			t, "c2", "c1", func(msg *Msg) *Error {
+				return term1.Deliver(msg)
 			},
 		),
 	)
@@ -198,13 +198,13 @@ func testTerminals(t *testing.T, identity *cabin.Identity, terminalOpts *Termina
 	})
 }
 
-func createTestForwardingFunc(t *testing.T, srcName, dstName string, deliverFunc func(*container.Container) *Error) func(c *container.Container, highPriority bool) *Error {
+func createTestForwardingFunc(t *testing.T, srcName, dstName string, deliverFunc func(*Msg) *Error) func(*Msg) *Error {
 	t.Helper()
 
-	return func(c *container.Container, _ bool) *Error {
+	return func(msg *Msg) *Error {
 		// Fast track nil containers.
-		if c == nil {
-			dErr := deliverFunc(c)
+		if msg == nil {
+			dErr := deliverFunc(msg)
 			if dErr != nil {
 				t.Errorf("%s>%s: failed to deliver nil msg to terminal: %s", srcName, dstName, dErr)
 				return dErr.With("failed to deliver nil msg to terminal")
@@ -214,11 +214,11 @@ func createTestForwardingFunc(t *testing.T, srcName, dstName string, deliverFunc
 
 		// Log messages.
 		if logTestCraneMsgs {
-			t.Logf("%s>%s: %v\n", srcName, dstName, c.CompileData())
+			t.Logf("%s>%s: %v\n", srcName, dstName, msg.Data.CompileData())
 		}
 
 		// Deliver to other terminal.
-		dErr := deliverFunc(c)
+		dErr := deliverFunc(msg)
 		if dErr != nil {
 			t.Errorf("%s>%s: failed to deliver to terminal: %s", srcName, dstName, dErr)
 			return dErr.With("failed to deliver to terminal")

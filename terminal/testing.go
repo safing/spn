@@ -28,15 +28,13 @@ func NewLocalTestTerminal(
 	parentID string,
 	remoteHub *hub.Hub,
 	initMsg *TerminalOpts,
-	submitUpstream func(c *container.Container, highPriority bool) *Error,
+	submitUpstream func(msg *Msg) *Error,
 ) (*TestTerminal, *container.Container, *Error) {
 	// Create Terminal Base.
-	t, initData, err := NewLocalBaseTerminal(ctx, id, parentID, remoteHub, initMsg, submitUpstream, false)
+	t, initData, err := NewLocalBaseTerminal(ctx, id, parentID, remoteHub, initMsg, submitUpstream)
 	if err != nil {
 		return nil, nil, err
 	}
-	// Disable adding ID/Type to messages, as test terminals are connected directly.
-	t.addTerminalIDType = false
 	t.StartWorkers(module, "test terminal")
 
 	return &TestTerminal{t}, initData, nil
@@ -49,10 +47,10 @@ func NewRemoteTestTerminal(
 	parentID string,
 	identity *cabin.Identity,
 	initData *container.Container,
-	submitUpstream func(c *container.Container, highPriority bool) *Error,
+	submitUpstream func(msg *Msg) *Error,
 ) (*TestTerminal, *TerminalOpts, *Error) {
 	// Create Terminal Base.
-	t, initMsg, err := NewRemoteBaseTerminal(ctx, id, parentID, identity, initData, submitUpstream, false)
+	t, initMsg, err := NewRemoteBaseTerminal(ctx, id, parentID, identity, initData, submitUpstream)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -62,7 +60,7 @@ func NewRemoteTestTerminal(
 }
 
 type delayedMsg struct {
-	data       *container.Container
+	msg        *Msg
 	delayUntil time.Time
 }
 
@@ -71,13 +69,13 @@ func createDelayingTestForwardingFunc(
 	dstName string,
 	delay time.Duration,
 	delayQueueSize int,
-	deliverFunc func(c *container.Container, highPriority bool) *Error,
-) func(*container.Container, bool) *Error {
+	deliverFunc func(msg *Msg) *Error,
+) func(msg *Msg) *Error {
 	// Return simple forward func if no delay is given.
 	if delay == 0 {
-		return func(c *container.Container, highPriority bool) *Error {
+		return func(msg *Msg) *Error {
 			// Deliver to other terminal.
-			dErr := deliverFunc(c, highPriority)
+			dErr := deliverFunc(msg)
 			if dErr != nil {
 				log.Errorf("spn/testing: %s>%s: failed to deliver to terminal: %s", srcName, dstName, dErr)
 				return dErr
@@ -103,17 +101,17 @@ func createDelayingTestForwardingFunc(
 			}
 
 			// Deliver to other terminal.
-			dErr := deliverFunc(msg.data, false)
+			dErr := deliverFunc(msg.msg)
 			if dErr != nil {
 				log.Errorf("spn/testing: %s>%s: failed to deliver to terminal: %s", srcName, dstName, dErr)
 			}
 		}
 	}()
 
-	return func(c *container.Container, highPriority bool) *Error {
+	return func(msg *Msg) *Error {
 		// Add msg to delaying msg channel.
 		delayedMsgs <- &delayedMsg{
-			data:       c,
+			msg:        msg,
 			delayUntil: time.Now().Add(delay),
 		}
 		return nil
@@ -151,8 +149,8 @@ func NewSimpleTestTerminalPair(delay time.Duration, delayQueueSize int, opts *Te
 	var tErr *Error
 	a, initData, tErr = NewLocalTestTerminal(
 		module.Ctx, 127, "a", nil, opts, createDelayingTestForwardingFunc(
-			"a", "b", delay, delayQueueSize, func(c *container.Container, highPriority bool) *Error {
-				return b.Deliver(c)
+			"a", "b", delay, delayQueueSize, func(msg *Msg) *Error {
+				return b.Deliver(msg)
 			},
 		),
 	)
@@ -161,8 +159,8 @@ func NewSimpleTestTerminalPair(delay time.Duration, delayQueueSize int, opts *Te
 	}
 	b, _, tErr = NewRemoteTestTerminal(
 		module.Ctx, 127, "b", nil, initData, createDelayingTestForwardingFunc(
-			"b", "a", delay, delayQueueSize, func(c *container.Container, highPriority bool) *Error {
-				return a.Deliver(c)
+			"b", "a", delay, delayQueueSize, func(msg *Msg) *Error {
+				return a.Deliver(msg)
 			},
 		),
 	)

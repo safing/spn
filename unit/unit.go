@@ -47,7 +47,11 @@ func (u *Unit) WaitForUnitSlot() {
 }
 
 // FinishUnit signals the unit scheduler that this unit has finished processing.
+// Will no-op if called on a nil Unit.
 func (u *Unit) FinishUnit() {
+	if u == nil {
+		return
+	}
 	if u.finished.SetToIf(false, true) {
 		u.scheduler.finished.Add(1)
 	}
