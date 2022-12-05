@@ -209,7 +209,7 @@ func testExpansion( //nolint:maintidx,thelper
 	}()
 
 	// Start initial crane.
-	homeTerminal, initData, tErr := NewLocalCraneTerminal(crane1, nil, &terminal.TerminalOpts{}, crane1.submitTerminalMsg)
+	homeTerminal, initData, tErr := NewLocalCraneTerminal(crane1, nil, &terminal.TerminalOpts{})
 	if tErr != nil {
 		t.Fatalf("expansion test %s failed to create home terminal: %s", testID, tErr)
 	}
@@ -239,7 +239,7 @@ func testExpansion( //nolint:maintidx,thelper
 	if tErr != nil {
 		t.Fatalf("expansion test %s failed to auth with home terminal: %s", testID, tErr)
 	}
-	tErr = <-opAuthTo2.Ended
+	tErr = <-opAuthTo2.Result
 	if tErr.IsError() {
 		t.Fatalf("expansion test %s failed to auth with home terminal: %s", testID, tErr)
 	}
@@ -267,7 +267,7 @@ func testExpansion( //nolint:maintidx,thelper
 	if tErr != nil {
 		t.Fatalf("expansion test %s failed to auth with extenstion terminal: %s", testID, tErr)
 	}
-	tErr = <-opAuthTo3.Ended
+	tErr = <-opAuthTo3.Result
 	if tErr.IsError() {
 		t.Fatalf("expansion test %s failed to auth with extenstion terminal: %s", testID, tErr)
 	}

@@ -60,7 +60,7 @@ func MeasureHub(ctx context.Context, h *hub.Hub, checkExpiryWith time.Duration) 
 		case <-ctx.Done():
 			return terminal.ErrCanceled
 		case <-time.After(1 * time.Minute):
-			crane.Controller.OpEnd(latOp, terminal.ErrTimeout)
+			crane.Controller.StopOperation(latOp, terminal.ErrTimeout)
 			return terminal.ErrTimeout.With("waiting for latency test")
 		}
 	}
@@ -80,7 +80,7 @@ func MeasureHub(ctx context.Context, h *hub.Hub, checkExpiryWith time.Duration) 
 		case <-ctx.Done():
 			return terminal.ErrCanceled
 		case <-time.After(1 * time.Minute):
-			crane.Controller.OpEnd(capOp, terminal.ErrTimeout)
+			crane.Controller.StopOperation(capOp, terminal.ErrTimeout)
 			return terminal.ErrTimeout.With("waiting for capacity test")
 		}
 	}

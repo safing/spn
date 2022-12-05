@@ -2,26 +2,32 @@ package docks
 
 import (
 	"context"
+	"time"
 
 	"github.com/safing/portbase/container"
 	"github.com/safing/portbase/log"
 	"github.com/safing/spn/terminal"
 )
 
+const craneIdleTimeout = 5 * time.Minute
+
 // EstablishNewTerminal establishes a new terminal with the crane.
 func (crane *Crane) EstablishNewTerminal(
-	localTerm terminal.TerminalInterface,
+	localTerm terminal.Terminal,
 	initData *container.Container,
 ) *terminal.Error {
-	// Prepend header.
-	terminal.MakeMsg(initData, localTerm.ID(), terminal.MsgTypeInit)
+	// Create message.
+	msg := terminal.NewEmptyMsg()
+	msg.FlowID = localTerm.ID()
+	msg.Type = terminal.MsgTypeInit
+	msg.Data = initData
 
 	// Register terminal with crane.
 	crane.setTerminal(localTerm)
 
 	// Send message.
 	select {
-	case crane.importantMsgs <- initData:
+	case crane.controllerMsgs <- msg:
 		log.Debugf("spn/docks: %s initiated new terminal %d", crane, localTerm.ID())
 		return nil
 	case <-crane.ctx.Done():
@@ -40,7 +46,7 @@ func (crane *Crane) establishTerminal(id uint32, initData *container.Container) 
 	if err == nil {
 		// Connections via public cranes have a timeout.
 		if crane.Public() {
-			newTerminal.TerminalBase.SetTimeout(expansionServerTimeout)
+			newTerminal.TerminalBase.SetTimeout(craneIdleTimeout)
 		}
 		// Register terminal with crane.
 		crane.setTerminal(newTerminal)
@@ -52,17 +58,18 @@ func (crane *Crane) establishTerminal(id uint32, initData *container.Container) 
 	log.Warningf("spn/docks: %s failed to establish crane terminal: %s", crane, err)
 
 	// Build abandon message.
-	abandonMsg := container.New(err.Pack())
-	terminal.MakeMsg(abandonMsg, id, terminal.MsgTypeStop)
+	msg := terminal.NewMsg(err.Pack())
+	msg.FlowID = id
+	msg.Type = terminal.MsgTypeStop
 
 	// Send message directly, or async.
 	select {
-	case crane.terminalMsgs <- abandonMsg:
+	case crane.terminalMsgs <- msg:
 	default:
 		// Send error async.
 		module.StartWorker("abandon terminal", func(ctx context.Context) error {
 			select {
-			case crane.terminalMsgs <- abandonMsg:
+			case crane.terminalMsgs <- msg:
 			case <-ctx.Done():
 			}
 			return nil

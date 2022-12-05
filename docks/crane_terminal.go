@@ -2,16 +2,10 @@ package docks
 
 import (
 	"net"
-	"time"
 
 	"github.com/safing/portbase/container"
 	"github.com/safing/spn/hub"
 	"github.com/safing/spn/terminal"
-)
-
-const (
-	expansionClientTimeout = 2 * time.Minute
-	expansionServerTimeout = 5 * time.Minute
 )
 
 // CraneTerminal is a terminal started by a crane.
@@ -26,7 +20,6 @@ func NewLocalCraneTerminal(
 	crane *Crane,
 	remoteHub *hub.Hub,
 	initMsg *terminal.TerminalOpts,
-	submitUpstream func(*container.Container, bool) *terminal.Error,
 ) (*CraneTerminal, *container.Container, *terminal.Error) {
 	// Create Terminal Base.
 	t, initData, err := terminal.NewLocalBaseTerminal(
@@ -35,8 +28,7 @@ func NewLocalCraneTerminal(
 		crane.ID,
 		remoteHub,
 		initMsg,
-		crane.submitTerminalMsg,
-		true,
+		crane,
 	)
 	if err != nil {
 		return nil, nil, err
@@ -58,8 +50,7 @@ func NewRemoteCraneTerminal(
 		crane.ID,
 		crane.identity,
 		initData,
-		crane.submitTerminalMsg,
-		true,
+		crane,
 	)
 	if err != nil {
 		return nil, nil, err
@@ -120,13 +111,12 @@ func (t *CraneTerminal) IsBeingAbandoned() bool {
 	return t.Abandoning.IsSet()
 }
 
-// Abandon abandons the crane terminal.
-func (t *CraneTerminal) Abandon(err *terminal.Error) {
-	if t.Abandoning.SetToIf(false, true) {
-		// Send stop msg and end all operations.
-		t.StartAbandonProcedure(err, err.IsExternal(), func() {
-			// Abandon terminal.
-			t.crane.AbandonTerminal(t.ID(), err)
-		})
-	}
+// HandleAbandon gives the terminal the ability to cleanly shut down.
+// The returned error is the error to send to the other side.
+// Should never be called directly. Call Abandon() instead.
+func (t *CraneTerminal) HandleAbandon(err *terminal.Error) (errorToSend *terminal.Error) {
+	// Unregister terminal from crane.
+	t.crane.AbandonTerminal(t.ID(), err)
+
+	return err
 }
