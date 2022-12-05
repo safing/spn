@@ -26,12 +26,12 @@ type Scheduler struct {
 	// Units IDs Limit / Thresholds.
 
 	// currentUnitID holds the last assigned Unit ID.
-	currentUnitID atomic.Uint64
+	currentUnitID atomic.Int64
 	// finished holds the amount of units that were finished.
 	// Not necessarily all Unit IDs below this value are actually finished.
-	finished atomic.Uint64
+	finished atomic.Int64
 	// clearanceUpTo holds the current threshold up to which Unit ID Units may be processed.
-	clearanceUpTo atomic.Uint64
+	clearanceUpTo atomic.Int64
 
 	// Pace and amount of unit states.
 
@@ -96,7 +96,7 @@ func NewScheduler(config *SchedulerConfig) *Scheduler {
 	}
 
 	// Initialize scheduler fields.
-	s.clearanceUpTo.Store(uint64(s.config.MinSlotPace))
+	s.clearanceUpTo.Store(s.config.MinSlotPace)
 	s.slotPace.Store(s.config.MinSlotPace)
 
 	return s
@@ -137,7 +137,7 @@ func (s *Scheduler) SlotScheduler(ctx context.Context) error {
 	defer ticker.Stop()
 
 	// Give clearance to all when stopping.
-	defer s.clearanceUpTo.Store(math.MaxUint64)
+	defer s.clearanceUpTo.Store(math.MaxInt64)
 
 	var (
 		lastClearanceAmount int64
@@ -149,7 +149,7 @@ func (s *Scheduler) SlotScheduler(ctx context.Context) error {
 		// Calculate how many units were finished in slot.
 		// Only load "finished" once, so we don't miss anything.
 		finishedAtEnd := s.finished.Load()
-		finishedInSlot := int64(finishedAtEnd - finishedAtStart)
+		finishedInSlot := finishedAtEnd - finishedAtStart
 
 		// Adapt pace.
 		if finishedInSlot >= lastClearanceAmount {
@@ -187,7 +187,7 @@ func (s *Scheduler) SlotScheduler(ctx context.Context) error {
 			newClearance -= highPrio
 		}
 		// Third, add finished to set new clearance limit.
-		s.clearanceUpTo.Store(finishedAtEnd + uint64(newClearance))
+		s.clearanceUpTo.Store(finishedAtEnd + newClearance)
 		// Lastly, save new clearance for comparison for next slot.
 		lastClearanceAmount = newClearance
 

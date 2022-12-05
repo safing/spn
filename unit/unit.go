@@ -7,7 +7,7 @@ import (
 // Unit describes a "work unit" and is meant to be embedded into another struct
 // used for passing data moving through multiple processing steps.
 type Unit struct {
-	id           uint64
+	id           int64
 	scheduler    *Scheduler
 	finished     abool.AtomicBool
 	highPriority abool.AtomicBool
@@ -20,6 +20,16 @@ func (s *Scheduler) NewUnit() *Unit {
 		id:        s.currentUnitID.Add(1),
 		scheduler: s,
 	}
+}
+
+// ReUseUnit re-initilizes the unit to be able to reuse already allocated structs.
+func (u *Unit) ReUseUnit() {
+	// Finish previous unit.
+	u.FinishUnit()
+
+	// Get new ID and unset finish flag.
+	u.id = u.scheduler.currentUnitID.Add(1)
+	u.finished.UnSet()
 }
 
 // WaitForUnitSlot blocks until the unit may be processed.
@@ -55,15 +65,19 @@ func (u *Unit) FinishUnit() {
 	if u.finished.SetToIf(false, true) {
 		u.scheduler.finished.Add(1)
 	}
-	u.removeHighPriority()
+	u.RemoveUnitPriority()
 	u.unpause()
 }
 
 // PauseUnit signals the unit scheduler that this unit is paused and not being
-// processed at the moment.
+// processed at the moment. May only be called if WaitForUnitSlot() was called
+// at least once.
 func (u *Unit) PauseUnit() {
 	if u.finished.IsNotSet() && u.paused.SetToIf(false, true) {
 		u.scheduler.pausedUnits.Add(1)
+
+		// Increase clearance by one if unit is paused, as now another unit can take its slot.
+		u.scheduler.clearanceUpTo.Add(1)
 	}
 }
 
@@ -72,12 +86,16 @@ func (u *Unit) PauseUnit() {
 func (u *Unit) unpause() {
 	if u.paused.SetToIf(true, false) {
 		u.scheduler.pausedUnits.Add(-1)
+
+		// Reduce clearance by one if paused unit is woken up, as the previously paused unit requires a slot.
+		// A paused unit is expected to already have been allowed to process once.
+		u.scheduler.clearanceUpTo.Add(-1)
 	}
 }
 
 // MakeUnitHighPriority marks the unit as high priority.
 func (u *Unit) MakeUnitHighPriority() {
-	if u.highPriority.SetToIf(false, true) {
+	if u.finished.IsNotSet() && u.highPriority.SetToIf(false, true) {
 		u.scheduler.highPrioUnits.Add(1)
 	}
 }
@@ -87,8 +105,8 @@ func (u *Unit) IsHighPriorityUnit() bool {
 	return u.highPriority.IsSet()
 }
 
-// removeHighPriority removes the high priority mark.
-func (u *Unit) removeHighPriority() {
+// RemoveUnitPriority removes the high priority mark.
+func (u *Unit) RemoveUnitPriority() {
 	if u.highPriority.SetToIf(true, false) {
 		u.scheduler.highPrioUnits.Add(-1)
 	}

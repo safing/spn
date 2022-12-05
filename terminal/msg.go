@@ -21,6 +21,8 @@ type Msg struct {
 }
 
 // NewMsg returns a new msg.
+// The FlowID is unset.
+// The Type is Data.
 func NewMsg(data []byte) *Msg {
 	return &Msg{
 		Type: MsgTypeData,
@@ -30,13 +32,17 @@ func NewMsg(data []byte) *Msg {
 }
 
 // NewEmptyMsg returns a new empty msg with an initialized Unit.
+// The FlowID is unset.
+// The Type is Data.
+// The Data is unset.
 func NewEmptyMsg() *Msg {
 	return &Msg{
+		Type: MsgTypeData,
 		Unit: scheduler.NewUnit(),
 	}
 }
 
-// Pack prepends the message header with ID+Type to the data.
+// Pack prepends the message header (Length and ID+Type) to the data.
 func (msg *Msg) Pack() {
 	MakeMsg(msg.Data, msg.FlowID, msg.Type)
 }
@@ -59,4 +65,14 @@ func (msg *Msg) Consume(other *Msg) {
 
 	// Finish other unit.
 	other.FinishUnit()
+}
+
+// FinishUnit signals the unit scheduler that this unit has finished processing.
+// Will no-op if called on a nil Msg.
+func (msg *Msg) FinishUnit() {
+	// Proxying is necessary, as a nil msg still panics.
+	if msg == nil {
+		return
+	}
+	msg.Unit.FinishUnit()
 }

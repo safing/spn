@@ -48,7 +48,7 @@ func AddIDType(c *container.Container, id uint32, msgType MsgType) {
 	c.Prepend(varint.Pack32(id | uint32(msgType)))
 }
 
-// MakeMsg prepends the ID and Type header and the length of the message.
+// MakeMsg prepends the message header (Length and ID+Type) to the data.
 func MakeMsg(c *container.Container, id uint32, msgType MsgType) {
 	AddIDType(c, id, msgType)
 	c.PrependLength()
