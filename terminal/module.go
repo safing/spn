@@ -1,7 +1,7 @@
 package terminal
 
 import (
-	"fmt"
+	"time"
 
 	"github.com/safing/portbase/modules"
 	"github.com/safing/portbase/rng"
@@ -27,19 +27,12 @@ func start() error {
 	return nil
 }
 
-// FmtID formats the terminal ID together with the parent's ID.
-func (t *TerminalBase) FmtID() string {
-	if t.ext != nil {
-		return t.ext.FmtID()
+var waitForever chan time.Time
+
+// TimedOut returns a channel that triggers when the timeout is reached.
+func TimedOut(timeout time.Duration) <-chan time.Time {
+	if timeout == 0 {
+		return waitForever
 	}
-
-	return fmtTerminalID(t.parentID, t.id)
-}
-
-func fmtTerminalID(craneID string, terminalID uint32) string {
-	return fmt.Sprintf("%s#%d", craneID, terminalID)
-}
-
-func fmtOperationID(craneID string, terminalID, operationID uint32) string {
-	return fmt.Sprintf("%s#%d>%d", craneID, terminalID, operationID)
+	return time.After(timeout)
 }

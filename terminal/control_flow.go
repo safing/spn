@@ -15,7 +15,7 @@ import (
 type FlowControl interface {
 	Deliver(msg *Msg) *Error
 	Receive() <-chan *Msg
-	Send(msg *Msg) *Error
+	Send(msg *Msg, timeout time.Duration) *Error
 	ReadyToSend() <-chan struct{}
 	Flush()
 	StartWorkers(m *modules.Module, terminalName string)
@@ -256,6 +256,7 @@ sending:
 			msg.Data.Prepend(varint.Pack64(uint64(dfq.reportableRecvSpace())))
 
 			// Submit for sending upstream.
+			msg.PauseUnit()
 			_ = dfq.submitUpstream(msg, 0)
 			// Decrease the send space and set flag if depleted.
 			if dfq.decrementSendSpace() <= 0 {
@@ -336,17 +337,21 @@ func (dfq *DuplexFlowQueue) ReadyToSend() <-chan struct{} {
 }
 
 // Send adds the given container to the send queue.
-func (dfq *DuplexFlowQueue) Send(msg *Msg) *Error {
+func (dfq *DuplexFlowQueue) Send(msg *Msg, timeout time.Duration) *Error {
+	msg.PauseUnit()
 	select {
 	case dfq.sendQueue <- msg:
-		msg.PauseUnit()
 		if msg.IsHighPriorityUnit() {
 			// Reset prioMsgs to the current queue size, so that all waiting and the
 			// message we just added are all sent with high priority.
 			atomic.StoreInt32(dfq.prioMsgs, int32(len(dfq.sendQueue)))
 		}
 		return nil
+	case <-TimedOut(timeout):
+		msg.FinishUnit()
+		return ErrTimeout
 	case <-dfq.ctx.Done():
+		msg.FinishUnit()
 		return ErrStopping
 	}
 }
@@ -387,9 +392,9 @@ func (dfq *DuplexFlowQueue) Deliver(msg *Msg) *Error {
 		return nil
 	}
 
+	msg.PauseUnit()
 	select {
 	case dfq.recvQueue <- msg:
-		msg.PauseUnit()
 
 		// If the recv queue accepted the Container, decrement the recv space.
 		shouldReportRecvSpace := dfq.decrementReportedRecvSpace()

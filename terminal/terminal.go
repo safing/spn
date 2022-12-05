@@ -2,7 +2,6 @@ package terminal
 
 import (
 	"context"
-	"errors"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -32,15 +31,13 @@ type Terminal interface { //nolint:golint // Being explicit is helpful here.
 	// Send is used by others to send a message through the terminal.
 	// Should not be overridden by implementations.
 	Send(msg *Msg, timeout time.Duration) *Error
-	// submit is used by the terminal itself to submits a message to upstream.
-	submit(msg *Msg, timeout time.Duration)
 	// Flush sends all messages waiting in the terminal.
 	// Should not be overridden by implementations.
 	Flush()
 
 	// StartOperation starts the given operation by assigning it an ID and sending the given operation initialization data.
 	// Should not be overridden by implementations.
-	StartOperation(attachedTerminal Terminal, op Operation, initData *container.Container, timeout time.Duration) *Error
+	StartOperation(op Operation, initData *container.Container, timeout time.Duration) *Error
 	// StopOperation stops the given operation.
 	// Should not be overridden by implementations.
 	StopOperation(op Operation, err *Error)
@@ -49,24 +46,26 @@ type Terminal interface { //nolint:golint // Being explicit is helpful here.
 	// Should not be overridden by implementations.
 	Abandon(err *Error)
 	// HandleAbandon gives the terminal the ability to cleanly shut down.
+	// The terminal is still fully functional at this point.
 	// The returned error is the error to send to the other side.
 	// Should never be called directly. Call Abandon() instead.
 	// Meant to be overridden by implementations.
 	HandleAbandon(err *Error) (errorToSend *Error)
+	// HandleDestruction gives the terminal the ability to clean up.
+	// The terminal has already fully shut down at this point.
+	// Should never be called directly. Call Abandon() instead.
+	// Meant to be overridden by implementations.
+	HandleDestruction(err *Error)
 
 	// FmtID formats the terminal ID (including parent IDs).
 	// May be overridden by implementations.
 	FmtID() string
 }
 
-// Upstream defines the the interface for upstream (parent) components.
-type Upstream interface {
-	Send(msg *Msg, timeout time.Duration) *Error
-}
-
 // TerminalBase contains the basic functions of a terminal.
 type TerminalBase struct { //nolint:golint,maligned // Being explicit is helpful here.
 	// TODO: Fix maligned.
+	Terminal // Interface check.
 
 	lock sync.RWMutex
 
@@ -228,7 +227,16 @@ func (t *TerminalBase) SetTimeout(d time.Duration) {
 // Deliver on TerminalBase only exists to conform to the interface. It must be
 // overridden by an actual implementation.
 func (t *TerminalBase) Deliver(msg *Msg) *Error {
-	return t.deliverProxy(msg)
+	// Pause unit before handing away.
+	msg.PauseUnit()
+
+	// Deliver via configured proxy.
+	err := t.deliverProxy(msg)
+	if err.IsError() {
+		msg.FinishUnit()
+	}
+
+	return err
 }
 
 // StartWorkers starts the necessary workers to operate the Terminal.
@@ -254,6 +262,9 @@ const (
 func (t *TerminalBase) Handler(_ context.Context) error {
 	defer t.Abandon(ErrInternalError.With("handler died"))
 
+	var msg *Msg
+	defer msg.FinishUnit()
+
 	for {
 		select {
 		case <-t.ctx.Done():
@@ -270,14 +281,12 @@ func (t *TerminalBase) Handler(_ context.Context) error {
 				atomic.StoreUint32(t.idleCounter, 0)
 			}
 
-		case u := <-t.recvProxy():
-			if u.Data.HoldsData() {
-				err := t.handleReceive(u)
-				if err != nil && !errors.Is(err, ErrStopping) {
-					t.Abandon(err.Wrap("failed to handle"))
-				}
+		case msg = <-t.recvProxy():
+			err := t.handleReceive(msg)
+			if err.IsError() {
+				t.Abandon(err.Wrap("failed to handle"))
+				return nil
 			}
-			u.FinishUnit()
 
 			// Register activity.
 			atomic.StoreUint32(t.idleCounter, 0)
@@ -289,10 +298,13 @@ func (t *TerminalBase) submit(msg *Msg, timeout time.Duration) {
 	// Add terminal ID as flow ID.
 	msg.FlowID = t.ID()
 
+	// Pause unit before handing away.
+	msg.PauseUnit()
+
 	// Submit to correct next step.
 	var err *Error
 	if t.flowControl != nil {
-		err = t.flowControl.Send(msg)
+		err = t.flowControl.Send(msg, timeout)
 	} else {
 		err = t.upstream.Send(msg, timeout)
 	}
@@ -330,6 +342,9 @@ func (t *TerminalBase) Sender(_ context.Context) error {
 	var sendMsgs bool
 	var sendMaxWait *time.Timer
 	var flushFinished func()
+
+	// Finish any current unit when returning.
+	defer msgBufferMsg.FinishUnit()
 
 	// Only receive message when not sending the current msg buffer.
 	recvOpMsgs := func() <-chan SubmitControlItem {
@@ -397,6 +412,8 @@ handling:
 				msgBufferMsg = msg
 				msgBufferMsg.FlowID = t.ID()
 				msgBufferMsg.Type = MsgTypeData
+				// Wait for clearance on initial msg only.
+				msgBufferMsg.WaitForUnitSlot()
 			}
 			msgBufferLen += msg.Data.Length()
 
@@ -456,7 +473,7 @@ handling:
 				// Update message type to include priority.
 				if msgBufferMsg.Type == MsgTypeData &&
 					msgBufferMsg.IsHighPriorityUnit() &&
-					UsePriorityDataMsgs {
+					t.opts.UsePriorityDataMsgs {
 					msgBufferMsg.Type = MsgTypePriorityData
 				}
 
@@ -581,6 +598,7 @@ func (t *TerminalBase) decrypt(c *container.Container) (*container.Container, *E
 }
 
 func (t *TerminalBase) handleReceive(msg *Msg) *Error {
+	msg.WaitForUnitSlot()
 	defer msg.FinishUnit()
 
 	// Debugging:
@@ -653,6 +671,9 @@ func (t *TerminalBase) handleOpMsg(data *container.Container) *Error {
 			if msg.Type == MsgTypePriorityData {
 				msg.MakeUnitHighPriority()
 			}
+
+			// Pause unit before handing away.
+			msg.PauseUnit()
 
 			// Deliver message to operation.
 			tErr := op.Deliver(msg)
@@ -769,6 +790,12 @@ func (t *TerminalBase) HandleAbandon(err *Error) (errorToSend *Error) {
 	return err
 }
 
+// HandleDestruction gives the terminal the ability to clean up.
+// The terminal has already fully shut down at this point.
+// Should never be called directly. Call Abandon() instead.
+// Meant to be overridden by implementations.
+func (t *TerminalBase) HandleDestruction(err *Error) {}
+
 func (t *TerminalBase) handleAbandonProcedure(err *Error) {
 	// End all operations.
 	for _, op := range t.allOps() {
@@ -815,6 +842,11 @@ func (t *TerminalBase) handleAbandonProcedure(err *Error) {
 	// Stop all other connected workers.
 	t.cancelCtx()
 	t.idleTicker.Stop()
+
+	// Call operation destruction handle function for proper shutdown cleaning up.
+	if t.ext != nil {
+		t.ext.HandleDestruction(err)
+	}
 }
 
 func (t *TerminalBase) allOps() []Operation {

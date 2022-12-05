@@ -201,33 +201,31 @@ func testTerminals(t *testing.T, identity *cabin.Identity, terminalOpts *Termina
 func createForwardingUpstream(t *testing.T, srcName, dstName string, deliverFunc func(*Msg) *Error) Upstream {
 	t.Helper()
 
-	return &upstreamProxy{
-		send: func(msg *Msg, _ time.Duration) *Error {
-			// Fast track nil containers.
-			if msg == nil {
-				dErr := deliverFunc(msg)
-				if dErr != nil {
-					t.Errorf("%s>%s: failed to deliver nil msg to terminal: %s", srcName, dstName, dErr)
-					return dErr.With("failed to deliver nil msg to terminal")
-				}
-				return nil
-			}
-
-			// Log messages.
-			if logTestCraneMsgs {
-				t.Logf("%s>%s: %v\n", srcName, dstName, msg.Data.CompileData())
-			}
-
-			// Deliver to other terminal.
+	return UpstreamFromSendFunc(func(msg *Msg, _ time.Duration) *Error {
+		// Fast track nil containers.
+		if msg == nil {
 			dErr := deliverFunc(msg)
 			if dErr != nil {
-				t.Errorf("%s>%s: failed to deliver to terminal: %s", srcName, dstName, dErr)
-				return dErr.With("failed to deliver to terminal")
+				t.Errorf("%s>%s: failed to deliver nil msg to terminal: %s", srcName, dstName, dErr)
+				return dErr.With("failed to deliver nil msg to terminal")
 			}
-
 			return nil
-		},
-	}
+		}
+
+		// Log messages.
+		if logTestCraneMsgs {
+			t.Logf("%s>%s: %v\n", srcName, dstName, msg.Data.CompileData())
+		}
+
+		// Deliver to other terminal.
+		dErr := deliverFunc(msg)
+		if dErr != nil {
+			t.Errorf("%s>%s: failed to deliver to terminal: %s", srcName, dstName, dErr)
+			return dErr.With("failed to deliver to terminal")
+		}
+
+		return nil
+	})
 }
 
 type testWithCounterOpts struct {

@@ -136,14 +136,6 @@ func (t *TestTerminal) HandleAbandon(err *Error) (errorToSend *Error) {
 	return
 }
 
-type upstreamProxy struct {
-	send func(msg *Msg, timeout time.Duration) *Error
-}
-
-func (up *upstreamProxy) Send(msg *Msg, timeout time.Duration) *Error {
-	return up.send(msg, timeout)
-}
-
 // NewSimpleTestTerminalPair provides a simple conntected terminal pair for tests.
 func NewSimpleTestTerminalPair(delay time.Duration, delayQueueSize int, opts *TerminalOpts) (a, b *TestTerminal, err error) {
 	if opts == nil {
@@ -157,29 +149,91 @@ func NewSimpleTestTerminalPair(delay time.Duration, delayQueueSize int, opts *Te
 	var initData *container.Container
 	var tErr *Error
 	a, initData, tErr = NewLocalTestTerminal(
-		module.Ctx, 127, "a", nil, opts, &upstreamProxy{
-			send: createDelayingTestForwardingFunc(
-				"a", "b", delay, delayQueueSize, func(msg *Msg, timeout time.Duration) *Error {
-					return b.Deliver(msg)
-				},
-			),
-		},
+		module.Ctx, 127, "a", nil, opts, UpstreamFromSendFunc(createDelayingTestForwardingFunc(
+			"a", "b", delay, delayQueueSize, func(msg *Msg, timeout time.Duration) *Error {
+				return b.Deliver(msg)
+			},
+		)),
 	)
 	if tErr != nil {
 		return nil, nil, tErr.Wrap("failed to create local test terminal")
 	}
 	b, _, tErr = NewRemoteTestTerminal(
-		module.Ctx, 127, "b", nil, initData, &upstreamProxy{
-			send: createDelayingTestForwardingFunc(
-				"b", "a", delay, delayQueueSize, func(msg *Msg, timeout time.Duration) *Error {
-					return a.Deliver(msg)
-				},
-			),
-		},
+		module.Ctx, 127, "b", nil, initData, UpstreamFromSendFunc(createDelayingTestForwardingFunc(
+			"b", "a", delay, delayQueueSize, func(msg *Msg, timeout time.Duration) *Error {
+				return a.Deliver(msg)
+			},
+		)),
 	)
 	if tErr != nil {
 		return nil, nil, tErr.Wrap("failed to create remote test terminal")
 	}
 
 	return a, b, nil
+}
+
+// BareTerminal is a bare terminal that just returns errors for testing.
+type BareTerminal struct{}
+
+var errNotImplementedByBareTerminal = ErrInternalError.With("not implemented by bare terminal")
+
+// ID returns the terminal ID.
+func (t *BareTerminal) ID() uint32 {
+	return 0
+}
+
+// Ctx returns the terminal context.
+func (t *BareTerminal) Ctx() context.Context {
+	return context.Background()
+}
+
+// Deliver delivers a message to the terminal.
+// Should not be overridden by implementations.
+func (t *BareTerminal) Deliver(msg *Msg) *Error {
+	return errNotImplementedByBareTerminal
+}
+
+// Send is used by others to send a message through the terminal.
+// Should not be overridden by implementations.
+func (t *BareTerminal) Send(msg *Msg, timeout time.Duration) *Error {
+	return errNotImplementedByBareTerminal
+}
+
+// Flush sends all messages waiting in the terminal.
+// Should not be overridden by implementations.
+func (t *BareTerminal) Flush() {}
+
+// StartOperation starts the given operation by assigning it an ID and sending the given operation initialization data.
+// Should not be overridden by implementations.
+func (t *BareTerminal) StartOperation(op Operation, initData *container.Container, timeout time.Duration) *Error {
+	return errNotImplementedByBareTerminal
+}
+
+// StopOperation stops the given operation.
+// Should not be overridden by implementations.
+func (t *BareTerminal) StopOperation(op Operation, err *Error) {}
+
+// Abandon shuts down the terminal unregistering it from upstream and calling HandleAbandon().
+// Should not be overridden by implementations.
+func (t *BareTerminal) Abandon(err *Error) {}
+
+// HandleAbandon gives the terminal the ability to cleanly shut down.
+// The terminal is still fully functional at this point.
+// The returned error is the error to send to the other side.
+// Should never be called directly. Call Abandon() instead.
+// Meant to be overridden by implementations.
+func (t *BareTerminal) HandleAbandon(err *Error) (errorToSend *Error) {
+	return err
+}
+
+// HandleDestruction gives the terminal the ability to clean up.
+// The terminal has already fully shut down at this point.
+// Should never be called directly. Call Abandon() instead.
+// Meant to be overridden by implementations.
+func (t *BareTerminal) HandleDestruction(err *Error) {}
+
+// FmtID formats the terminal ID (including parent IDs).
+// May be overridden by implementations.
+func (t *BareTerminal) FmtID() string {
+	return "bare"
 }

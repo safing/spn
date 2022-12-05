@@ -80,9 +80,9 @@ func (pc *PlainChannel) Submit(msg *Msg, timeout time.Duration) *Error {
 	}
 
 	// Submit message to buffer, if space is available.
+	msg.PauseUnit()
 	select {
 	case pc.queue <- &PlainChannelItem{msg}:
-		msg.PauseUnit()
 		return nil
 	case <-submitTimeout:
 		msg.FinishUnit()
@@ -138,9 +138,9 @@ func (fc *FairChannel) Submit(msg *Msg, timeout time.Duration) *Error {
 	}
 
 	// Submit message to buffer, if space is available.
+	msg.PauseUnit()
 	select {
 	case fc.queue <- item:
-		msg.PauseUnit()
 		runtime.Gosched()
 		// Continue
 	case <-submitTimeout:
