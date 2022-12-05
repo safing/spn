@@ -1,6 +1,10 @@
 package account
 
-import "time"
+import (
+	"time"
+
+	"github.com/safing/portbase/utils"
+)
 
 // User, Subscription and Charge states.
 const (
@@ -28,6 +32,10 @@ const (
 	// StatusInvalidAuth [401 Unauthorized] is returned when the credentials are
 	// invalid or the user was logged out.
 	StatusInvalidAuth = 401
+	// StatusNoAccess [403 Forbidden] is returned when the the user does not have
+	// an active subscription or the subscription does not include the required
+	// feature for the request.
+	StatusNoAccess = 403
 	// StatusInvalidDevice [404 Not Found] is returned when the device trying to
 	// log into does not exist.
 	StatusInvalidDevice = 404
@@ -37,6 +45,12 @@ const (
 	StatusDeviceInactive = 423
 	// StatusNotLoggedIn [412 Precondition] is returned by the Portmaster, if an action required to be logged in, but the user is not logged in.
 	StatusNotLoggedIn = 412
+)
+
+// Feature IDs.
+const (
+	FeatureSPN             = "spn"
+	FeaturePrioritySupport = "support"
 )
 
 // User describes an SPN user account.
@@ -50,11 +64,35 @@ type User struct {
 	NextPlan     *Plan         `json:"next_plan"`
 }
 
-// MayUseSPN return whether the user may currently use the SPN.
+// MayUseSPN returns whether the user may currently use the SPN.
 func (u *User) MayUseSPN() bool {
-	return u.State == UserStateApproved &&
-		u.Subscription != nil &&
-		time.Now().Before(u.Subscription.EndsAt)
+	return u.MayUse(FeatureSPN)
+}
+
+// MayUsePrioritySupport returns whether the user may currently use the priority support.
+func (u *User) MayUsePrioritySupport() bool {
+	return u.MayUse(FeaturePrioritySupport)
+}
+
+// MayUse returns whether the user may currently use the feature identified by
+// the given feature ID.
+func (u *User) MayUse(featureID string) bool {
+	switch {
+	case u.State != UserStateApproved:
+		// Only approved users may use the SPN.
+	case u.Subscription == nil:
+		// Need a subscription.
+	case time.Now().After(u.Subscription.EndsAt):
+		// Subscription needs to be active.
+	case u.CurrentPlan == nil:
+		// Need a plan / package.
+	case !utils.StringInSlice(u.CurrentPlan.FeatureIDs, featureID):
+		// Required feature ID must be in plan / package feature IDs.
+	default:
+		// All checks passed!
+		return true
+	}
+	return false
 }
 
 // Device describes a device of an SPN user.
@@ -71,8 +109,9 @@ type Subscription struct {
 
 // Plan describes an SPN subscription plan.
 type Plan struct {
-	Name      string `json:"name"`
-	Amount    int    `json:"amount"`
-	Months    int    `json:"months"`
-	Renewable bool   `json:"renewable"`
+	Name       string   `json:"name"`
+	Amount     int      `json:"amount"`
+	Months     int      `json:"months"`
+	Renewable  bool     `json:"renewable"`
+	FeatureIDs []string `json:"feature_ids"`
 }
