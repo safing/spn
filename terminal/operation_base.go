@@ -35,27 +35,41 @@ func (op *OperationBase) Type() string {
 // Deliver delivers a message to the operation.
 // Meant to be overridden by implementations.
 func (op *OperationBase) Deliver(_ *Msg) *Error {
-	return ErrInternalError.With("Deliver not implemented")
+	return ErrIncorrectUsage.With("Deliver not implemented for this operation")
 }
 
 // NewMsg creates a new message from this operation.
 // Should not be overridden by implementations.
 func (op *OperationBase) NewMsg(data []byte) *Msg {
 	msg := NewMsg(data)
+	msg.FlowID = op.id
+	msg.Type = MsgTypeData
+	return msg
+}
+
+// NewEmptyMsg creates a new empty message from this operation.
+// Should not be overridden by implementations.
+func (op *OperationBase) NewEmptyMsg() *Msg {
+	msg := NewEmptyMsg()
+	msg.FlowID = op.id
+	msg.Type = MsgTypeData
 	return msg
 }
 
 // Send sends a message to the other side.
 // Should not be overridden by implementations.
 func (op *OperationBase) Send(msg *Msg, timeout time.Duration) *Error {
-	// Wait for processing slot.
-	msg.WaitForUnitSlot()
-
 	// Add and update metadata.
 	msg.FlowID = op.id
 	if msg.Type == MsgTypeData && msg.IsHighPriorityUnit() && UsePriorityDataMsgs {
 		msg.Type = MsgTypePriorityData
 	}
+
+	// Wait for processing slot.
+	msg.WaitForUnitSlot()
+
+	// Pause unit before handing away.
+	msg.PauseUnit()
 
 	// Send message.
 	tErr := op.terminal.Send(msg, timeout)
@@ -64,6 +78,12 @@ func (op *OperationBase) Send(msg *Msg, timeout time.Duration) *Error {
 		msg.FinishUnit()
 	}
 	return tErr
+}
+
+// Flush sends all messages waiting in the terminal.
+// Meant to be overridden by implementations.
+func (op *OperationBase) Flush() {
+	op.terminal.Flush()
 }
 
 // Stopped returns whether the operation has stopped.
@@ -93,8 +113,39 @@ func (op *OperationBase) HandleStop(err *Error) (errorToSend *Error) {
 	return err
 }
 
-// RequestOperationBase is an operation base for request-like operations.
-type RequestOperationBase struct {
+// Terminal returns the terminal the operation is linked to.
+// Should not be overridden by implementations.
+func (op *OperationBase) Terminal() Terminal {
+	return op.terminal
+}
+
+// OneOffOperationBase is an operation base for operations that just have one
+// message and a error return.
+type OneOffOperationBase struct {
+	OperationBase
+
+	Result chan *Error
+}
+
+// Init initializes the single operation base.
+func (op *OneOffOperationBase) Init() {
+	op.Result = make(chan *Error, 1)
+}
+
+// HandleStop gives the operation the ability to cleanly shut down.
+// The returned error is the error to send to the other side.
+// Should never be called directly. Call Stop() instead.
+func (op *OneOffOperationBase) HandleStop(err *Error) (errorToSend *Error) {
+	select {
+	case op.Result <- err:
+	default:
+	}
+	return err
+}
+
+// MessageStreamOperationBase is an operation base for receiving a message stream.
+// Every received message must be finished by the implementing operation.
+type MessageStreamOperationBase struct {
 	OperationBase
 
 	Delivered chan *Msg
@@ -102,13 +153,13 @@ type RequestOperationBase struct {
 }
 
 // Init initializes the operation base.
-func (op *RequestOperationBase) Init(deliverQueueSize int) {
+func (op *MessageStreamOperationBase) Init(deliverQueueSize int) {
 	op.Delivered = make(chan *Msg, deliverQueueSize)
 	op.Ended = make(chan *Error, 1)
 }
 
 // Deliver delivers data to the operation.
-func (op *RequestOperationBase) Deliver(msg *Msg) *Error {
+func (op *MessageStreamOperationBase) Deliver(msg *Msg) *Error {
 	select {
 	case op.Delivered <- msg:
 		return nil
@@ -117,8 +168,10 @@ func (op *RequestOperationBase) Deliver(msg *Msg) *Error {
 	}
 }
 
-// End ends the operation.
-func (op *RequestOperationBase) End(err *Error) (errorToSend *Error) {
+// HandleStop gives the operation the ability to cleanly shut down.
+// The returned error is the error to send to the other side.
+// Should never be called directly. Call Stop() instead.
+func (op *MessageStreamOperationBase) HandleStop(err *Error) (errorToSend *Error) {
 	select {
 	case op.Ended <- err:
 	default:

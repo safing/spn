@@ -61,7 +61,7 @@ func NewCounterOp(t Terminal, opts CounterOpts) (*CounterOp, *Error) {
 	}
 
 	// Initialize operation.
-	tErr := t.StartOperation(t, op, container.New(data), 3*time.Second)
+	tErr := t.StartOperation(op, container.New(data), 3*time.Second)
 	if tErr != nil {
 		return nil, tErr
 	}
@@ -137,7 +137,6 @@ func (op *CounterOp) isDone() bool {
 
 // Deliver delivers data to the operation.
 func (op *CounterOp) Deliver(msg *Msg) *Error {
-	msg.WaitForUnitSlot()
 	defer msg.FinishUnit()
 
 	nextStep, err := msg.Data.GetNextN64()

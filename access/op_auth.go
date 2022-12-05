@@ -1,6 +1,8 @@
 package access
 
 import (
+	"time"
+
 	"github.com/safing/portbase/container"
 	"github.com/safing/portbase/log"
 	"github.com/safing/spn/access/token"
@@ -11,15 +13,15 @@ import (
 const OpTypeAccessCodeAuth = "auth"
 
 func init() {
-	terminal.RegisterOpType(terminal.OpParams{
+	terminal.RegisterOpType(terminal.OperationFactory{
 		Type:  OpTypeAccessCodeAuth,
-		RunOp: checkAccessCode,
+		Start: checkAccessCode,
 	})
 }
 
 // AuthorizeOp is used to authorize a session.
 type AuthorizeOp struct {
-	terminal.OpBaseRequest
+	terminal.OneOffOperationBase
 }
 
 // Type returns the type ID.
@@ -28,16 +30,16 @@ func (op *AuthorizeOp) Type() string {
 }
 
 // AuthorizeToTerminal starts an authorization operation.
-func AuthorizeToTerminal(t terminal.OpTerminal) (*AuthorizeOp, *terminal.Error) {
+func AuthorizeToTerminal(t terminal.Terminal) (*AuthorizeOp, *terminal.Error) {
 	op := &AuthorizeOp{}
-	op.Init(0)
+	op.Init()
 
 	newToken, err := GetToken(ExpandAndConnectZones)
 	if err != nil {
 		return nil, terminal.ErrInternalError.With("failed to get access token: %w", err)
 	}
 
-	tErr := t.OpInit(op, container.New(newToken.Raw()))
+	tErr := t.StartOperation(op, container.New(newToken.Raw()), 10*time.Second)
 	if tErr != nil {
 		return nil, terminal.ErrInternalError.With("failed to init auth op: %w", tErr)
 	}
@@ -45,7 +47,7 @@ func AuthorizeToTerminal(t terminal.OpTerminal) (*AuthorizeOp, *terminal.Error) 
 	return op, nil
 }
 
-func checkAccessCode(t terminal.OpTerminal, opID uint32, initData *container.Container) (terminal.Operation, *terminal.Error) {
+func checkAccessCode(t terminal.Terminal, opID uint32, initData *container.Container) (terminal.Operation, *terminal.Error) {
 	// Parse provided access token.
 	receivedToken, err := token.ParseRawToken(initData.CompileData())
 	if err != nil {

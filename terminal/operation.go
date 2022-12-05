@@ -39,6 +39,10 @@ type Operation interface {
 	// Should not be overridden by implementations.
 	Send(msg *Msg, timeout time.Duration) *Error
 
+	// Flush sends all messages waiting in the terminal.
+	// Should not be overridden by implementations.
+	Flush()
+
 	// Stopped returns whether the operation has stopped.
 	// Should not be overridden by implementations.
 	Stopped() bool
@@ -56,6 +60,10 @@ type Operation interface {
 	// Should never be called directly. Call Stop() instead.
 	// Meant to be overridden by implementations.
 	HandleStop(err *Error) (errorToSend *Error)
+
+	// Terminal returns the terminal the operation is linked to.
+	// Should not be overridden by implementations.
+	Terminal() Terminal
 }
 
 // OperationFactory defines an operation factory.
@@ -148,9 +156,15 @@ func (t *TerminalBase) handleOperationStart(opID uint32, initData *container.Con
 }
 
 // StartOperation starts the given operation by assigning it an ID and sending the given operation initialization data.
-func (t *TerminalBase) StartOperation(attachedTerminal Terminal, op Operation, initData *container.Container, timeout time.Duration) *Error {
+func (t *TerminalBase) StartOperation(op Operation, initData *container.Container, timeout time.Duration) *Error {
+	// Get terminal to attach to.
+	attachToTerminal := t.ext
+	if t.ext == nil {
+		attachToTerminal = t
+	}
+
 	// Get the next operation ID and set it on the operation with the terminal.
-	op.InitOperationBase(attachedTerminal, atomic.AddUint32(t.nextOpID, 8))
+	op.InitOperationBase(attachToTerminal, atomic.AddUint32(t.nextOpID, 8))
 
 	// Always add operation to the active operations, as we need to receive a
 	// reply in any case.
@@ -179,6 +193,9 @@ func (t *TerminalBase) StartOperation(attachedTerminal Terminal, op Operation, i
 // Send sends data via this terminal.
 // If a timeout is set, sending will fail after the given timeout passed.
 func (t *TerminalBase) Send(msg *Msg, timeout time.Duration) *Error {
+	// Pause unit before handing away.
+	msg.PauseUnit()
+
 	return t.submitControl.Submit(msg, timeout)
 }
 

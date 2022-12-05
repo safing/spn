@@ -31,8 +31,7 @@ var (
 
 // LatencyTestOp is used to measure latency.
 type LatencyTestOp struct {
-	terminal.OpBase
-	t terminal.OpTerminal
+	terminal.OperationBase
 }
 
 // LatencyTestClientOp is the client version of LatencyTestOp.
@@ -42,7 +41,7 @@ type LatencyTestClientOp struct {
 	lastPingSentAt    time.Time
 	lastPingNonce     []byte
 	measuredLatencies []time.Duration
-	responses         chan *container.Container
+	responses         chan *terminal.Msg
 	testResult        time.Duration
 
 	result chan *terminal.Error
@@ -54,25 +53,21 @@ func (op *LatencyTestOp) Type() string {
 }
 
 func init() {
-	terminal.RegisterOpType(terminal.OpParams{
+	terminal.RegisterOpType(terminal.OperationFactory{
 		Type:     LatencyTestOpType,
 		Requires: terminal.IsCraneController,
-		RunOp:    runLatencyTestOp,
+		Start:    startLatencyTestOp,
 	})
 }
 
 // NewLatencyTestOp runs a latency test.
-func NewLatencyTestOp(t terminal.OpTerminal) (*LatencyTestClientOp, *terminal.Error) {
+func NewLatencyTestOp(t terminal.Terminal) (*LatencyTestClientOp, *terminal.Error) {
 	// Create and init.
 	op := &LatencyTestClientOp{
-		LatencyTestOp: LatencyTestOp{
-			t: t,
-		},
-		responses:         make(chan *container.Container),
+		responses:         make(chan *terminal.Msg),
 		measuredLatencies: make([]time.Duration, 0, latencyTestRuns),
 		result:            make(chan *terminal.Error, 1),
 	}
-	op.LatencyTestOp.OpBase.Init()
 
 	// Make ping request.
 	pingRequest, err := op.createPingRequest()
@@ -81,7 +76,7 @@ func NewLatencyTestOp(t terminal.OpTerminal) (*LatencyTestClientOp, *terminal.Er
 	}
 
 	// Send ping.
-	tErr := t.OpInit(op, pingRequest)
+	tErr := t.StartOperation(op, pingRequest, 1*time.Second)
 	if tErr != nil {
 		return nil, tErr
 	}
@@ -93,16 +88,12 @@ func NewLatencyTestOp(t terminal.OpTerminal) (*LatencyTestClientOp, *terminal.Er
 }
 
 // Ping sends a single ping and reports it's latency.
-func Ping(ctx context.Context, t terminal.OpTerminal, timeout time.Duration) (time.Duration, *terminal.Error) {
+func Ping(ctx context.Context, t terminal.Terminal, timeout time.Duration) (time.Duration, *terminal.Error) {
 	// Create and init.
 	op := &LatencyTestClientOp{
-		LatencyTestOp: LatencyTestOp{
-			t: t,
-		},
-		responses: make(chan *container.Container),
+		responses: make(chan *terminal.Msg),
 		result:    make(chan *terminal.Error, 1),
 	}
-	op.LatencyTestOp.OpBase.Init()
 
 	// Make ping request.
 	pingRequest, err := op.createPingRequest()
@@ -111,11 +102,11 @@ func Ping(ctx context.Context, t terminal.OpTerminal, timeout time.Duration) (ti
 	}
 
 	// Send ping.
-	tErr := t.OpInit(op, pingRequest)
+	tErr := t.StartOperation(op, pingRequest, timeout)
 	if tErr != nil {
 		return 0, tErr
 	}
-	defer t.OpEnd(op, nil)
+	defer t.StopOperation(op, nil)
 
 	// Wait for response.
 	select {
@@ -123,13 +114,13 @@ func Ping(ctx context.Context, t terminal.OpTerminal, timeout time.Duration) (ti
 		return 0, terminal.ErrCanceled
 	case <-time.After(timeout):
 		return 0, terminal.ErrTimeout
-	case data := <-op.responses:
+	case msg := <-op.responses:
 		// Check if the op ended.
-		if data == nil {
+		if msg == nil {
 			return 0, terminal.ErrStopping
 		}
 		// Handle response
-		tErr := op.handleResponse(data)
+		tErr := op.handleResponse(msg)
 		if tErr.IsError() {
 			return 0, tErr
 		}
@@ -141,7 +132,7 @@ func (op *LatencyTestClientOp) handler(ctx context.Context) error {
 	returnErr := terminal.ErrStopping
 	defer func() {
 		// Linters don't get that returnErr is used when directly used as defer.
-		op.t.OpEnd(op, returnErr)
+		op.Stop(op, returnErr)
 	}()
 
 	var nextTest <-chan time.Time
@@ -156,29 +147,34 @@ func (op *LatencyTestClientOp) handler(ctx context.Context) error {
 			return nil
 
 		case <-nextTest:
-			// Create ping request and send it.
+			// Create ping request msg.
 			pingRequest, err := op.createPingRequest()
 			if err != nil {
 				returnErr = terminal.ErrInternalError.With("%w", err)
 				return nil
 			}
-			tErr := op.t.OpSend(op, pingRequest, latencyTestOpTimeout, true)
+			msg := op.NewEmptyMsg()
+			msg.MakeUnitHighPriority()
+			msg.Data = pingRequest
+
+			// Send it.
+			tErr := op.Send(msg, latencyTestOpTimeout)
 			if tErr != nil {
 				returnErr = tErr.Wrap("failed to send ping request")
 				return nil
 			}
-			op.t.Flush()
+			op.Flush()
 
 			nextTest = nil
 
-		case data := <-op.responses:
+		case msg := <-op.responses:
 			// Check if the op ended.
-			if data == nil {
+			if msg == nil {
 				return nil
 			}
 
 			// Handle response
-			tErr := op.handleResponse(data)
+			tErr := op.handleResponse(msg)
 			if tErr.IsError() {
 				returnErr = tErr
 				return nil
@@ -215,8 +211,10 @@ func (op *LatencyTestClientOp) createPingRequest() (*container.Container, error)
 	), nil
 }
 
-func (op *LatencyTestClientOp) handleResponse(data *container.Container) *terminal.Error {
-	rType, err := data.GetNextN8()
+func (op *LatencyTestClientOp) handleResponse(msg *terminal.Msg) *terminal.Error {
+	defer msg.FinishUnit()
+
+	rType, err := msg.Data.GetNextN8()
 	if err != nil {
 		return terminal.ErrMalformedData.With("failed to get response type: %w", err)
 	}
@@ -224,7 +222,7 @@ func (op *LatencyTestClientOp) handleResponse(data *container.Container) *termin
 	switch rType {
 	case latencyPingResponse:
 		// Check if the ping nonce matches.
-		if !bytes.Equal(op.lastPingNonce, data.CompileData()) {
+		if !bytes.Equal(op.lastPingNonce, msg.Data.CompileData()) {
 			return terminal.ErrIntegrity.With("ping nonce mismatch")
 		}
 		op.lastPingNonce = nil
@@ -248,7 +246,7 @@ func (op *LatencyTestClientOp) reportMeasuredLatencies() *terminal.Error {
 	op.testResult = lowestLatency
 
 	// Save the result to the crane.
-	if controller, ok := op.t.(*CraneControllerTerminal); ok {
+	if controller, ok := op.Terminal().(*CraneControllerTerminal); ok {
 		if controller.Crane.ConnectedHub != nil {
 			controller.Crane.ConnectedHub.GetMeasurements().SetLatency(op.testResult)
 			log.Infof("spn/docks: measured latency to %s: %s", controller.Crane.ConnectedHub, op.testResult)
@@ -257,19 +255,19 @@ func (op *LatencyTestClientOp) reportMeasuredLatencies() *terminal.Error {
 			return terminal.ErrInternalError.With("latency operation was run on %s without a connected hub set", controller.Crane)
 		}
 	} else if !runningTests {
-		return terminal.ErrInternalError.With("latency operation was run on terminal that is not a crane controller, but %T", op.t)
+		return terminal.ErrInternalError.With("latency operation was run on terminal that is not a crane controller, but %T", op.Terminal())
 	}
 	return nil
 }
 
 // Deliver delivers a message to the operation.
-func (op *LatencyTestClientOp) Deliver(c *container.Container) *terminal.Error {
+func (op *LatencyTestClientOp) Deliver(msg *terminal.Msg) *terminal.Error {
 	// Optimized delivery with 1s timeout.
 	select {
-	case op.responses <- c:
+	case op.responses <- msg:
 	default:
 		select {
-		case op.responses <- c:
+		case op.responses <- msg:
 		case <-time.After(1 * time.Second):
 			return terminal.ErrTimeout
 		}
@@ -277,8 +275,10 @@ func (op *LatencyTestClientOp) Deliver(c *container.Container) *terminal.Error {
 	return nil
 }
 
-// End ends the operation.
-func (op *LatencyTestClientOp) End(tErr *terminal.Error) (errorToSend *terminal.Error) {
+// HandleStop gives the operation the ability to cleanly shut down.
+// The returned error is the error to send to the other side.
+// Should never be called directly. Call Stop() instead.
+func (op *LatencyTestClientOp) HandleStop(tErr *terminal.Error) (errorToSend *terminal.Error) {
 	close(op.responses)
 	select {
 	case op.result <- tErr:
@@ -292,16 +292,15 @@ func (op *LatencyTestClientOp) Result() <-chan *terminal.Error {
 	return op.result
 }
 
-func runLatencyTestOp(t terminal.OpTerminal, opID uint32, data *container.Container) (terminal.Operation, *terminal.Error) {
+func startLatencyTestOp(t terminal.Terminal, opID uint32, data *container.Container) (terminal.Operation, *terminal.Error) {
 	// Create operation.
-	op := &LatencyTestOp{
-		t: t,
-	}
-	op.OpBase.Init()
-	op.OpBase.SetID(opID)
+	op := &LatencyTestOp{}
+	op.InitOperationBase(t, opID)
 
 	// Handle first request.
-	tErr := op.Deliver(data)
+	msg := op.NewEmptyMsg()
+	msg.Data = data
+	tErr := op.Deliver(msg)
 	if tErr != nil {
 		return nil, tErr
 	}
@@ -310,8 +309,11 @@ func runLatencyTestOp(t terminal.OpTerminal, opID uint32, data *container.Contai
 }
 
 // Deliver delivers a message to the operation.
-func (op *LatencyTestOp) Deliver(c *container.Container) *terminal.Error {
-	rType, err := c.GetNextN8()
+func (op *LatencyTestOp) Deliver(msg *terminal.Msg) *terminal.Error {
+	msg.FinishUnit()
+
+	// Get request type.
+	rType, err := msg.Data.GetNextN8()
 	if err != nil {
 		return terminal.ErrMalformedData.With("failed to get response type: %w", err)
 	}
@@ -319,23 +321,21 @@ func (op *LatencyTestOp) Deliver(c *container.Container) *terminal.Error {
 	switch rType {
 	case latencyPingRequest:
 		// Keep the nonce and just replace the msg type.
-		c.PrependNumber(latencyPingResponse)
+		msg.Data.PrependNumber(latencyPingResponse)
+		msg.Type = terminal.MsgTypeData
+		msg.ReUseUnit()
+		msg.MakeUnitHighPriority()
 
 		// Send response.
-		tErr := op.t.OpSend(op, c, latencyTestOpTimeout, true)
+		tErr := op.Send(msg, latencyTestOpTimeout)
 		if tErr != nil {
 			return tErr.Wrap("failed to send ping response")
 		}
-		op.t.Flush()
+		op.Flush()
 
 		return nil
 
 	default:
 		return terminal.ErrIncorrectUsage.With("unknown request type")
 	}
-}
-
-// End ends the operation.
-func (op *LatencyTestOp) End(tErr *terminal.Error) (errorToSend *terminal.Error) {
-	return tErr
 }
