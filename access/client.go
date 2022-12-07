@@ -234,7 +234,9 @@ func Login(username, password string) (user *UserRecord, code int, err error) {
 	}
 
 	// Enable the SPN right after login.
-	enableSPN()
+	if user.MayUseSPN() {
+		enableSPN()
+	}
 
 	log.Infof("spn/access: logged in as %q on device %q", user.Username, user.Device.Name)
 	return user, resp.StatusCode, nil
