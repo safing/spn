@@ -76,6 +76,7 @@ func (u *User) UpdateView(requestStatus int) {
 		// User (was) logged out.
 		v.ShowAccountButton = true
 		v.ShowLoginButton = true
+		return
 
 	case u.State == UserStateSuspended:
 		// Account is suspended.
@@ -83,27 +84,28 @@ func (u *User) UpdateView(requestStatus int) {
 		v.ShowAccountButton = true
 		v.ShowRefreshButton = true
 		v.ShowLogoutButton = true
+		return
 
 	case u.Subscription == nil || u.Subscription.EndsAt == nil:
 		// Account has never had a subscription.
-		v.Message = "Upgrade to protect your privacy even more."
-		v.ShowAccountButton = true
-		v.ShowLoginButton = true
+		v.Message = "Upgrade on the Account Page to protect your privacy even more."
 
 	case time.Now().After(*u.Subscription.EndsAt):
 		// Subscription expired.
 		if u.CurrentPlan != nil {
-			v.Message = fmt.Sprintf("Your subscription for %q has expired. Renew it in your Account.", u.CurrentPlan.Name)
+			v.Message = fmt.Sprintf("Your package %s has ended. Extend it on the Account Page.", u.CurrentPlan.Name)
 		} else {
-			v.Message = "Your subscription has expired. Renew it in your Account."
+			v.Message = "Your package has ended. Extend it on the Account Page."
 		}
-		fallthrough
 
-	default:
-		// No issues and running subscription.
-		v.ShowAccountData = true
-		v.ShowAccountButton = true
-		v.ShowRefreshButton = true
-		v.ShowLogoutButton = true
+	case time.Until(*u.Subscription.EndsAt) < 7*24*time.Hour:
+		// Add generic ending soon message if the package ends in less than 7 days.
+		v.Message = "Your package ends soon. Extend it on the Account Page."
 	}
+
+	// Defaults for generally good accounts.
+	v.ShowAccountData = true
+	v.ShowAccountButton = true
+	v.ShowRefreshButton = true
+	v.ShowLogoutButton = true
 }

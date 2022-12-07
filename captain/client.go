@@ -270,7 +270,7 @@ func clientCheckAccountAndTokens(ctx context.Context) clientComponentResult {
 			notifications.NotifyError(
 				"spn:subscription-inactive",
 				"Portmaster Package Issue",
-				message,
+				"Cannot enable SPN: "+message,
 				spnOpenAccountPage,
 			).AttachToModule(module)
 			resetSPNStatus(StatusFailed, true)

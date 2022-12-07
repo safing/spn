@@ -27,7 +27,7 @@ func notifyOfPackageEnd(u *UserRecord) {
 	}
 
 	// Calculate durations.
-	var sinceLastNotified time.Duration
+	sinceLastNotified := 52 * week // Never.
 	if u.LastNotifiedOfEnd != nil {
 		sinceLastNotified = time.Since(*u.LastNotifiedOfEnd)
 	}
