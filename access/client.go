@@ -46,14 +46,6 @@ type clientRequestOptions struct {
 	requestSetupFunc     func(*http.Request) error
 }
 
-func (cro *clientRequestOptions) logoutOnAuthErrorIfDesired() {
-	if cro.logoutOnAuthError {
-		module.StartWorker("logout user", func(_ context.Context) error {
-			return Logout(true, false)
-		})
-	}
-}
-
 func makeClientRequest(opts *clientRequestOptions) (resp *http.Response, err error) {
 	// Get request timeout.
 	if opts.requestTimeout == 0 {
@@ -130,17 +122,14 @@ func makeClientRequest(opts *clientRequestOptions) (resp *http.Response, err err
 
 	case account.StatusInvalidAuth, account.StatusInvalidDevice:
 		// Wrong username / password.
-		opts.logoutOnAuthErrorIfDesired()
 		return resp, ErrInvalidCredentials
 
 	case account.StatusReachedDeviceLimit:
 		// Device limit is reached.
-		opts.logoutOnAuthErrorIfDesired()
 		return resp, ErrDeviceLimitReached
 
 	case account.StatusDeviceInactive:
 		// Device is locked.
-		opts.logoutOnAuthErrorIfDesired()
 		return resp, ErrDeviceIsLocked
 
 	default:
@@ -315,6 +304,7 @@ func Logout(shallow, purge bool) error {
 			}
 			user.LoggedInAt = &time.Time{}
 		}
+		user.UpdateView(0)
 	}()
 	err = user.Save()
 	if err != nil {
@@ -366,6 +356,7 @@ func UpdateUser() (user *UserRecord, statusCode int, err error) {
 			previousUser.Lock()
 			defer previousUser.Unlock()
 			previousUser.User = userData
+			previousUser.UpdateView(resp.StatusCode)
 		}()
 		err := previousUser.Save()
 		if err != nil {
@@ -382,6 +373,7 @@ func UpdateUser() (user *UserRecord, statusCode int, err error) {
 		User:       userData,
 		LoggedInAt: &now,
 	}
+	newUser.UpdateView(resp.StatusCode)
 	err = newUser.Save()
 	if err != nil {
 		log.Warningf("spn/access: failed to save new user profile: %s", err)
