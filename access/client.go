@@ -363,6 +363,9 @@ func UpdateUser() (user *UserRecord, statusCode int, err error) {
 			log.Warningf("spn/access: failed to save updated user profile: %s", err)
 		}
 
+		// Notify user of nearing end of package.
+		notifyOfPackageEnd(previousUser)
+
 		log.Infof("spn/access: got user profile, updated existing")
 		return previousUser, resp.StatusCode, nil
 	}
@@ -378,6 +381,9 @@ func UpdateUser() (user *UserRecord, statusCode int, err error) {
 	if err != nil {
 		log.Warningf("spn/access: failed to save new user profile: %s", err)
 	}
+
+	// Notify user of nearing end of package.
+	notifyOfPackageEnd(newUser)
 
 	log.Infof("spn/access: got user profile, saved as new")
 	return newUser, resp.StatusCode, nil

@@ -29,7 +29,8 @@ type UserRecord struct {
 
 	*account.User
 
-	LoggedInAt *time.Time
+	LastNotifiedOfEnd *time.Time
+	LoggedInAt        *time.Time
 }
 
 // AuthTokenRecord holds an authentication token.
