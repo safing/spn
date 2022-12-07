@@ -62,6 +62,7 @@ type User struct {
 	Subscription *Subscription `json:"subscription"`
 	CurrentPlan  *Plan         `json:"current_plan"`
 	NextPlan     *Plan         `json:"next_plan"`
+	View         *View         `json:"view"`
 }
 
 // MayUseSPN returns whether the user may currently use the SPN.
@@ -76,17 +77,20 @@ func (u *User) MayUsePrioritySupport() bool {
 
 // MayUse returns whether the user may currently use the feature identified by
 // the given feature ID.
+// Leave feature ID empty to check without feature.
 func (u *User) MayUse(featureID string) bool {
 	switch {
 	case u.State != UserStateApproved:
 		// Only approved users may use the SPN.
 	case u.Subscription == nil:
 		// Need a subscription.
-	case time.Now().After(u.Subscription.EndsAt):
+	case u.Subscription.EndsAt == nil:
+	case time.Now().After(*u.Subscription.EndsAt):
 		// Subscription needs to be active.
 	case u.CurrentPlan == nil:
 		// Need a plan / package.
-	case !utils.StringInSlice(u.CurrentPlan.FeatureIDs, featureID):
+	case featureID != "" &&
+		!utils.StringInSlice(u.CurrentPlan.FeatureIDs, featureID):
 		// Required feature ID must be in plan / package feature IDs.
 	default:
 		// All checks passed!
@@ -103,8 +107,8 @@ type Device struct {
 
 // Subscription describes an SPN subscription.
 type Subscription struct {
-	EndsAt time.Time `json:"ends_at"`
-	State  string    `json:"state"`
+	EndsAt *time.Time `json:"ends_at"`
+	State  string     `json:"state"`
 }
 
 // Plan describes an SPN subscription plan.

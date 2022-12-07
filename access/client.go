@@ -46,14 +46,6 @@ type clientRequestOptions struct {
 	requestSetupFunc     func(*http.Request) error
 }
 
-func (cro *clientRequestOptions) logoutOnAuthErrorIfDesired() {
-	if cro.logoutOnAuthError {
-		module.StartWorker("logout user", func(_ context.Context) error {
-			return Logout(true, false)
-		})
-	}
-}
-
 func makeClientRequest(opts *clientRequestOptions) (resp *http.Response, err error) {
 	// Get request timeout.
 	if opts.requestTimeout == 0 {
@@ -130,17 +122,14 @@ func makeClientRequest(opts *clientRequestOptions) (resp *http.Response, err err
 
 	case account.StatusInvalidAuth, account.StatusInvalidDevice:
 		// Wrong username / password.
-		opts.logoutOnAuthErrorIfDesired()
 		return resp, ErrInvalidCredentials
 
 	case account.StatusReachedDeviceLimit:
 		// Device limit is reached.
-		opts.logoutOnAuthErrorIfDesired()
 		return resp, ErrDeviceLimitReached
 
 	case account.StatusDeviceInactive:
 		// Device is locked.
-		opts.logoutOnAuthErrorIfDesired()
 		return resp, ErrDeviceIsLocked
 
 	default:
@@ -245,7 +234,9 @@ func Login(username, password string) (user *UserRecord, code int, err error) {
 	}
 
 	// Enable the SPN right after login.
-	enableSPN()
+	if user.MayUseSPN() {
+		enableSPN()
+	}
 
 	log.Infof("spn/access: logged in as %q on device %q", user.Username, user.Device.Name)
 	return user, resp.StatusCode, nil
@@ -315,6 +306,7 @@ func Logout(shallow, purge bool) error {
 			}
 			user.LoggedInAt = &time.Time{}
 		}
+		user.UpdateView(0)
 	}()
 	err = user.Save()
 	if err != nil {
@@ -366,11 +358,15 @@ func UpdateUser() (user *UserRecord, statusCode int, err error) {
 			previousUser.Lock()
 			defer previousUser.Unlock()
 			previousUser.User = userData
+			previousUser.UpdateView(resp.StatusCode)
 		}()
 		err := previousUser.Save()
 		if err != nil {
 			log.Warningf("spn/access: failed to save updated user profile: %s", err)
 		}
+
+		// Notify user of nearing end of package.
+		notifyOfPackageEnd(previousUser)
 
 		log.Infof("spn/access: got user profile, updated existing")
 		return previousUser, resp.StatusCode, nil
@@ -382,10 +378,14 @@ func UpdateUser() (user *UserRecord, statusCode int, err error) {
 		User:       userData,
 		LoggedInAt: &now,
 	}
+	newUser.UpdateView(resp.StatusCode)
 	err = newUser.Save()
 	if err != nil {
 		log.Warningf("spn/access: failed to save new user profile: %s", err)
 	}
+
+	// Notify user of nearing end of package.
+	notifyOfPackageEnd(newUser)
 
 	log.Infof("spn/access: got user profile, saved as new")
 	return newUser, resp.StatusCode, nil

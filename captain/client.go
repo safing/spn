@@ -27,13 +27,8 @@ var (
 		Type:    notifications.ActionTypeOpenPage,
 		Payload: "spn",
 	}
-	spnPageButton = notifications.Action{
-		Text:    "Open",
-		Type:    notifications.ActionTypeOpenPage,
-		Payload: "spn",
-	}
-	spnOpenAccountWeb = notifications.Action{
-		Text:    "Open account.safing.io",
+	spnOpenAccountPage = notifications.Action{
+		Text:    "Open Account Page",
 		Type:    notifications.ActionTypeOpenURL,
 		Payload: "https://account.safing.io",
 	}
@@ -225,7 +220,7 @@ func clientCheckAccountAndTokens(ctx context.Context) clientComponentResult {
 		notifications.NotifyWarn(
 			"spn:not-logged-in",
 			"SPN Login Required",
-			`Please log in with your SPN account.`,
+			`Please log in to access the SPN.`,
 			spnLoginButton,
 		).AttachToModule(module)
 		resetSPNStatus(StatusFailed, true)
@@ -245,7 +240,6 @@ func clientCheckAccountAndTokens(ctx context.Context) clientComponentResult {
 					"spn:failed-to-update-user",
 					"SPN Account Server Error",
 					fmt.Sprintf(`The status of your SPN account could not be updated: %s`, err),
-					spnPageButton,
 				).AttachToModule(module)
 				resetSPNStatus(StatusFailed, true)
 				log.Errorf("spn/captain: failed to update ineligible account: %s", err)
@@ -255,12 +249,29 @@ func clientCheckAccountAndTokens(ctx context.Context) clientComponentResult {
 
 		// Check if user is eligible after a possible update.
 		if !user.MayUseTheSPN() {
+
+			// If package is generally valid, then the current package does not have access to the SPN.
+			if user.MayUse("") {
+				notifications.NotifyError(
+					"spn:package-not-eligible",
+					"SPN Not Included In Package",
+					"Your current Portmaster Package does not include access to the SPN. Please upgrade your package on the Account Page.",
+					spnOpenAccountPage,
+				).AttachToModule(module)
+				resetSPNStatus(StatusFailed, true)
+				return clientResultReconnect
+			}
+
+			// Otherwise, include the message from the user view.
+			message := "There is an issue with your Portmaster Package. Please check the Account Page."
+			if user.View != nil && user.View.Message != "" {
+				message = user.View.Message
+			}
 			notifications.NotifyError(
 				"spn:subscription-inactive",
-				"SPN Subscription Inactive",
-				`Your account is currently not subscribed to the SPN. Follow the instructions on account.safing.io to get started.`,
-				spnOpenAccountWeb,
-				spnPageButton,
+				"Portmaster Package Issue",
+				"Cannot enable SPN: "+message,
+				spnOpenAccountPage,
 			).AttachToModule(module)
 			resetSPNStatus(StatusFailed, true)
 			return clientResultReconnect
@@ -281,7 +292,6 @@ func clientCheckAccountAndTokens(ctx context.Context) clientComponentResult {
 					"spn:tokens-exhausted",
 					"SPN Access Tokens Exhausted",
 					`The Portmaster failed to get new access tokens to access the SPN. The Portmaster will automatically retry to get new access tokens.`,
-					spnPageButton,
 				).AttachToModule(module)
 				resetSPNStatus(StatusFailed, false)
 			}
@@ -337,7 +347,6 @@ func clientConnectToHomeHub(ctx context.Context) clientComponentResult {
 				"spn:home-hub-failure",
 				"SPN Failed to Connect",
 				fmt.Sprintf("Failed to connect to a home hub: %s. The Portmaster will retry to connect automatically.", err),
-				spnPageButton,
 			).AttachToModule(module)
 		}
 
