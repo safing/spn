@@ -23,7 +23,7 @@ type ExpansionTerminal struct {
 
 // ExpansionTerminalRelayOp the operation that connects to the relay.
 type ExpansionTerminalRelayOp struct {
-	*terminal.OperationBase
+	terminal.OperationBase
 
 	expansionTerminal *ExpansionTerminal
 }
@@ -40,7 +40,12 @@ func ExpandTo(from terminal.Terminal, routeTo string, encryptFor *hub.Hub) (*Exp
 	// Create options and bare expansion terminal.
 	opts := terminal.DefaultExpansionTerminalOpts()
 	opts.Encrypt = encryptFor != nil
-	expansion := &ExpansionTerminal{}
+	expansion := &ExpansionTerminal{
+		changeNotifyFuncReady: abool.New(),
+	}
+	expansion.relayOp = &ExpansionTerminalRelayOp{
+		expansionTerminal: expansion,
+	}
 
 	// Create base terminal for expansion.
 	base, initData, tErr := terminal.NewLocalBaseTerminal(
@@ -65,9 +70,6 @@ func ExpandTo(from terminal.Terminal, routeTo string, encryptFor *hub.Hub) (*Exp
 	opInitData.AppendContainer(initData)
 
 	// Start relay operation on connected Hub.
-	expansion.relayOp = &ExpansionTerminalRelayOp{
-		expansionTerminal: expansion,
-	}
 	tErr = from.StartOperation(expansion.relayOp, opInitData, 5*time.Second)
 	if tErr != nil {
 		return nil, tErr.Wrap("failed to start expansion operation")

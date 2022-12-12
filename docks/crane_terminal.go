@@ -111,12 +111,9 @@ func (t *CraneTerminal) IsBeingAbandoned() bool {
 	return t.Abandoning.IsSet()
 }
 
-// HandleAbandon gives the terminal the ability to cleanly shut down.
-// The returned error is the error to send to the other side.
+// HandleDestruction gives the terminal the ability to clean up.
+// The terminal has already fully shut down at this point.
 // Should never be called directly. Call Abandon() instead.
-func (t *CraneTerminal) HandleAbandon(err *terminal.Error) (errorToSend *terminal.Error) {
-	// Unregister terminal from crane.
+func (t *CraneTerminal) HandleDestruction(err *terminal.Error) {
 	t.crane.AbandonTerminal(t.ID(), err)
-
-	return err
 }

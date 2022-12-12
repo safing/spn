@@ -112,6 +112,7 @@ type StreamingTerminal struct {
 
 	test     *testing.T
 	id       uint32
+	crane    *Crane
 	recv     chan *terminal.Msg
 	testData []byte
 }
@@ -126,14 +127,15 @@ func (t *StreamingTerminal) Ctx() context.Context {
 
 func (t *StreamingTerminal) Deliver(msg *terminal.Msg) *terminal.Error {
 	t.recv <- msg
+	msg.FinishUnit()
 	return nil
 }
 
 func (t *StreamingTerminal) Abandon(err *terminal.Error) {
+	t.crane.AbandonTerminal(t.ID(), err)
 	if err.IsError() {
 		t.test.Errorf("streaming terminal %d failed: %s", t.id, err)
 	}
-	t.recv <- nil // Signal crane that we are shutting down.
 }
 
 func (t *StreamingTerminal) FmtID() string {
@@ -209,6 +211,7 @@ func testCraneWithStreaming(t *testing.T, testID string, encrypting bool, loadSi
 	st := &StreamingTerminal{
 		test:     t,
 		id:       8,
+		crane:    crane2,
 		recv:     make(chan *terminal.Msg),
 		testData: []byte("The quick brown fox jumps over the lazy dog."),
 	}
@@ -217,7 +220,7 @@ func testCraneWithStreaming(t *testing.T, testID string, encrypting bool, loadSi
 	// Run streaming test.
 	var streamingWg sync.WaitGroup
 	streamingWg.Add(2)
-	count := 1000
+	count := 10000
 	go func() {
 		for i := 1; i <= count; i++ {
 			msg := terminal.NewMsg(st.testData)
