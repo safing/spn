@@ -45,6 +45,13 @@ const (
 	StatusDeviceInactive = 423
 	// StatusNotLoggedIn [412 Precondition] is returned by the Portmaster, if an action required to be logged in, but the user is not logged in.
 	StatusNotLoggedIn = 412
+
+	// StatusUnknownError is a special status code that signifies an unknown or
+	// unexpected error by the API.
+	StatusUnknownError = -1
+	// StatusConnectionError is a special status code that signifies a
+	// connection error.
+	StatusConnectionError = -2
 )
 
 // Feature IDs.

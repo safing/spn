@@ -17,7 +17,7 @@ type View struct {
 }
 
 // UpdateView updates the view and handles plan/package fallbacks.
-func (u *User) UpdateView(requestStatus int) {
+func (u *User) UpdateView(requestStatusCode int) {
 	v := &View{}
 
 	// Clean up naming and fallbacks when finished.
@@ -43,44 +43,35 @@ func (u *User) UpdateView(requestStatus int) {
 	}()
 
 	// Set view data based on return code.
-	switch requestStatus {
-	case StatusInvalidAuth:
-		// Account deleted.
-		v.Message = fmt.Sprintf("Your account (%s) was deleted.", u.Username)
-		v.ShowAccountButton = true
-		v.ShowLoginButton = true
-		v.ShowLogoutButton = true
-		return
-
-	case StatusInvalidDevice:
-		// Device deleted.
-		v.Message = fmt.Sprintf("This device (%s) was removed from your account. Please log in again.", u.Device.Name)
-		v.ShowAccountButton = true
-		v.ShowLoginButton = true
-		v.ShowLogoutButton = true
-		return
-
-	case StatusDeviceInactive:
-		// Device inactive.
-		v.Message = fmt.Sprintf("This device (%s) was deactivated. Please activate it again.", u.Device.Name)
+	switch requestStatusCode {
+	case StatusInvalidAuth, StatusInvalidDevice, StatusDeviceInactive:
+		// Account deleted or Device inactive or deleted.
+		// When using token based auth, there is no difference between these cases.
+		v.Message = "This device was deactivated or removed from your account. Please log in again."
 		v.ShowAccountData = true
 		v.ShowAccountButton = true
-		v.ShowRefreshButton = true
+		v.ShowLoginButton = true
 		v.ShowLogoutButton = true
 		return
+
+	case StatusUnknownError:
+		v.Message = "There is an unknown error in the communication with the account server. The shown information may not be up to date. "
+
+	case StatusConnectionError:
+		v.Message = "Portmaster could not connect to the account server. The shown information may not be up to date. "
 	}
 
 	// Set view data based on profile data.
 	switch {
 	case u.State == UserStateLoggedOut:
-		// User (was) logged out.
+		// User logged out.
 		v.ShowAccountButton = true
 		v.ShowLoginButton = true
 		return
 
 	case u.State == UserStateSuspended:
 		// Account is suspended.
-		v.Message = fmt.Sprintf("Your account (%s) was suspended. Please contact support for details.", u.Username)
+		v.Message += fmt.Sprintf("Your account (%s) was suspended. Please contact support for details.", u.Username)
 		v.ShowAccountButton = true
 		v.ShowRefreshButton = true
 		v.ShowLogoutButton = true
@@ -88,19 +79,19 @@ func (u *User) UpdateView(requestStatus int) {
 
 	case u.Subscription == nil || u.Subscription.EndsAt == nil:
 		// Account has never had a subscription.
-		v.Message = "Upgrade on the Account Page to protect your privacy even more."
+		v.Message += "Upgrade on the Account Page to protect your privacy even more."
 
 	case time.Now().After(*u.Subscription.EndsAt):
 		// Subscription expired.
 		if u.CurrentPlan != nil {
-			v.Message = fmt.Sprintf("Your package %s has ended. Extend it on the Account Page.", u.CurrentPlan.Name)
+			v.Message += fmt.Sprintf("Your package %s has ended. Extend it on the Account Page.", u.CurrentPlan.Name)
 		} else {
-			v.Message = "Your package has ended. Extend it on the Account Page."
+			v.Message += "Your package has ended. Extend it on the Account Page."
 		}
 
 	case time.Until(*u.Subscription.EndsAt) < 7*24*time.Hour:
 		// Add generic ending soon message if the package ends in less than 7 days.
-		v.Message = "Your package ends soon. Extend it on the Account Page."
+		v.Message += "Your package ends soon. Extend it on the Account Page."
 	}
 
 	// Defaults for generally good accounts.

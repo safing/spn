@@ -109,9 +109,11 @@ func makeClientRequest(opts *clientRequestOptions) (resp *http.Response, err err
 	// Make request.
 	resp, err = accountClient.Do(request)
 	if err != nil {
+		updateUserWithFailedRequest(account.StatusConnectionError, false)
 		tokenIssuerFailed()
 		return nil, fmt.Errorf("http request failed: %w", err)
 	}
+	log.Debugf("spn/access: request to %s returned %s", request.URL, resp.Status)
 	defer func() {
 		_ = resp.Body.Close()
 	}()
@@ -122,17 +124,21 @@ func makeClientRequest(opts *clientRequestOptions) (resp *http.Response, err err
 
 	case account.StatusInvalidAuth, account.StatusInvalidDevice:
 		// Wrong username / password.
+		updateUserWithFailedRequest(resp.StatusCode, true)
 		return resp, ErrInvalidCredentials
 
 	case account.StatusReachedDeviceLimit:
 		// Device limit is reached.
+		updateUserWithFailedRequest(resp.StatusCode, true)
 		return resp, ErrDeviceLimitReached
 
 	case account.StatusDeviceInactive:
 		// Device is locked.
+		updateUserWithFailedRequest(resp.StatusCode, true)
 		return resp, ErrDeviceIsLocked
 
 	default:
+		updateUserWithFailedRequest(account.StatusUnknownError, false)
 		tokenIssuerFailed()
 		return resp, fmt.Errorf("unexpected reply: [%d] %s", resp.StatusCode, resp.Status)
 	}
@@ -163,6 +169,40 @@ func makeClientRequest(opts *clientRequestOptions) (resp *http.Response, err err
 
 	tokenIssuerIsFailing.UnSet()
 	return resp, nil
+}
+
+func updateUserWithFailedRequest(statusCode int, disableSubscription bool) {
+	// Get user from database.
+	user, err := GetUser()
+	if err != nil {
+		if !errors.Is(err, database.ErrNotFound) {
+			log.Warningf("spn/access: failed to get user to update with failed request: %s", err)
+		}
+		return
+	}
+
+	func() {
+		user.Lock()
+		defer user.Unlock()
+
+		// Ignore update if user state is undefined or logged out.
+		if user.State == "" || user.State == account.UserStateLoggedOut {
+			return
+		}
+
+		// Disable the subscription if desired.
+		if disableSubscription {
+			user.Subscription.EndsAt = nil
+		}
+
+		// Update view with the status code and save user.
+		user.UpdateView(statusCode)
+	}()
+
+	err = user.Save()
+	if err != nil {
+		log.Warningf("spn/access: failed to save user after update with failed request: %s", err)
+	}
 }
 
 // Login logs the user into the SPN account with the given username and password.
@@ -222,6 +262,8 @@ func Login(username, password string) (user *UserRecord, code int, err error) {
 		User:       userAccount,
 		LoggedInAt: &now,
 	}
+
+	user.UpdateView(0)
 	err = user.Save()
 	if err != nil {
 		return user, resp.StatusCode, fmt.Errorf("failed to save new user profile: %w", err)
