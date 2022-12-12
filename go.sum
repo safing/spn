@@ -124,10 +124,11 @@ github.com/safing/jess v0.3.0/go.mod h1:JbYsPk5iJZx0OXDZeMcjS9qEdkGVUg+DCA8Fw2Ld
 github.com/safing/jess v0.3.1 h1:cMZVhi2whW/YdD98MPLeLIWJndQ7o2QVt2HefQ/ByFA=
 github.com/safing/jess v0.3.1/go.mod h1:aj73Eot1zm2ETkJuw9hJlIO8bRom52uBbsCHemvlZmA=
 github.com/safing/portbase v0.15.2/go.mod h1:5bHi99fz7Hh/wOsZUOI631WF9ePSHk57c4fdlOMS91Y=
-github.com/safing/portbase v0.16.2 h1:ZlCZBZkKmgJDR+sHSRbFc9mM8m9qYtu8agE1xCirvQU=
 github.com/safing/portbase v0.16.2/go.mod h1:mzNCWqPbO7vIYbbK5PElGbudwd2vx4YPNawymL8Aro8=
-github.com/safing/portmaster v0.9.9 h1:B0mTB+idN+Jm6vPVBVAXrhSLJVgTJ/KASWD8kkdazLI=
-github.com/safing/portmaster v0.9.9/go.mod h1:C0ZO+gaUz5D69ZJJU8MefrbmVK9v7RKMHcA0ps/kllw=
+github.com/safing/portbase v0.16.4 h1:3w4Sc0TlSDvUS4Uk5TrsFXf98cwMbCf+BG5Bw6coxNk=
+github.com/safing/portbase v0.16.4/go.mod h1:mzNCWqPbO7vIYbbK5PElGbudwd2vx4YPNawymL8Aro8=
+github.com/safing/portmaster v1.0.4 h1:QS0X8uYX0hvjDYluQNPz228RAPbWmsKnFHTRdkm4h6o=
+github.com/safing/portmaster v1.0.4/go.mod h1:LNnat52aJr+/tju0khNn329m4vjtBEjxCL4iihjWK10=
 github.com/satori/go.uuid v1.2.0 h1:0uYX9dsZ2yD7q2RtLRtPSdGDWzjeM3TbMJP9utgA0ww=
 github.com/satori/go.uuid v1.2.0/go.mod h1:dA0hQrYB0VpLJoorglMZABFdXlWrHn1NEOzdhQKdks0=
 github.com/seehuhn/fortuna v1.0.1 h1:lu9+CHsmR0bZnx5Ay646XvCSRJ8PJTi5UYJwDBX68H0=
