@@ -143,6 +143,11 @@ func (user *UserRecord) Save() error {
 	defer accountCacheLock.Unlock()
 	cachedUser = user
 
+	// Update view if unset.
+	if user.View == nil {
+		user.UpdateView(0)
+	}
+
 	// Set, check and update metadata.
 	if !user.KeyIsSet() {
 		user.SetKey(userRecordKey)
