@@ -11,7 +11,6 @@ func DefaultCraneControllerOpts() *TerminalOpts {
 	return &TerminalOpts{
 		Padding:             0, // Crane already applies padding.
 		FlowControl:         FlowControlNone,
-		SubmitControl:       SubmitControlPlain,
 		UsePriorityDataMsgs: UsePriorityDataMsgs,
 	}
 }
@@ -22,7 +21,6 @@ func DefaultHomeHubTerminalOpts() *TerminalOpts {
 	return &TerminalOpts{
 		Padding:             0, // Crane already applies padding.
 		FlowControl:         FlowControlDFQ,
-		SubmitControl:       SubmitControlPlain,
 		UsePriorityDataMsgs: UsePriorityDataMsgs,
 	}
 }
@@ -33,7 +31,6 @@ func DefaultExpansionTerminalOpts() *TerminalOpts {
 	return &TerminalOpts{
 		Padding:             8,
 		FlowControl:         FlowControlDFQ,
-		SubmitControl:       SubmitControlPlain,
 		UsePriorityDataMsgs: UsePriorityDataMsgs,
 	}
 }

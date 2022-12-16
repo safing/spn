@@ -74,15 +74,14 @@ type TerminalBase struct { //nolint:golint,maligned // Being explicit is helpful
 	// parentID is the id of the parent component.
 	parentID string
 
-	// upstream represents the upstream (parent) terminal.
-	upstream Upstream
 	// ext holds the extended terminal so that the base terminal can access custom functions.
 	ext Terminal
+	// sendQueue holds message to be sent.
+	sendQueue chan *Msg
 	// flowControl holds the flow control system.
 	flowControl FlowControl
-	// submitControl holds the submit control system.
-	// It is used by operations to submit messages for sending.
-	submitControl SubmitControl
+	// upstream represents the upstream (parent) terminal.
+	upstream Upstream
 
 	// deliverProxy is populated with the configured deliver function
 	deliverProxy func(msg *Msg) *Error
@@ -151,6 +150,7 @@ func createTerminalBase(
 	t := &TerminalBase{
 		id:              id,
 		parentID:        parentID,
+		sendQueue:       make(chan *Msg),
 		upstream:        upstream,
 		waitForFlush:    abool.New(),
 		flush:           make(chan func()),
@@ -174,7 +174,7 @@ func createTerminalBase(
 	// Create flow control.
 	switch initMsg.FlowControl {
 	case FlowControlDFQ:
-		t.flowControl = NewDuplexFlowQueue(t.Ctx(), initMsg.FlowControlSize, t.upstream.Send)
+		t.flowControl = NewDuplexFlowQueue(t.Ctx(), initMsg.FlowControlSize, t.submitToUpstream)
 		t.deliverProxy = t.flowControl.Deliver
 		t.recvProxy = t.flowControl.Receive
 	case FlowControlNone:
@@ -185,18 +185,6 @@ func createTerminalBase(
 		fallthrough
 	default:
 		return nil, ErrInternalError.With("unknown flow control type %d", initMsg.FlowControl)
-	}
-
-	// Create submit control.
-	switch initMsg.SubmitControl {
-	case SubmitControlPlain:
-		t.submitControl = NewPlainChannel(t.ctx, int(initMsg.FlowControlSize))
-	case SubmitControlFair:
-		t.submitControl = NewFairChannel(t.ctx, int(initMsg.FlowControlSize))
-	case SubmitControlDefault:
-		fallthrough
-	default:
-		return nil, ErrInternalError.With("unknown submit control type %d", initMsg.SubmitControl)
 	}
 
 	return t, nil
@@ -294,22 +282,38 @@ func (t *TerminalBase) Handler(_ context.Context) error {
 	}
 }
 
+// submit is used to send message from the terminal to upstream, including
+// going through flow control, if configured.
+// This function should be used to send message from the terminal to upstream.
 func (t *TerminalBase) submit(msg *Msg, timeout time.Duration) {
+	// Submit directly if no flow control is configured.
+	if t.flowControl == nil {
+		t.submitToUpstream(msg, timeout)
+		return
+	}
+
+	// Pause unit before handing away.
+	msg.PauseUnit()
+
+	// Hand over to flow control.
+	err := t.flowControl.Send(msg, timeout)
+	if err.IsError() {
+		msg.FinishUnit()
+		t.Abandon(err.Wrap("failed to submit to flow control"))
+	}
+}
+
+// submitToUpstream is used to directly submit messages to upstream.
+// This function should only be used by the flow control or submit function.
+func (t *TerminalBase) submitToUpstream(msg *Msg, timeout time.Duration) {
 	// Add terminal ID as flow ID.
 	msg.FlowID = t.ID()
 
 	// Pause unit before handing away.
 	msg.PauseUnit()
 
-	// Submit to correct next step.
-	var err *Error
-	if t.flowControl != nil {
-		err = t.flowControl.Send(msg, timeout)
-	} else {
-		err = t.upstream.Send(msg, timeout)
-	}
-
-	// Handle any error.
+	// Submit to upstream.
+	err := t.upstream.Send(msg, timeout)
 	if err.IsError() {
 		msg.FinishUnit()
 		t.Abandon(err.Wrap("failed to submit to upstream"))
@@ -347,12 +351,12 @@ func (t *TerminalBase) Sender(_ context.Context) error {
 	defer msgBufferMsg.FinishUnit()
 
 	// Only receive message when not sending the current msg buffer.
-	recvOpMsgs := func() <-chan SubmitControlItem {
+	sendQueueOpMsgs := func() <-chan *Msg {
 		// Don't handle more messages, if the buffer is full.
 		if msgBufferLimitReached {
 			return nil
 		}
-		return t.submitControl.Recv()
+		return t.sendQueue
 	}
 
 	// Only wait for sending slot when the current msg buffer is ready to be sent.
@@ -395,8 +399,7 @@ handling:
 				atomic.StoreUint32(t.idleCounter, 0)
 			}
 
-		case submittedItem := <-recvOpMsgs():
-			msg := submittedItem.Accept()
+		case msg := <-sendQueueOpMsgs():
 			if msg == nil {
 				continue handling
 			}
@@ -829,11 +832,7 @@ func (t *TerminalBase) handleAbandonProcedure(err *Error) {
 		msg := NewMsg(err.Pack())
 		msg.FlowID = t.ID()
 		msg.Type = MsgTypeStop
-
-		tErr := t.submitControl.Submit(msg, 1*time.Second)
-		if tErr.IsError() {
-			log.Warningf("spn/terminal: terminal %s failed to send stop msg: %s", t.FmtID(), tErr)
-		}
+		t.submit(msg, 1*time.Second)
 	}
 
 	// Flush all messages before stopping.

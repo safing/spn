@@ -180,23 +180,47 @@ func (t *TerminalBase) StartOperation(op Operation, initData *container.Containe
 		initData.PrependAsBlock([]byte(op.Type()))
 	}
 
-	// Create msg.
+	// Create init msg.
 	msg := NewEmptyMsg()
 	msg.FlowID = op.ID()
 	msg.Type = MsgTypeInit
 	msg.Data = initData
 	msg.MakeUnitHighPriority()
 
-	return op.Send(msg, timeout)
+	// Send init msg.
+	err := op.Send(msg, timeout)
+	if err != nil {
+		msg.FinishUnit()
+	}
+	return err
 }
 
 // Send sends data via this terminal.
 // If a timeout is set, sending will fail after the given timeout passed.
 func (t *TerminalBase) Send(msg *Msg, timeout time.Duration) *Error {
-	// Pause unit before handing away.
-	msg.PauseUnit()
+	// Wait for processing slot.
+	msg.WaitForUnitSlot()
 
-	return t.submitControl.Submit(msg, timeout)
+	// Check if the send queue has available space.
+	select {
+	case t.sendQueue <- msg:
+		msg.PauseUnit()
+		return nil
+	default:
+	}
+
+	// Submit message to buffer, if space is available.
+	select {
+	case t.sendQueue <- msg:
+		msg.PauseUnit()
+		return nil
+	case <-TimedOut(timeout):
+		msg.FinishUnit()
+		return ErrTimeout.With("sending via terminal")
+	case <-t.Ctx().Done():
+		msg.FinishUnit()
+		return ErrStopping
+	}
 }
 
 // StopOperation sends the end signal with an optional error and then deletes
@@ -231,8 +255,9 @@ func (t *TerminalBase) StopOperation(op Operation, err *Error) {
 			msg.FlowID = op.ID()
 			msg.Type = MsgTypeStop
 
-			tErr := t.submitControl.Submit(msg, 10*time.Second)
+			tErr := t.Send(msg, 10*time.Second)
 			if tErr.IsError() {
+				msg.FinishUnit()
 				log.Warningf("spn/terminal: failed to send stop msg: %s", tErr)
 			}
 		}

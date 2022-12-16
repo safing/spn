@@ -35,9 +35,6 @@ type TerminalOpts struct { //nolint:golint,maligned // TODO: Rename.
 	FlowControl     FlowControlType `json:"fc,omitempty"`
 	FlowControlSize uint32          `json:"qs,omitempty"` // Previously was "QueueSize".
 
-	SubmitControl     SubmitControlType `json:"sc,omitempty"`
-	SubmitControlSize uint32            `json:"ss,omitempty"`
-
 	UsePriorityDataMsgs bool `json:"pr,omitempty"`
 }
 
@@ -119,25 +116,6 @@ func (opts *TerminalOpts) Check(useDefaultsForRequired bool) *Error {
 	}
 	if opts.FlowControlSize <= 0 || opts.FlowControlSize > MaxQueueSize {
 		return ErrInvalidOptions.With("invalid flow control size of %d", opts.FlowControlSize)
-	}
-
-	// SubmitControl is optional.
-	switch opts.SubmitControl {
-	case SubmitControlDefault:
-		// Set to default submit control.
-		opts.SubmitControl = defaultSubmitControl
-	case SubmitControlPlain, SubmitControlFair:
-		// Ok.
-	default:
-		return ErrInvalidOptions.With("unknown submit control type: %d", opts.SubmitControl)
-	}
-
-	// SubmitControlSize is optional.
-	if opts.SubmitControlSize == 0 {
-		opts.SubmitControlSize = opts.SubmitControl.DefaultSize()
-	}
-	if opts.SubmitControlSize > MaxSubmitControlSize {
-		return ErrInvalidOptions.With("invalid flow control size of %d", opts.SubmitControlSize)
 	}
 
 	return nil

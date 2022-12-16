@@ -37,17 +37,13 @@ func TestTerminals(t *testing.T) {
 				flowControlSize: defaultTestQueueSize,
 			},
 		} {
-			// Test with different submit controls.
-			for _, submitControl := range []SubmitControlType{SubmitControlPlain, SubmitControlFair} {
-				// Run tests with combined options.
-				testTerminals(t, identity, &TerminalOpts{
-					Encrypt:         encrypt,
-					Padding:         defaultTestPadding,
-					FlowControl:     fc.flowControl,
-					FlowControlSize: fc.flowControlSize,
-					SubmitControl:   submitControl,
-				})
-			}
+			// Run tests with combined options.
+			testTerminals(t, identity, &TerminalOpts{
+				Encrypt:         encrypt,
+				Padding:         defaultTestPadding,
+				FlowControl:     fc.flowControl,
+				FlowControlSize: fc.flowControlSize,
+			})
 		}
 	}
 }
@@ -92,10 +88,9 @@ func testTerminals(t *testing.T, identity *cabin.Identity, terminalOpts *Termina
 	// Start testing with counters.
 	countToQueueSize := uint64(terminalOpts.FlowControlSize)
 	optionsSuffix := fmt.Sprintf(
-		"encrypt=%v,flowType=%d,submitType=%d",
+		"encrypt=%v,flowType=%d",
 		terminalOpts.Encrypt,
 		terminalOpts.FlowControl,
-		terminalOpts.SubmitControl,
 	)
 
 	testTerminalWithCounters(t, term1, term2, &testWithCounterOpts{
@@ -196,6 +191,13 @@ func testTerminals(t *testing.T, identity *cabin.Identity, terminalOpts *Termina
 		clientCountTo: countToQueueSize * 1000,
 		serverCountTo: countToQueueSize * 1000,
 	})
+
+	// Clean up.
+	term1.Abandon(nil)
+	term2.Abandon(nil)
+
+	// Give some time for the last log messages and clean up.
+	time.Sleep(100 * time.Millisecond)
 }
 
 func createForwardingUpstream(t *testing.T, srcName, dstName string, deliverFunc func(*Msg) *Error) Upstream {
