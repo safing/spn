@@ -37,9 +37,9 @@ func (msgType GossipMsgType) String() string {
 
 // GossipOp is used to gossip Hub messages.
 type GossipOp struct {
-	terminal.OpBase
+	terminal.OperationBase
 
-	controller *docks.CraneControllerTerminal
+	craneID string
 }
 
 // Type returns the type ID.
@@ -48,10 +48,10 @@ func (op *GossipOp) Type() string {
 }
 
 func init() {
-	terminal.RegisterOpType(terminal.OpParams{
+	terminal.RegisterOpType(terminal.OperationFactory{
 		Type:     GossipOpType,
 		Requires: terminal.IsCraneController,
-		RunOp:    runGossipOp,
+		Start:    runGossipOp,
 	})
 }
 
@@ -59,11 +59,10 @@ func init() {
 func NewGossipOp(controller *docks.CraneControllerTerminal) (*GossipOp, *terminal.Error) {
 	// Create and init.
 	op := &GossipOp{
-		controller: controller,
+		craneID: controller.Crane.ID,
 	}
-	op.OpBase.Init()
-	err := controller.OpInit(op, nil)
-	if err != nil {
+	err := controller.StartOperation(op, nil, 1*time.Minute)
+	if err.IsError() {
 		return nil, err
 	}
 
@@ -72,7 +71,7 @@ func NewGossipOp(controller *docks.CraneControllerTerminal) (*GossipOp, *termina
 	return op, nil
 }
 
-func runGossipOp(t terminal.OpTerminal, opID uint32, data *container.Container) (terminal.Operation, *terminal.Error) {
+func runGossipOp(t terminal.Terminal, opID uint32, data *container.Container) (terminal.Operation, *terminal.Error) {
 	// Check if we are run by a controller.
 	controller, ok := t.(*docks.CraneControllerTerminal)
 	if !ok {
@@ -81,35 +80,41 @@ func runGossipOp(t terminal.OpTerminal, opID uint32, data *container.Container) 
 
 	// Create, init, register and return.
 	op := &GossipOp{
-		controller: controller,
+		craneID: controller.Crane.ID,
 	}
-	op.OpBase.Init()
-	op.OpBase.SetID(opID)
+	op.InitOperationBase(t, opID)
 	registerGossipOp(controller.Crane.ID, op)
 	return op, nil
 }
 
 func (op *GossipOp) sendMsg(msgType GossipMsgType, data []byte) {
-	c := container.New(
+	// Create message.
+	msg := op.NewEmptyMsg()
+	msg.Data = container.New(
 		varint.Pack8(uint8(msgType)),
 		data,
 	)
-	err := op.controller.OpSend(op, c, time.Second, false)
-	if err != nil {
-		log.Debugf("spn/captain: failed to forward %s via %s: %s", msgType, op.controller.Crane.ID, err)
+	msg.MakeUnitHighPriority()
+
+	// Send.
+	err := op.Send(msg, 1*time.Second)
+	if err.IsError() {
+		log.Debugf("spn/captain: failed to forward %s via %s: %s", msgType, op.craneID, err)
 	}
 }
 
 // Deliver delivers a message to the operation.
-func (op *GossipOp) Deliver(c *container.Container) *terminal.Error {
-	gossipMsgTypeN, err := c.GetNextN8()
+func (op *GossipOp) Deliver(msg *terminal.Msg) *terminal.Error {
+	defer msg.FinishUnit()
+
+	gossipMsgTypeN, err := msg.Data.GetNextN8()
 	if err != nil {
 		return terminal.ErrMalformedData.With("failed to parse gossip message type")
 	}
 	gossipMsgType := GossipMsgType(gossipMsgTypeN)
 
 	// Prepare data.
-	data := c.CompileData()
+	data := msg.Data.CompileData()
 	var announcementData, statusData []byte
 	switch gossipMsgType {
 	case GossipHubAnnouncementMsg:
@@ -117,7 +122,7 @@ func (op *GossipOp) Deliver(c *container.Container) *terminal.Error {
 	case GossipHubStatusMsg:
 		statusData = data
 	default:
-		log.Warningf("spn/captain: received unknown gossip message type from %s: %d", op.controller.Crane.ID, gossipMsgType)
+		log.Warningf("spn/captain: received unknown gossip message type from %s: %d", op.craneID, gossipMsgType)
 		return nil
 	}
 
@@ -125,9 +130,9 @@ func (op *GossipOp) Deliver(c *container.Container) *terminal.Error {
 	h, forward, tErr := docks.ImportAndVerifyHubInfo(module.Ctx, "", announcementData, statusData, conf.MainMapName, conf.MainMapScope)
 	if tErr != nil {
 		if tErr.Is(hub.ErrOldData) {
-			log.Debugf("spn/captain: ignoring old %s from %s", gossipMsgType, op.controller.Crane.ID)
+			log.Debugf("spn/captain: ignoring old %s from %s", gossipMsgType, op.craneID)
 		} else {
-			log.Warningf("spn/captain: failed to import %s from %s: %s", gossipMsgType, op.controller.Crane.ID, tErr)
+			log.Warningf("spn/captain: failed to import %s from %s: %s", gossipMsgType, op.craneID, tErr)
 		}
 	} else if forward {
 		// Only log if we received something to save/forward.
@@ -136,13 +141,15 @@ func (op *GossipOp) Deliver(c *container.Container) *terminal.Error {
 
 	// Relay data.
 	if forward {
-		gossipRelayMsg(op.controller.Crane.ID, gossipMsgType, data)
+		gossipRelayMsg(op.craneID, gossipMsgType, data)
 	}
 	return nil
 }
 
-// End ends the operation.
-func (op *GossipOp) End(err *terminal.Error) (errorToSend *terminal.Error) {
-	deleteGossipOp(op.controller.Crane.ID)
+// HandleStop gives the operation the ability to cleanly shut down.
+// The returned error is the error to send to the other side.
+// Should never be called directly. Call Stop() instead.
+func (op *GossipOp) HandleStop(err *terminal.Error) (errorToSend *terminal.Error) {
+	deleteGossipOp(op.craneID)
 	return err
 }

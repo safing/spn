@@ -150,7 +150,7 @@ func connectToHomeHub(ctx context.Context, dst *hub.Hub) error {
 	}
 
 	// Create communication terminal.
-	homeTerminal, initData, tErr := docks.NewLocalCraneTerminal(crane, nil, terminal.DefaultHomeHubTerminalOpts(), nil)
+	homeTerminal, initData, tErr := docks.NewLocalCraneTerminal(crane, nil, terminal.DefaultHomeHubTerminalOpts())
 	if tErr != nil {
 		return tErr.Wrap("failed to create home terminal")
 	}
@@ -165,7 +165,7 @@ func connectToHomeHub(ctx context.Context, dst *hub.Hub) error {
 		return tErr.Wrap("failed to authorize")
 	}
 	select {
-	case tErr := <-authOp.Ended:
+	case tErr := <-authOp.Result:
 		if !tErr.Is(terminal.ErrExplicitAck) {
 			return tErr.Wrap("failed to authenticate to")
 		}

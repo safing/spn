@@ -13,7 +13,7 @@ import (
 const (
 	defaultTestQueueSize = 16
 	defaultTestPadding   = 8
-	logTestCraneMsgs     = true
+	logTestCraneMsgs     = false
 )
 
 // TestTerminal is a terminal for running tests.
@@ -175,7 +175,11 @@ func NewSimpleTestTerminalPair(delay time.Duration, delayQueueSize int, opts *Te
 // BareTerminal is a bare terminal that just returns errors for testing.
 type BareTerminal struct{}
 
-var errNotImplementedByBareTerminal = ErrInternalError.With("not implemented by bare terminal")
+var (
+	_ Terminal = &BareTerminal{}
+
+	errNotImplementedByBareTerminal = ErrInternalError.With("not implemented by bare terminal")
+)
 
 // ID returns the terminal ID.
 func (t *BareTerminal) ID() uint32 {

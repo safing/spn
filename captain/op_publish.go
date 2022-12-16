@@ -1,6 +1,8 @@
 package captain
 
 import (
+	"time"
+
 	"github.com/safing/portbase/container"
 	"github.com/safing/spn/cabin"
 	"github.com/safing/spn/conf"
@@ -14,7 +16,7 @@ const PublishOpType string = "publish"
 
 // PublishOp is used to publish a connection.
 type PublishOp struct {
-	terminal.OpBase
+	terminal.OperationBase
 	controller *docks.CraneControllerTerminal
 
 	identity      *cabin.Identity
@@ -29,10 +31,10 @@ func (op *PublishOp) Type() string {
 }
 
 func init() {
-	terminal.RegisterOpType(terminal.OpParams{
+	terminal.RegisterOpType(terminal.OperationFactory{
 		Type:     PublishOpType,
 		Requires: terminal.IsCraneController,
-		RunOp:    runPublishOp,
+		Start:    runPublishOp,
 	})
 }
 
@@ -44,7 +46,6 @@ func NewPublishOp(controller *docks.CraneControllerTerminal, identity *cabin.Ide
 		identity:   identity,
 		result:     make(chan *terminal.Error, 1),
 	}
-	op.OpBase.Init()
 	msg := container.New()
 
 	// Add Hub Announcement.
@@ -61,14 +62,14 @@ func NewPublishOp(controller *docks.CraneControllerTerminal, identity *cabin.Ide
 	}
 	msg.AppendAsBlock(statusData)
 
-	tErr := controller.OpInit(op, msg)
+	tErr := controller.StartOperation(op, msg, 10*time.Second)
 	if tErr != nil {
 		return nil, tErr
 	}
 	return op, nil
 }
 
-func runPublishOp(t terminal.OpTerminal, opID uint32, data *container.Container) (terminal.Operation, *terminal.Error) {
+func runPublishOp(t terminal.Terminal, opID uint32, data *container.Container) (terminal.Operation, *terminal.Error) {
 	// Check if we are run by a controller.
 	controller, ok := t.(*docks.CraneControllerTerminal)
 	if !ok {
@@ -110,11 +111,10 @@ func runPublishOp(t terminal.OpTerminal, opID uint32, data *container.Container)
 		verification:  v,
 		result:        make(chan *terminal.Error, 1),
 	}
-	op.OpBase.Init()
-	op.OpBase.SetID(opID)
+	op.InitOperationBase(t, opID)
 
 	// Reply with verification request.
-	tErr = controller.OpSend(op, container.New(request), 0, false)
+	tErr = op.Send(op.NewMsg(request), 10*time.Second)
 	if tErr != nil {
 		return nil, tErr.Wrap("failed to send verification request")
 	}
@@ -123,22 +123,24 @@ func runPublishOp(t terminal.OpTerminal, opID uint32, data *container.Container)
 }
 
 // Deliver delivers a message to the operation.
-func (op *PublishOp) Deliver(c *container.Container) *terminal.Error {
+func (op *PublishOp) Deliver(msg *terminal.Msg) *terminal.Error {
+	defer msg.FinishUnit()
+
 	if op.identity != nil {
 		// Client
 
 		// Sign the received verification request.
-		response, err := op.identity.SignVerificationRequest(c.CompileData(), PublishOpType, "", "")
+		response, err := op.identity.SignVerificationRequest(msg.Data.CompileData(), PublishOpType, "", "")
 		if err != nil {
 			return terminal.ErrPermissinDenied.With("signing verification request failed: %w", err)
 		}
 
-		return op.controller.OpSend(op, container.New(response), 0, false)
+		return op.Send(op.NewMsg(response), 10*time.Second)
 	} else if op.requestingHub != nil {
 		// Server
 
 		// Verify the signed request.
-		err := op.verification.Verify(c.CompileData(), op.requestingHub)
+		err := op.verification.Verify(msg.Data.CompileData(), op.requestingHub)
 		if err != nil {
 			return terminal.ErrPermissinDenied.With("checking verification request failed: %w", err)
 		}
@@ -153,8 +155,10 @@ func (op *PublishOp) Result() <-chan *terminal.Error {
 	return op.result
 }
 
-// End ends the operation.
-func (op *PublishOp) End(tErr *terminal.Error) (errorToSend *terminal.Error) {
+// HandleStop gives the operation the ability to cleanly shut down.
+// The returned error is the error to send to the other side.
+// Should never be called directly. Call Stop() instead.
+func (op *PublishOp) HandleStop(tErr *terminal.Error) (errorToSend *terminal.Error) {
 	if tErr.Is(terminal.ErrExplicitAck) {
 		// TODO: Check for concurrenct access.
 		if op.controller.Crane.ConnectedHub == nil {

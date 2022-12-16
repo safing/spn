@@ -37,7 +37,7 @@ type ConnectOp struct {
 	incomingTraffic *uint64
 	outgoingTraffic *uint64
 
-	t       terminal.OpTerminal
+	t       terminal.Terminal
 	conn    net.Conn
 	request *ConnectRequest
 	entry   bool
@@ -78,10 +78,10 @@ func (r *ConnectRequest) String() string {
 }
 
 func init() {
-	terminal.RegisterOpType(terminal.OpParams{
+	terminal.RegisterOpType(terminal.OperationFactory{
 		Type:     ConnectOpType,
 		Requires: terminal.MayConnect,
-		RunOp:    runConnectOp,
+		Start:    startConnectOp,
 	})
 }
 
@@ -109,9 +109,8 @@ func NewConnectOp(tunnel *Tunnel) (*ConnectOp, *terminal.Error) {
 		entry:   true,
 		tunnel:  tunnel,
 	}
-	op.OpBase.Init()
 	op.ctx, op.cancelCtx = context.WithCancel(module.Ctx)
-	op.DuplexFlowQueue = terminal.NewDuplexFlowQueue(op.Ctx(), request.QueueSize, op.submitUpstream)
+	op.dfq = terminal.NewDuplexFlowQueue(op.Ctx(), request.QueueSize, op.submitUpstream)
 
 	// Prepare init msg.
 	data, err := dsd.Dump(request, dsd.CBOR)
@@ -120,7 +119,7 @@ func NewConnectOp(tunnel *Tunnel) (*ConnectOp, *terminal.Error) {
 	}
 
 	// Initialize.
-	tErr := op.t.OpInit(op, container.New(data))
+	tErr := op.t.StartOperation(op, container.New(data), 5*time.Second)
 	if err != nil {
 		return nil, tErr
 	}
@@ -131,13 +130,13 @@ func NewConnectOp(tunnel *Tunnel) (*ConnectOp, *terminal.Error) {
 
 	module.StartWorker("connect op conn reader", op.connReader)
 	module.StartWorker("connect op conn writer", op.connWriter)
-	module.StartWorker("connect op flow handler", op.DuplexFlowQueue.FlowHandler)
+	module.StartWorker("connect op flow handler", op.dfq.FlowHandler)
 
 	log.Infof("spn/crew: connected to %s via %s", request, tunnel.dstPin.Hub)
 	return op, nil
 }
 
-func runConnectOp(t terminal.OpTerminal, opID uint32, data *container.Container) (terminal.Operation, *terminal.Error) {
+func startConnectOp(t terminal.Terminal, opID uint32, data *container.Container) (terminal.Operation, *terminal.Error) {
 	// Submit metrics.
 	newConnectOp.Inc()
 
@@ -190,10 +189,9 @@ func runConnectOp(t terminal.OpTerminal, opID uint32, data *container.Container)
 		conn:    conn,
 		request: request,
 	}
-	op.OpBase.Init()
-	op.OpBase.SetID(opID)
+	op.InitOperationBase(t, opID)
 	op.ctx, op.cancelCtx = context.WithCancel(t.Ctx())
-	op.DuplexFlowQueue = terminal.NewDuplexFlowQueue(op.Ctx(), request.QueueSize, op.submitUpstream)
+	op.dfq = terminal.NewDuplexFlowQueue(op.Ctx(), request.QueueSize, op.submitUpstream)
 
 	// Setup metrics.
 	op.incomingTraffic = new(uint64)
@@ -202,34 +200,30 @@ func runConnectOp(t terminal.OpTerminal, opID uint32, data *container.Container)
 	// Start worker.
 	module.StartWorker("connect op conn reader", op.connReader)
 	module.StartWorker("connect op conn writer", op.connWriter)
-	module.StartWorker("connect op flow handler", op.DuplexFlowQueue.FlowHandler)
+	module.StartWorker("connect op flow handler", op.dfq.FlowHandler)
 
 	log.Infof("spn/crew: connected op %s#%d to %s", op.t.FmtID(), op.ID(), request)
 	return op, nil
 }
 
-func (op *ConnectOp) submitUpstream(c *container.Container, highPriority bool) *terminal.Error {
-	tErr := op.t.OpSend(op, c, 0, highPriority)
-	if tErr != nil {
-		op.t.OpEnd(op, tErr.Wrap("failed to send data (op) read from %s", op.connectedType()))
+func (op *ConnectOp) submitUpstream(msg *terminal.Msg, timeout time.Duration) {
+	err := op.Send(msg, timeout)
+	if err.IsError() {
+		msg.FinishUnit()
+		op.Stop(op, err.Wrap("failed to send data (op) read from %s", op.connectedType()))
 	}
-	return tErr
 }
 
 const (
 	readBufSize = 1500
 
-	// High priority up to first 1MB.
-	highPrioLimit = 1_000_000
+	// High priority up to first 10MB.
+	highPrioThreshold = 10_000_000
 
-	// Medium priority up to first 100MB with max of 24 Mbit/s _under load_ with 1500B packets.
-	mediumPrioLimit    = 100_000_000
-	mediumPrioMaxMbit  = 24
-	mediumPrioMaxDelay = time.Second / ((mediumPrioMaxMbit / 8) * 1_000_000 / readBufSize)
-
-	// Low priority after 100MB with max of 8 Mbit/s _under load_ with 1500B packets.
-	lowPrioMaxMbit  = 8
-	lowPrioMaxDelay = time.Second / ((lowPrioMaxMbit / 8) * 1_000_000 / readBufSize)
+	// Rate limit to 100 Mbit/s (with 1500B packets) after 1GB traffic.
+	rateLimitThreshold   = 1_000_000_000
+	rateLimitMaxMbit     = 100
+	rateLimitPacketDelay = time.Second / ((rateLimitMaxMbit / 8) * 1_000_000 / readBufSize)
 )
 
 func (op *ConnectOp) connReader(_ context.Context) error {
@@ -245,22 +239,15 @@ func (op *ConnectOp) connReader(_ context.Context) error {
 		}()
 	}
 
-	// Setup micro task done signal.
-	microTaskDone := func() {}
-	defer microTaskDone()
-
 	for {
-		// Signal that we've finished the micro task.
-		microTaskDone()
-
 		// Read from connection.
 		buf := make([]byte, readBufSize)
 		n, err := op.conn.Read(buf)
 		if err != nil {
 			if errors.Is(err, io.EOF) {
-				op.t.OpEnd(op, terminal.ErrStopping.With("connection to %s was closed on read", op.connectedType()))
+				op.Stop(op, terminal.ErrStopping.With("connection to %s was closed on read", op.connectedType()))
 			} else {
-				op.t.OpEnd(op, terminal.ErrConnectionError.With("failed to read from %s: %w", op.connectedType(), err))
+				op.Stop(op, terminal.ErrConnectionError.With("failed to read from %s: %w", op.connectedType(), err))
 			}
 			return nil
 		}
@@ -273,54 +260,66 @@ func (op *ConnectOp) connReader(_ context.Context) error {
 		connectOpIncomingBytes.Add(n)
 		inBytes := atomic.AddUint64(op.incomingTraffic, uint64(n))
 
-		// Check if message should be prioritized.
+		// Create message from data.
+		msg := op.NewMsg(buf[:n])
+
+		// Define priority and possibly wait for slot.
 		switch {
-		case inBytes < highPrioLimit:
-			microTaskDone = module.SignalHighPriorityMicroTask()
-		case inBytes < mediumPrioLimit:
-			microTaskDone = module.SignalMicroTask(mediumPrioMaxDelay)
-		default:
-			microTaskDone = module.SignalLowPriorityMicroTask(lowPrioMaxDelay)
+		case inBytes > rateLimitThreshold:
+			time.Sleep(rateLimitPacketDelay)
+			fallthrough
+		case inBytes > highPrioThreshold:
+			msg.WaitForUnitSlot()
+		case op.request.UsePriorityDataMsgs:
+			msg.MakeUnitHighPriority()
 		}
 
-		tErr := op.DuplexFlowQueue.Send(
-			container.New(buf[:n]),
-			op.request.UsePriorityDataMsgs && inBytes < highPrioLimit,
+		// Send packet.
+		tErr := op.dfq.Send(
+			msg,
+			30*time.Second,
 		)
-		if tErr != nil {
-			op.t.OpEnd(op, tErr.Wrap("failed to send data (dfq) read from %s", op.connectedType()))
+		if tErr.IsError() {
+			msg.FinishUnit()
+			op.Stop(op, tErr.Wrap("failed to send data (dfq) from %s", op.connectedType()))
 			return nil
 		}
 	}
 }
 
 // Deliver delivers a messages to the operation.
-func (op *ConnectOp) Deliver(c *container.Container) *terminal.Error {
-	return op.DuplexFlowQueue.Deliver(c)
+func (op *ConnectOp) Deliver(msg *terminal.Msg) *terminal.Error {
+	return op.dfq.Deliver(msg)
 }
 
 func (op *ConnectOp) connWriter(_ context.Context) error {
 	defer func() {
+		// Close connection.
 		_ = op.conn.Close()
 	}()
 
+	var msg *terminal.Msg
+	defer msg.FinishUnit()
+
 writing:
 	for {
-		var c *container.Container
+		msg.FinishUnit()
+
 		select {
-		case c = <-op.DuplexFlowQueue.Receive():
+		case msg = <-op.dfq.Receive():
 		default:
 			// Handle all data before also listening for the context cancel.
 			// This ensures all data is written properly before stopping.
 			select {
-			case c = <-op.DuplexFlowQueue.Receive():
+			case msg = <-op.dfq.Receive():
 			case <-op.ctx.Done():
-				op.t.OpEnd(op, terminal.ErrStopping.With("operation was canceled"))
+				op.Stop(op, terminal.ErrCanceled)
 				return nil
 			}
 		}
 
-		data := c.CompileData()
+		// TODO: Instead of compiling data here again, can we send it as in the container?
+		data := msg.Data.CompileData()
 		if len(data) == 0 {
 			continue writing
 		}
@@ -342,13 +341,13 @@ writing:
 			switch {
 			case err != nil:
 				if errors.Is(err, io.EOF) {
-					op.t.OpEnd(op, terminal.ErrStopping.With("connection to %s was closed on write", op.connectedType()))
+					op.Stop(op, terminal.ErrStopping.With("connection to %s was closed on write", op.connectedType()))
 				} else {
-					op.t.OpEnd(op, terminal.ErrConnectionError.With("failed to send to %s: %w", op.connectedType(), err))
+					op.Stop(op, terminal.ErrConnectionError.With("failed to send to %s: %w", op.connectedType(), err))
 				}
 				return nil
 			case n == 0:
-				op.t.OpEnd(op, terminal.ErrConnectionError.With("sent 0 bytes to %s", op.connectedType()))
+				op.Stop(op, terminal.ErrConnectionError.With("sent 0 bytes to %s", op.connectedType()))
 				return nil
 			case n < len(data):
 				// If not all data was sent, try again.
@@ -368,14 +367,16 @@ func (op *ConnectOp) connectedType() string {
 	return "destination"
 }
 
-// End ends the operation.
-func (op *ConnectOp) End(err *terminal.Error) (errorToSend *terminal.Error) {
+// HandleStop gives the operation the ability to cleanly shut down.
+// The returned error is the error to send to the other side.
+// Should never be called directly. Call Stop() instead.
+func (op *ConnectOp) HandleStop(err *terminal.Error) (errorToSend *terminal.Error) {
 	if err.IsError() {
 		reportConnectError(err)
 	}
 
 	// Send all data before closing.
-	op.DuplexFlowQueue.Flush()
+	op.dfq.Flush()
 
 	// Cancel workers.
 	op.cancelCtx()
@@ -385,7 +386,8 @@ func (op *ConnectOp) End(err *terminal.Error) (errorToSend *terminal.Error) {
 	if op.entry && // On clients only.
 		err.IsError() &&
 		err.Is(terminal.ErrConnectionError) &&
-		atomic.LoadUint64(op.outgoingTraffic) == 0 { // Only if not data was received.
+		atomic.LoadUint64(op.outgoingTraffic) == 0 {
+		// Only if no data was received (ie. sent to local application).
 		op.tunnel.avoidDestinationHub()
 	}
 
@@ -394,15 +396,4 @@ func (op *ConnectOp) End(err *terminal.Error) (errorToSend *terminal.Error) {
 		return terminal.ErrStopping
 	}
 	return err
-}
-
-// Abandon ends the operation.
-func (op *ConnectOp) Abandon(err *terminal.Error) {
-	// Proxy for DuplexFlowQueue
-	op.t.OpEnd(op, err)
-}
-
-// FmtID formats the operation ID.
-func (op *ConnectOp) FmtID() string {
-	return fmt.Sprintf("%s>%d", op.t.FmtID(), op.ID())
 }

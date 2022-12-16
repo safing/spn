@@ -19,9 +19,9 @@ const GossipQueryOpType string = "gossip/query"
 
 // GossipQueryOp is used to query gossip messages.
 type GossipQueryOp struct {
-	terminal.OpBase
+	terminal.OperationBase
 
-	t         terminal.OpTerminal
+	t         terminal.Terminal
 	client    bool
 	importCnt int
 
@@ -35,35 +35,33 @@ func (op *GossipQueryOp) Type() string {
 }
 
 func init() {
-	terminal.RegisterOpType(terminal.OpParams{
+	terminal.RegisterOpType(terminal.OperationFactory{
 		Type:     GossipQueryOpType,
 		Requires: terminal.IsCraneController,
-		RunOp:    runGossipQueryOp,
+		Start:    runGossipQueryOp,
 	})
 }
 
 // NewGossipQueryOp starts a new gossip query operation.
-func NewGossipQueryOp(t terminal.OpTerminal) (*GossipQueryOp, *terminal.Error) {
+func NewGossipQueryOp(t terminal.Terminal) (*GossipQueryOp, *terminal.Error) {
 	// Create and init.
 	op := &GossipQueryOp{
 		t:      t,
 		client: true,
 	}
 	op.ctx, op.cancelCtx = context.WithCancel(t.Ctx())
-	op.OpBase.Init()
-	err := t.OpInit(op, nil)
+	err := t.StartOperation(op, nil, 1*time.Minute)
 	if err != nil {
 		return nil, err
 	}
 	return op, nil
 }
 
-func runGossipQueryOp(t terminal.OpTerminal, opID uint32, data *container.Container) (terminal.Operation, *terminal.Error) {
+func runGossipQueryOp(t terminal.Terminal, opID uint32, data *container.Container) (terminal.Operation, *terminal.Error) {
 	// Create, init, register and return.
 	op := &GossipQueryOp{t: t}
 	op.ctx, op.cancelCtx = context.WithCancel(t.Ctx())
-	op.OpBase.Init()
-	op.OpBase.SetID(opID)
+	op.InitOperationBase(t, opID)
 
 	module.StartWorker("gossip query handler", op.handler)
 
@@ -73,17 +71,17 @@ func runGossipQueryOp(t terminal.OpTerminal, opID uint32, data *container.Contai
 func (op *GossipQueryOp) handler(_ context.Context) error {
 	tErr := op.sendMsgs(hub.MsgTypeAnnouncement)
 	if tErr != nil {
-		op.t.OpEnd(op, tErr)
+		op.Stop(op, tErr)
 		return nil // Clean worker exit.
 	}
 
 	tErr = op.sendMsgs(hub.MsgTypeStatus)
 	if tErr != nil {
-		op.t.OpEnd(op, tErr)
+		op.Stop(op, tErr)
 		return nil // Clean worker exit.
 	}
 
-	op.t.OpEnd(op, nil)
+	op.Stop(op, nil)
 	return nil // Clean worker exit.
 }
 
@@ -129,7 +127,10 @@ iterating:
 
 			// Send msg.
 			if c != nil {
-				tErr := op.t.OpSend(op, c, 100*time.Millisecond, false)
+				msg := op.NewEmptyMsg()
+				msg.MakeUnitHighPriority()
+				msg.Data = c
+				tErr := op.Send(msg, 1*time.Second)
 				if tErr != nil {
 					return tErr.Wrap("failed to send msg")
 				}
@@ -142,15 +143,17 @@ iterating:
 }
 
 // Deliver delivers the message to the operation.
-func (op *GossipQueryOp) Deliver(c *container.Container) *terminal.Error {
-	gossipMsgTypeN, err := c.GetNextN8()
+func (op *GossipQueryOp) Deliver(msg *terminal.Msg) *terminal.Error {
+	defer msg.FinishUnit()
+
+	gossipMsgTypeN, err := msg.Data.GetNextN8()
 	if err != nil {
 		return terminal.ErrMalformedData.With("failed to parse gossip message type")
 	}
 	gossipMsgType := GossipMsgType(gossipMsgTypeN)
 
 	// Prepare data.
-	data := c.CompileData()
+	data := msg.Data.CompileData()
 	var announcementData, statusData []byte
 	switch gossipMsgType {
 	case GossipHubAnnouncementMsg:
@@ -180,8 +183,10 @@ func (op *GossipQueryOp) Deliver(c *container.Container) *terminal.Error {
 	return nil
 }
 
-// End ends the operation.
-func (op *GossipQueryOp) End(err *terminal.Error) (errorToSend *terminal.Error) {
+// HandleStop gives the operation the ability to cleanly shut down.
+// The returned error is the error to send to the other side.
+// Should never be called directly. Call Stop() instead.
+func (op *GossipQueryOp) HandleStop(err *terminal.Error) (errorToSend *terminal.Error) {
 	if op.client {
 		log.Infof("spn/captain: gossip query imported %d entries", op.importCnt)
 	}

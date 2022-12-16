@@ -9,7 +9,6 @@ import (
 	"github.com/tevino/abool"
 
 	"github.com/safing/portbase/container"
-	"github.com/safing/portbase/log"
 	"github.com/safing/spn/conf"
 	"github.com/safing/spn/terminal"
 )
@@ -41,11 +40,13 @@ type ExpandOp struct {
 	// recvProxy is populated with the configured recv function
 	recvProxy func() <-chan *terminal.Msg
 	// sendProxy is populated with the configured send function
-	sendProxy func(msg *terminal.Msg, timeout time.Duration) *terminal.Error
+	sendProxy func(msg *terminal.Msg, timeout time.Duration)
 }
 
 // ExpansionRelayTerminal is a relay used for expansion.
 type ExpansionRelayTerminal struct {
+	terminal.BareTerminal
+
 	op *ExpandOp
 
 	id    uint32
@@ -60,7 +61,7 @@ type ExpansionRelayTerminal struct {
 	// recvProxy is populated with the configured recv function
 	recvProxy func() <-chan *terminal.Msg
 	// sendProxy is populated with the configured send function
-	sendProxy func(msg *terminal.Msg, timeout time.Duration) *terminal.Error
+	sendProxy func(msg *terminal.Msg, timeout time.Duration)
 }
 
 // Type returns the type ID.
@@ -169,26 +170,26 @@ func expand(t terminal.Terminal, opID uint32, data *container.Container) (termin
 	switch opts.FlowControl {
 	case terminal.FlowControlDFQ:
 		// Operation
-		op.flowControl = terminal.NewDuplexFlowQueue(op.ctx, opts.FlowControlSize, op.submitBackstream)
+		op.flowControl = terminal.NewDuplexFlowQueue(op.ctx, opts.FlowControlSize, op.submitBackwardUpstream)
 		op.deliverProxy = op.flowControl.Deliver
 		op.recvProxy = op.flowControl.Receive
-		op.sendProxy = op.flowControl.Send
+		op.sendProxy = op.submitBackwardFlowControl
 		// Relay Terminal
-		op.relayTerminal.flowControl = terminal.NewDuplexFlowQueue(op.ctx, opts.FlowControlSize, op.submitForwardstream)
+		op.relayTerminal.flowControl = terminal.NewDuplexFlowQueue(op.ctx, opts.FlowControlSize, op.submitForwardUpstream)
 		op.relayTerminal.deliverProxy = op.relayTerminal.flowControl.Deliver
 		op.relayTerminal.recvProxy = op.relayTerminal.flowControl.Receive
-		op.relayTerminal.sendProxy = op.relayTerminal.flowControl.Send
+		op.relayTerminal.sendProxy = op.submitForwardFlowControl
 	case terminal.FlowControlNone:
 		// Operation
 		deliverToOp := make(chan *terminal.Msg, opts.FlowControlSize)
 		op.deliverProxy = terminal.MakeDirectDeliveryDeliverFunc(op.ctx, deliverToOp)
 		op.recvProxy = terminal.MakeDirectDeliveryRecvFunc(deliverToOp)
-		op.sendProxy = op.submitBackstream
+		op.sendProxy = op.submitBackwardUpstream
 		// Relay Terminal
 		deliverToRelay := make(chan *terminal.Msg, opts.FlowControlSize)
 		op.relayTerminal.deliverProxy = terminal.MakeDirectDeliveryDeliverFunc(op.ctx, deliverToRelay)
 		op.relayTerminal.recvProxy = terminal.MakeDirectDeliveryRecvFunc(deliverToRelay)
-		op.relayTerminal.sendProxy = op.submitForwardstream
+		op.relayTerminal.sendProxy = op.submitForwardUpstream
 	case terminal.FlowControlDefault:
 		fallthrough
 	default:
@@ -218,7 +219,23 @@ func expand(t terminal.Terminal, opID uint32, data *container.Container) (termin
 	return op, nil
 }
 
-func (op *ExpandOp) submitForwardstream(msg *terminal.Msg, timeout time.Duration) *terminal.Error {
+func (op *ExpandOp) submitForwardFlowControl(msg *terminal.Msg, timeout time.Duration) {
+	err := op.relayTerminal.flowControl.Send(msg, timeout)
+	if err != nil {
+		msg.FinishUnit()
+		op.Stop(op, err.Wrap("failed to submit to forward flow control"))
+	}
+}
+
+func (op *ExpandOp) submitBackwardFlowControl(msg *terminal.Msg, timeout time.Duration) {
+	err := op.flowControl.Send(msg, timeout)
+	if err != nil {
+		msg.FinishUnit()
+		op.Stop(op, err.Wrap("failed to submit to backward flow control"))
+	}
+}
+
+func (op *ExpandOp) submitForwardUpstream(msg *terminal.Msg, timeout time.Duration) {
 	msg.FlowID = op.relayTerminal.id
 	if msg.IsHighPriorityUnit() && op.opts.UsePriorityDataMsgs {
 		msg.Type = terminal.MsgTypePriorityData
@@ -228,12 +245,11 @@ func (op *ExpandOp) submitForwardstream(msg *terminal.Msg, timeout time.Duration
 	err := op.relayTerminal.crane.Send(msg, timeout)
 	if err != nil {
 		msg.FinishUnit()
-		op.Stop(op, err.Wrap("failed to submit forward from relay op"))
+		op.Stop(op, err.Wrap("failed to submit to forward upstream"))
 	}
-	return err
 }
 
-func (op *ExpandOp) submitBackstream(msg *terminal.Msg, timeout time.Duration) *terminal.Error {
+func (op *ExpandOp) submitBackwardUpstream(msg *terminal.Msg, timeout time.Duration) {
 	msg.FlowID = op.relayTerminal.id
 	if msg.IsHighPriorityUnit() && op.opts.UsePriorityDataMsgs {
 		msg.Type = terminal.MsgTypePriorityData
@@ -245,14 +261,11 @@ func (op *ExpandOp) submitBackstream(msg *terminal.Msg, timeout time.Duration) *
 	err := op.Send(msg, timeout)
 	if err != nil {
 		msg.FinishUnit()
-		op.Stop(op, err.Wrap("failed to submit backward from relay op"))
+		op.Stop(op, err.Wrap("failed to submit to backward upstream"))
 	}
-	return err
 }
 
 func (op *ExpandOp) forwardHandler(_ context.Context) error {
-	// FIXME: can we just use the upstream handler to do this in a function instead?
-
 	// Metrics setup and submitting.
 	atomic.AddInt64(activeExpandOps, 1)
 	started := time.Now()
@@ -276,11 +289,7 @@ func (op *ExpandOp) forwardHandler(_ context.Context) error {
 
 			// Receive data from the origin and forward it to the relay.
 			msg.PauseUnit()
-			if err := op.relayTerminal.sendProxy(msg, 1*time.Minute); err != nil {
-				msg.FinishUnit()
-				op.relayTerminal.Abandon(err)
-				return nil
-			}
+			op.relayTerminal.sendProxy(msg, 1*time.Minute)
 
 		case <-op.ctx.Done():
 			return nil
@@ -289,8 +298,6 @@ func (op *ExpandOp) forwardHandler(_ context.Context) error {
 }
 
 func (op *ExpandOp) backwardHandler(_ context.Context) error {
-	// FIXME: can we just use the upstream handler to do this in a function instead?
-
 	for {
 		select {
 		case msg := <-op.relayTerminal.recvProxy():
@@ -305,11 +312,7 @@ func (op *ExpandOp) backwardHandler(_ context.Context) error {
 
 			// Receive data from the relay and forward it to the origin.
 			msg.PauseUnit()
-			if err := op.sendProxy(msg, 1*time.Minute); err != nil {
-				msg.FinishUnit()
-				op.Stop(op, err)
-				return nil
-			}
+			op.sendProxy(msg, 1*time.Minute)
 
 		case <-op.ctx.Done():
 			return nil
@@ -321,6 +324,10 @@ func (op *ExpandOp) backwardHandler(_ context.Context) error {
 // The returned error is the error to send to the other side.
 // Should never be called directly. Call Stop() instead.
 func (op *ExpandOp) HandleStop(err *terminal.Error) (errorToSend *terminal.Error) {
+	// Flush all messages before stopping.
+	op.Flush()
+	op.relayTerminal.Flush()
+
 	// Stop connected workers.
 	op.cancelCtx()
 
@@ -367,6 +374,9 @@ func (t *ExpansionRelayTerminal) handleAbandonProcedure(err *terminal.Error) {
 	// Call operation stop handle function for proper shutdown cleaning up.
 	err = t.HandleAbandon(err)
 
+	// Flush all messages before stopping.
+	t.Flush()
+
 	// Send error to the connected Operation, if the error is internal.
 	if !err.IsExternal() {
 		if err == nil {
@@ -376,16 +386,8 @@ func (t *ExpansionRelayTerminal) handleAbandonProcedure(err *terminal.Error) {
 		msg := terminal.NewMsg(err.Pack())
 		msg.FlowID = t.ID()
 		msg.Type = terminal.MsgTypeStop
-
-		tErr := t.op.submitForwardstream(msg, 1*time.Second)
-		if tErr.IsError() {
-			msg.FinishUnit()
-			log.Warningf("spn/terminal: relay terminal %s failed to send stop msg: %s", t.FmtID(), tErr)
-		}
+		t.op.submitForwardUpstream(msg, 1*time.Second)
 	}
-
-	// Flush all messages before stopping.
-	t.Flush()
 }
 
 // FmtID returns the expansion ID hierarchy.
@@ -396,21 +398,4 @@ func (op *ExpandOp) FmtID() string {
 // FmtID returns the expansion ID hierarchy.
 func (t *ExpansionRelayTerminal) FmtID() string {
 	return fmt.Sprintf("%s#%d", t.crane.ID, t.id)
-}
-
-// Fulfill terminal interface.
-
-// Send is used by others to send a message through the terminal.
-func (t *ExpansionRelayTerminal) Send(msg *terminal.Msg, timeout time.Duration) *terminal.Error {
-	return terminal.ErrInternalError.With("relay terminal cannot be used to send messages")
-}
-
-// StartOperation starts the given operation by assigning it an ID and sending the given operation initialization data.
-func (t *ExpansionRelayTerminal) StartOperation(op terminal.Operation, initData *container.Container, timeout time.Duration) *terminal.Error {
-	return terminal.ErrInternalError.With("relay terminal cannot start operations")
-}
-
-// StopOperation stops the given operation.
-func (t *ExpansionRelayTerminal) StopOperation(op terminal.Operation, err *terminal.Error) {
-	log.Critical("spn/docks: internal error: relay terminal cannot stop operations")
 }

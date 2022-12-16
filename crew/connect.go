@@ -45,7 +45,7 @@ type Tunnel struct {
 	conn     net.Conn
 
 	dstPin      *navigator.Pin
-	dstTerminal terminal.OpTerminal
+	dstTerminal terminal.Terminal
 	route       *navigator.Route
 	failedTries int
 	stickied    bool
@@ -193,7 +193,7 @@ func (t *Tunnel) establish(ctx context.Context) (err error) {
 	// Try routes until one succeeds.
 	log.Tracer(ctx).Trace("spn/crew: establishing route...")
 	var dstPin *navigator.Pin
-	var dstTerminal terminal.OpTerminal
+	var dstTerminal terminal.Terminal
 	for tries, route := range routes.All {
 		dstPin, dstTerminal, err = establishRoute(route)
 		if err != nil {
@@ -221,7 +221,7 @@ type hopCheck struct {
 	authOp    *access.AuthorizeOp
 }
 
-func establishRoute(route *navigator.Route) (dstPin *navigator.Pin, dstTerminal terminal.OpTerminal, err error) {
+func establishRoute(route *navigator.Route) (dstPin *navigator.Pin, dstTerminal terminal.Terminal, err error) {
 	connectLock.Lock()
 	defer connectLock.Unlock()
 
@@ -236,7 +236,7 @@ func establishRoute(route *navigator.Route) (dstPin *navigator.Pin, dstTerminal 
 		return nil, nil, navigator.ErrHomeHubUnset
 	}
 	// Convert to interface for later use.
-	var previousTerminal terminal.OpTerminal = homeTerminal
+	var previousTerminal terminal.Terminal = homeTerminal
 
 	// Check if first hub in path is the home hub.
 	if route.Path[0].HubID != previousHop.Hub.ID {
@@ -284,7 +284,7 @@ func establishRoute(route *navigator.Route) (dstPin *navigator.Pin, dstTerminal 
 	for _, check := range hopChecks {
 		// Wait for authOp result.
 		select {
-		case tErr := <-check.authOp.Ended:
+		case tErr := <-check.authOp.Result:
 			if !tErr.Is(terminal.ErrExplicitAck) {
 				return nil, nil, tErr.Wrap("failed to authenticate to %s", check.pin.Hub)
 			}
@@ -304,7 +304,7 @@ func establishRoute(route *navigator.Route) (dstPin *navigator.Pin, dstTerminal 
 	return previousHop, previousTerminal, nil
 }
 
-func expand(fromTerminal terminal.OpTerminal, from, to *navigator.Pin) (expansion *docks.ExpansionTerminal, authOp *access.AuthorizeOp, tErr *terminal.Error) {
+func expand(fromTerminal terminal.Terminal, from, to *navigator.Pin) (expansion *docks.ExpansionTerminal, authOp *access.AuthorizeOp, tErr *terminal.Error) {
 	expansion, tErr = docks.ExpandTo(fromTerminal, to.Hub.ID, to.Hub)
 	if tErr != nil {
 		return nil, nil, tErr.Wrap("failed to expand to %s", to.Hub)

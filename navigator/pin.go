@@ -186,7 +186,7 @@ func (pin *Pin) HasActiveTerminal() bool {
 
 func (pin *Pin) hasActiveTerminal() bool {
 	return pin.Connection != nil &&
-		!pin.Connection.Terminal.IsBeingAbandoned()
+		pin.Connection.Terminal.Abandoning.IsNotSet()
 }
 
 // NotifyTerminalChange notifies subscribers of the changed terminal.

@@ -65,8 +65,8 @@ type DuplexFlowQueue struct {
 	// ti is the Terminal that is using the DFQ.
 	ctx context.Context
 
-	// upstream is the channel to put messages into to send them upstream.
-	submitUpstream func(msg *Msg, timeout time.Duration) *Error
+	// submitUpstream is used to submit messages to the upstream channel.
+	submitUpstream func(msg *Msg, timeout time.Duration)
 
 	// sendQueue holds the messages that are waiting to be sent.
 	sendQueue chan *Msg
@@ -99,7 +99,7 @@ type DuplexFlowQueue struct {
 func NewDuplexFlowQueue(
 	ctx context.Context,
 	queueSize uint32,
-	submitUpstream func(msg *Msg, timeout time.Duration) *Error,
+	submitUpstream func(msg *Msg, timeout time.Duration),
 ) *DuplexFlowQueue {
 	dfq := &DuplexFlowQueue{
 		ctx:              ctx,
@@ -195,6 +195,18 @@ func (dfq *DuplexFlowQueue) FlowHandler(_ context.Context) error {
 	var sendSpaceDepleted bool
 	var flushFinished func()
 
+	// Drain all queues when shutting down.
+	defer func() {
+		select {
+		case msg := <-dfq.sendQueue:
+			msg.FinishUnit()
+		case msg := <-dfq.recvQueue:
+			msg.FinishUnit()
+		default:
+			return
+		}
+	}()
+
 sending:
 	for {
 		// If the send queue is depleted, wait to be woken.
@@ -214,7 +226,7 @@ sending:
 				spaceToReport := dfq.reportableRecvSpace()
 				if spaceToReport > 0 {
 					msg := NewMsg(varint.Pack64(uint64(spaceToReport)))
-					_ = dfq.submitUpstream(msg, 0)
+					dfq.submitUpstream(msg, 0)
 				}
 				continue sending
 
@@ -257,7 +269,7 @@ sending:
 
 			// Submit for sending upstream.
 			msg.PauseUnit()
-			_ = dfq.submitUpstream(msg, 0)
+			dfq.submitUpstream(msg, 0)
 			// Decrease the send space and set flag if depleted.
 			if dfq.decrementSendSpace() <= 0 {
 				sendSpaceDepleted = true
@@ -276,7 +288,7 @@ sending:
 			spaceToReport := dfq.reportableRecvSpace()
 			if spaceToReport > 0 {
 				msg := NewMsg(varint.Pack64(uint64(spaceToReport)))
-				_ = dfq.submitUpstream(msg, 0)
+				dfq.submitUpstream(msg, 0)
 			}
 
 		case newFlushFinishedFn := <-dfq.flush:
@@ -338,18 +350,20 @@ func (dfq *DuplexFlowQueue) ReadyToSend() <-chan struct{} {
 
 // Send adds the given container to the send queue.
 func (dfq *DuplexFlowQueue) Send(msg *Msg, timeout time.Duration) *Error {
-	msg.PauseUnit()
 	select {
 	case dfq.sendQueue <- msg:
+		msg.PauseUnit()
 		if msg.IsHighPriorityUnit() {
 			// Reset prioMsgs to the current queue size, so that all waiting and the
-			// message we just added are all sent with high priority.
+			// message we just added are all handled as high priority.
 			atomic.StoreInt32(dfq.prioMsgs, int32(len(dfq.sendQueue)))
 		}
 		return nil
+
 	case <-TimedOut(timeout):
 		msg.FinishUnit()
 		return ErrTimeout
+
 	case <-dfq.ctx.Done():
 		msg.FinishUnit()
 		return ErrStopping

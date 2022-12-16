@@ -310,8 +310,6 @@ func startLatencyTestOp(t terminal.Terminal, opID uint32, data *container.Contai
 
 // Deliver delivers a message to the operation.
 func (op *LatencyTestOp) Deliver(msg *terminal.Msg) *terminal.Error {
-	msg.FinishUnit()
-
 	// Get request type.
 	rType, err := msg.Data.GetNextN8()
 	if err != nil {

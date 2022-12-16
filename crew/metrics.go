@@ -114,7 +114,7 @@ func registerMetrics() (err error) {
 		return err
 	}
 
-	return err
+	return nil
 }
 
 func getActiveConnectOpsStat() float64 {
