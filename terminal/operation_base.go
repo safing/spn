@@ -44,6 +44,10 @@ func (op *OperationBase) NewMsg(data []byte) *Msg {
 	msg := NewMsg(data)
 	msg.FlowID = op.id
 	msg.Type = MsgTypeData
+
+	// Debug unit leaks.
+	// msg.Debug()
+
 	return msg
 }
 
@@ -53,6 +57,10 @@ func (op *OperationBase) NewEmptyMsg() *Msg {
 	msg := NewEmptyMsg()
 	msg.FlowID = op.id
 	msg.Type = MsgTypeData
+
+	// Debug unit leaks.
+	// msg.Debug()
+
 	return msg
 }
 

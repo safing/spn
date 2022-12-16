@@ -24,7 +24,10 @@ func start() error {
 	module.StartServiceWorker("msg unit scheduler", 0, scheduler.SlotScheduler)
 
 	lockOpRegistry()
-	return nil
+
+	// Debug unit leaks.
+	// Search for "Debug unit leaks" to find all other related lines.
+	// scheduler.StartDebugLog()
 }
 
 var waitForever chan time.Time

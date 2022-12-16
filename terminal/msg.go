@@ -1,6 +1,9 @@
 package terminal
 
 import (
+	"fmt"
+	"runtime"
+
 	"github.com/safing/portbase/container"
 	"github.com/safing/spn/unit"
 )
@@ -24,11 +27,16 @@ type Msg struct {
 // The FlowID is unset.
 // The Type is Data.
 func NewMsg(data []byte) *Msg {
-	return &Msg{
+	msg := &Msg{
 		Type: MsgTypeData,
 		Data: container.New(data),
 		Unit: scheduler.NewUnit(),
 	}
+
+	// Debug unit leaks.
+	// msg.Debug()
+
+	return msg
 }
 
 // NewEmptyMsg returns a new empty msg with an initialized Unit.
@@ -36,10 +44,15 @@ func NewMsg(data []byte) *Msg {
 // The Type is Data.
 // The Data is unset.
 func NewEmptyMsg() *Msg {
-	return &Msg{
+	msg := &Msg{
 		Type: MsgTypeData,
 		Unit: scheduler.NewUnit(),
 	}
+
+	// Debug unit leaks.
+	// msg.Debug()
+
+	return msg
 }
 
 // Pack prepends the message header (Length and ID+Type) to the data.
@@ -75,4 +88,20 @@ func (msg *Msg) FinishUnit() {
 		return
 	}
 	msg.Unit.FinishUnit()
+}
+
+// DebugUnit registers the given unit with the given source for debug output.
+// Additional calls on the same unit update the unit source.
+
+// Debug registers the unit for debug output with the given source.
+// Additional calls on the same unit update the unit source.
+// StartDebugLog() must be called before calling DebugUnit().
+func (msg *Msg) Debug() {
+	if msg == nil {
+		return
+	}
+	_, file, line, ok := runtime.Caller(1)
+	if ok {
+		scheduler.DebugUnit(msg.Unit, fmt.Sprintf("%s:%d", file, line))
+	}
 }

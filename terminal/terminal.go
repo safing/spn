@@ -312,6 +312,9 @@ func (t *TerminalBase) submitToUpstream(msg *Msg, timeout time.Duration) {
 	// Pause unit before handing away.
 	msg.PauseUnit()
 
+	// Debug unit leaks.
+	// msg.Debug()
+
 	// Submit to upstream.
 	err := t.upstream.Send(msg, timeout)
 	if err.IsError() {

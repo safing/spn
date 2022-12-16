@@ -369,6 +369,7 @@ func (crane *Crane) sendImportantTerminalMsg(msg *terminal.Msg, timeout time.Dur
 	case crane.controllerMsgs <- msg:
 		return nil
 	case <-crane.ctx.Done():
+		msg.FinishUnit()
 		return terminal.ErrCanceled
 	}
 }
@@ -381,6 +382,7 @@ func (crane *Crane) Send(msg *terminal.Msg, timeout time.Duration) *terminal.Err
 	case crane.terminalMsgs <- msg:
 		return nil
 	case <-crane.ctx.Done():
+		msg.FinishUnit()
 		return terminal.ErrCanceled
 	}
 }
@@ -673,8 +675,6 @@ func (crane *Crane) loader(ctx context.Context) (err error) {
 
 	fillingShipment:
 		for shipment.Length() < crane.targetLoadSize {
-			msg.FinishUnit()
-
 			// Gather segments until shipment is filled.
 
 			// Prioritize messages from the controller.
@@ -697,6 +697,9 @@ func (crane *Crane) loader(ctx context.Context) (err error) {
 				}
 			}
 
+			// Debug unit leaks.
+			// msg.Debug()
+
 			// Handle new message.
 			if msg != nil {
 				// Pack msg and add to segment.
@@ -708,8 +711,9 @@ func (crane *Crane) loader(ctx context.Context) (err error) {
 				if firstMsg == nil {
 					firstMsg = msg
 					firstMsg.WaitForUnitSlot()
+				} else {
+					msg.FinishUnit()
 				}
-				msg = nil
 
 				// Check length.
 				if newSegment.Length() > maxSegmentLength {

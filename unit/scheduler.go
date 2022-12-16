@@ -49,6 +49,8 @@ type Scheduler struct {
 	slotSignalB      chan struct{}
 	slotSignalSwitch bool
 	slotSignalsLock  sync.RWMutex
+
+	unitDebugger *UnitDebugger
 }
 
 // SchedulerConfig holds scheduler configuration.
