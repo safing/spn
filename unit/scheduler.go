@@ -7,6 +7,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/tevino/abool"
 )
 
 const (
@@ -49,6 +51,8 @@ type Scheduler struct {
 	slotSignalB      chan struct{}
 	slotSignalSwitch bool
 	slotSignalsLock  sync.RWMutex
+
+	stopping abool.AtomicBool
 
 	unitDebugger *UnitDebugger
 }
@@ -139,7 +143,7 @@ func (s *Scheduler) SlotScheduler(ctx context.Context) error {
 	defer ticker.Stop()
 
 	// Give clearance to all when stopping.
-	defer s.clearanceUpTo.Store(math.MaxInt64)
+	defer s.clearanceUpTo.Store(math.MaxInt64 - math.MaxInt32)
 
 	var (
 		lastClearanceAmount int64
@@ -203,9 +207,17 @@ func (s *Scheduler) SlotScheduler(ctx context.Context) error {
 			return nil
 		default:
 		}
+		if s.stopping.IsSet() {
+			return nil
+		}
 	}
 
 	// We should never get here.
 	// If we do, trigger a worker restart via the service worker.
 	return errors.New("unexpected end of scheduler")
+}
+
+// Stop stops the scheduler and gives clearance to all units.
+func (s *Scheduler) Stop() {
+	s.stopping.Set()
 }

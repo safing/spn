@@ -39,3 +39,10 @@ func TimedOut(timeout time.Duration) <-chan time.Time {
 	}
 	return time.After(timeout)
 }
+
+// StopScheduler stops the unit scheduler.
+func StopScheduler() {
+	if scheduler != nil {
+		scheduler.Stop()
+	}
+}
