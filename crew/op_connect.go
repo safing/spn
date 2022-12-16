@@ -26,8 +26,9 @@ var activeConnectOps = new(int64)
 
 // ConnectOp is used to connect data tunnels to servers on the Internet.
 type ConnectOp struct {
-	terminal.OpBase
-	*terminal.DuplexFlowQueue
+	terminal.OperationBase
+
+	dfq *terminal.DuplexFlowQueue
 
 	// ctx is the context of the Terminal.
 	ctx context.Context
@@ -56,13 +57,12 @@ func (op *ConnectOp) Ctx() context.Context {
 
 // ConnectRequest holds all the information necessary for a connect operation.
 type ConnectRequest struct {
-	// TODO: Switch to json tags when everyone has the update.
-	Domain              string            `cbor:"d,omitempty"`
-	IP                  net.IP            `cbor:"ip,omitempty"`
-	UsePriorityDataMsgs bool              `cbor:"pr,omitempty"`
-	Protocol            packet.IPProtocol `cbor:"p,omitempty"`
-	Port                uint16            `cbor:"po,omitempty"`
-	QueueSize           uint32            `cbor:"qs,omitempty"`
+	Domain              string            `json:"d,omitempty"`
+	IP                  net.IP            `json:"ip,omitempty"`
+	UsePriorityDataMsgs bool              `json:"pr,omitempty"`
+	Protocol            packet.IPProtocol `json:"p,omitempty"`
+	Port                uint16            `json:"po,omitempty"`
+	QueueSize           uint32            `json:"qs,omitempty"`
 }
 
 // Address returns the address of the connext request.
