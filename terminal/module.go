@@ -28,6 +28,8 @@ func start() error {
 	// Debug unit leaks.
 	// Search for "Debug unit leaks" to find all other related lines.
 	// scheduler.StartDebugLog()
+
+	return registerMetrics()
 }
 
 var waitForever chan time.Time
