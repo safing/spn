@@ -8,8 +8,6 @@ import (
 	"github.com/safing/spn/unit"
 )
 
-var scheduler *unit.Scheduler
-
 // Msg is a message within the SPN network stack.
 // It includes metadata and unit scheduling.
 type Msg struct {
