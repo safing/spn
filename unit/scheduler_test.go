@@ -9,7 +9,9 @@ func BenchmarkScheduler(b *testing.B) {
 	workers := 10
 
 	// Create and start scheduler.
-	s := NewScheduler(nil)
+	s := NewScheduler(&SchedulerConfig{
+		EpochDuration: defaultSlotDuration * 10,
+	})
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
 		err := s.SlotScheduler(ctx)

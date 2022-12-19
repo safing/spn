@@ -9,6 +9,7 @@ import (
 type Unit struct {
 	id           int64
 	scheduler    *Scheduler
+	epoch        int32
 	finished     abool.AtomicBool
 	highPriority abool.AtomicBool
 	paused       abool.AtomicBool
@@ -18,6 +19,7 @@ type Unit struct {
 func (s *Scheduler) NewUnit() *Unit {
 	return &Unit{
 		id:        s.currentUnitID.Add(1),
+		epoch:     s.epoch.Load(),
 		scheduler: s,
 	}
 }
@@ -62,6 +64,8 @@ func (u *Unit) FinishUnit() {
 	if u == nil {
 		return
 	}
+
+	// Always increase finished, even if the unit is from a previous epoch.
 	if u.finished.SetToIf(false, true) {
 		u.scheduler.finished.Add(1)
 	}
@@ -73,6 +77,11 @@ func (u *Unit) FinishUnit() {
 // processed at the moment. May only be called if WaitForUnitSlot() was called
 // at least once.
 func (u *Unit) PauseUnit() {
+	// Only change if within the origin epoch.
+	if u.epoch != u.scheduler.epoch.Load() {
+		return
+	}
+
 	if u.finished.IsNotSet() && u.paused.SetToIf(false, true) {
 		u.scheduler.pausedUnits.Add(1)
 
@@ -84,8 +93,17 @@ func (u *Unit) PauseUnit() {
 // unpause signals the unit scheduler that this unit is not paused anymore and
 // is now waiting for processing.
 func (u *Unit) unpause() {
+	// Only change if within the origin epoch.
+	if u.epoch != u.scheduler.epoch.Load() {
+		return
+	}
+
 	if u.paused.SetToIf(true, false) {
-		u.scheduler.pausedUnits.Add(-1)
+		if u.scheduler.pausedUnits.Add(-1) < 0 {
+			// If we are within an epoch change, revert change and return.
+			u.scheduler.pausedUnits.Add(1)
+			return
+		}
 
 		// Reduce clearance by one if paused unit is woken up, as the previously paused unit requires a slot.
 		// A paused unit is expected to already have been allowed to process once.
@@ -95,6 +113,11 @@ func (u *Unit) unpause() {
 
 // MakeUnitHighPriority marks the unit as high priority.
 func (u *Unit) MakeUnitHighPriority() {
+	// Only change if within the origin epoch.
+	if u.epoch != u.scheduler.epoch.Load() {
+		return
+	}
+
 	if u.finished.IsNotSet() && u.highPriority.SetToIf(false, true) {
 		u.scheduler.highPrioUnits.Add(1)
 	}
@@ -107,7 +130,15 @@ func (u *Unit) IsHighPriorityUnit() bool {
 
 // RemoveUnitPriority removes the high priority mark.
 func (u *Unit) RemoveUnitPriority() {
+	// Only change if within the origin epoch.
+	if u.epoch != u.scheduler.epoch.Load() {
+		return
+	}
+
 	if u.highPriority.SetToIf(true, false) {
-		u.scheduler.highPrioUnits.Add(-1)
+		if u.scheduler.highPrioUnits.Add(-1) < 0 {
+			// If we are within an epoch change, revert change.
+			u.scheduler.highPrioUnits.Add(1)
+		}
 	}
 }
