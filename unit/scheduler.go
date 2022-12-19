@@ -3,7 +3,6 @@ package unit
 import (
 	"context"
 	"errors"
-	"fmt"
 	"math"
 	"sync"
 	"sync/atomic"
@@ -14,11 +13,11 @@ import (
 
 const (
 	defaultSlotDuration  = 10 * time.Millisecond
-	defaultMinSlotPace   = 1000
+	defaultMinSlotPace   = 100 // 10 000 pps
 	defaultEpochDuration = 1 * time.Minute
 
-	defaultAdjustFractionPerStreak        = 1000 // 0.1%
-	defaultHighPriorityMaxReserveFraction = 2    // 50%
+	defaultAdjustFractionPerStreak        = 100 // 1%
+	defaultHighPriorityMaxReserveFraction = 4   //  25%
 )
 
 // Scheduler creates and schedules units.
@@ -114,6 +113,14 @@ func NewScheduler(config *SchedulerConfig) *Scheduler {
 		s.config.HighPriorityMaxReserveFraction = defaultHighPriorityMaxReserveFraction
 	}
 
+	// The adjust fraction may not be bigger than the min slot pace.
+	if s.config.AdjustFractionPerStreak > s.config.MinSlotPace {
+		s.config.AdjustFractionPerStreak = s.config.MinSlotPace
+
+		// Debug logging:
+		// fmt.Printf("--- reduced AdjustFractionPerStreak to %d\n", s.config.AdjustFractionPerStreak)
+	}
+
 	// Initialize scheduler fields.
 	s.clearanceUpTo.Store(s.config.MinSlotPace)
 	s.slotPace.Store(s.config.MinSlotPace)
@@ -183,7 +190,7 @@ func (s *Scheduler) SlotScheduler(ctx context.Context) error {
 			s.slotPace.Add((s.slotPace.Load() / s.config.AdjustFractionPerStreak) * increaseStreak)
 
 			// Debug logging:
-			fmt.Printf("+++ slot pace: %d (finished in slot: %d, last clearance: %d, increaseStreak: %d, high: %d)\n", s.slotPace.Load(), finishedInSlot, lastClearanceAmount, increaseStreak, s.highPrioUnits.Load())
+			// fmt.Printf("+++ slot pace: %d (finished in slot: %d, last clearance: %d, increaseStreak: %d, high: %d)\n", s.slotPace.Load(), finishedInSlot, lastClearanceAmount, increaseStreak, s.highPrioUnits.Load())
 		} else {
 			// Adjust based on streak.
 			decreaseStreak++
@@ -197,7 +204,7 @@ func (s *Scheduler) SlotScheduler(ctx context.Context) error {
 			}
 
 			// Debug logging:
-			fmt.Printf("--- slot pace: %d (finished in slot: %d, last clearance: %d, decreaseStreak: %d, high: %d)\n", s.slotPace.Load(), finishedInSlot, lastClearanceAmount, decreaseStreak, s.highPrioUnits.Load())
+			// fmt.Printf("--- slot pace: %d (finished in slot: %d, last clearance: %d, decreaseStreak: %d, high: %d)\n", s.slotPace.Load(), finishedInSlot, lastClearanceAmount, decreaseStreak, s.highPrioUnits.Load())
 		}
 
 		// Advance epoch if needed.
@@ -223,16 +230,16 @@ func (s *Scheduler) SlotScheduler(ctx context.Context) error {
 			s.pausedUnits.Store(0)
 
 			// Debug logging:
-			fmt.Printf("--- new epoch\n")
+			// fmt.Printf("--- new epoch\n")
 		}
 
 		// Set new slot clearance.
 		// First, add current pace and paused units.
 		newClearance := s.slotPace.Load() + s.pausedUnits.Load()
-		// Second, subtract up to 25% of clearance for high priority units.
+		// Second, subtract a fraction of the clearance for high priority units.
 		highPrio := s.highPrioUnits.Load()
-		if highPrio > newClearance/4 {
-			newClearance -= newClearance / 4
+		if highPrio > newClearance/s.config.HighPriorityMaxReserveFraction {
+			newClearance -= newClearance / s.config.HighPriorityMaxReserveFraction
 		} else {
 			newClearance -= highPrio
 		}
