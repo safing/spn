@@ -9,6 +9,7 @@ import (
 	"github.com/safing/portbase/modules"
 	"github.com/safing/portbase/run"
 	_ "github.com/safing/portmaster/core/base"
+	_ "github.com/safing/portmaster/ui"
 	"github.com/safing/portmaster/updates"
 	"github.com/safing/portmaster/updates/helper"
 	_ "github.com/safing/spn/captain"
