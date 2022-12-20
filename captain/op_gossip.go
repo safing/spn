@@ -65,6 +65,7 @@ func NewGossipOp(controller *docks.CraneControllerTerminal) (*GossipOp, *termina
 	if err != nil {
 		return nil, err
 	}
+	op.InitOperationBase(controller, op.ID())
 
 	// Register and return.
 	registerGossipOp(controller.Crane.ID, op)

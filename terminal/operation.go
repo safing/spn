@@ -138,8 +138,14 @@ func (t *TerminalBase) handleOperationStart(opID uint32, initData *container.Con
 		return
 	}
 
+	// Get terminal to attach to.
+	attachToTerminal := t.ext
+	if attachToTerminal == nil {
+		attachToTerminal = t
+	}
+
 	// Run the operation.
-	op, opErr := factory.Start(t, opID, initData)
+	op, opErr := factory.Start(attachToTerminal, opID, initData)
 	switch {
 	case opErr != nil:
 		// Something went wrong.
@@ -159,7 +165,7 @@ func (t *TerminalBase) handleOperationStart(opID uint32, initData *container.Con
 func (t *TerminalBase) StartOperation(op Operation, initData *container.Container, timeout time.Duration) *Error {
 	// Get terminal to attach to.
 	attachToTerminal := t.ext
-	if t.ext == nil {
+	if attachToTerminal == nil {
 		attachToTerminal = t
 	}
 

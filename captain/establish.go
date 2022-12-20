@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/safing/portbase/log"
 	"github.com/safing/spn/conf"
@@ -80,6 +81,9 @@ func EstablishPublicLane(ctx context.Context, dst *hub.Hub) (*docks.Crane, *term
 
 	case <-ctx.Done():
 		return nil, terminal.ErrCanceled
+
+	case <-time.After(30 * time.Second):
+		return nil, terminal.ErrTimeout
 	}
 
 	// Query all gossip msgs.

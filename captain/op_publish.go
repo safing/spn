@@ -111,7 +111,7 @@ func runPublishOp(t terminal.Terminal, opID uint32, data *container.Container) (
 		verification:  v,
 		result:        make(chan *terminal.Error, 1),
 	}
-	op.InitOperationBase(t, opID)
+	op.InitOperationBase(controller, opID)
 
 	// Reply with verification request.
 	tErr = op.Send(op.NewMsg(request), 10*time.Second)
