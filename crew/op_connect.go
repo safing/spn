@@ -220,10 +220,10 @@ const (
 	// High priority up to first 10MB.
 	highPrioThreshold = 10_000_000
 
-	// Rate limit to 100 Mbit/s (with 1500B packets) after 1GB traffic.
-	rateLimitThreshold   = 1_000_000_000
-	rateLimitMaxMbit     = 100
-	rateLimitPacketDelay = time.Second / ((rateLimitMaxMbit / 8) * 1_000_000 / readBufSize)
+	// Rate limit to 128 Mbit/s after 1GB traffic.
+	// Do NOT use time.Sleep per packet, as it is very inaccurate and will sleep a lot longer than desired.
+	rateLimitThreshold = 1_000_000_000
+	rateLimitMaxMbit   = 128
 )
 
 func (op *ConnectOp) connReader(_ context.Context) error {
@@ -238,6 +238,8 @@ func (op *ConnectOp) connReader(_ context.Context) error {
 			connectOpOutgoingDataHistogram.Update(float64(atomic.LoadUint64(op.outgoingTraffic)))
 		}()
 	}
+
+	rateLimiter := terminal.NewRateLimiter(rateLimitMaxMbit)
 
 	for {
 		// Read from connection.
@@ -260,14 +262,16 @@ func (op *ConnectOp) connReader(_ context.Context) error {
 		connectOpIncomingBytes.Add(n)
 		inBytes := atomic.AddUint64(op.incomingTraffic, uint64(n))
 
+		// Rate limit if over threshold.
+		if inBytes > rateLimitThreshold {
+			rateLimiter.Limit(uint64(n))
+		}
+
 		// Create message from data.
 		msg := op.NewMsg(buf[:n])
 
 		// Define priority and possibly wait for slot.
 		switch {
-		case inBytes > rateLimitThreshold:
-			time.Sleep(rateLimitPacketDelay)
-			fallthrough
 		case inBytes > highPrioThreshold:
 			msg.WaitForUnitSlot()
 		case op.request.UsePriorityDataMsgs:
@@ -301,6 +305,8 @@ func (op *ConnectOp) connWriter(_ context.Context) error {
 	var msg *terminal.Msg
 	defer msg.FinishUnit()
 
+	rateLimiter := terminal.NewRateLimiter(rateLimitMaxMbit)
+
 writing:
 	for {
 		msg.FinishUnit()
@@ -327,6 +333,11 @@ writing:
 		// Submit metrics.
 		connectOpOutgoingBytes.Add(len(data))
 		out := atomic.AddUint64(op.outgoingTraffic, uint64(len(data)))
+
+		// Rate limit if over threshold.
+		if out > rateLimitThreshold {
+			rateLimiter.Limit(uint64(len(data)))
+		}
 
 		// If on client and the first data was received, sticky the destination to the Hub.
 		if op.entry && // On clients only.
