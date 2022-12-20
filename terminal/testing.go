@@ -149,7 +149,7 @@ func NewSimpleTestTerminalPair(delay time.Duration, delayQueueSize int, opts *Te
 	var initData *container.Container
 	var tErr *Error
 	a, initData, tErr = NewLocalTestTerminal(
-		module.Ctx, 127, "a", nil, opts, UpstreamFromSendFunc(createDelayingTestForwardingFunc(
+		module.Ctx, 127, "a", nil, opts, UpstreamSendFunc(createDelayingTestForwardingFunc(
 			"a", "b", delay, delayQueueSize, func(msg *Msg, timeout time.Duration) *Error {
 				return b.Deliver(msg)
 			},
@@ -159,7 +159,7 @@ func NewSimpleTestTerminalPair(delay time.Duration, delayQueueSize int, opts *Te
 		return nil, nil, tErr.Wrap("failed to create local test terminal")
 	}
 	b, _, tErr = NewRemoteTestTerminal(
-		module.Ctx, 127, "b", nil, initData, UpstreamFromSendFunc(createDelayingTestForwardingFunc(
+		module.Ctx, 127, "b", nil, initData, UpstreamSendFunc(createDelayingTestForwardingFunc(
 			"b", "a", delay, delayQueueSize, func(msg *Msg, timeout time.Duration) *Error {
 				return a.Deliver(msg)
 			},

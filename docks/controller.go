@@ -27,7 +27,7 @@ func NewLocalCraneControllerTerminal(
 		crane.ID,
 		nil,
 		initMsg,
-		terminal.UpstreamFromSendFunc(crane.sendImportantTerminalMsg),
+		terminal.UpstreamSendFunc(crane.sendImportantTerminalMsg),
 	)
 	if err != nil {
 		return nil, nil, err
@@ -48,7 +48,7 @@ func NewRemoteCraneControllerTerminal(
 		crane.ID,
 		nil,
 		initData,
-		terminal.UpstreamFromSendFunc(crane.sendImportantTerminalMsg),
+		terminal.UpstreamSendFunc(crane.sendImportantTerminalMsg),
 	)
 	if err != nil {
 		return nil, nil, err

@@ -197,13 +197,15 @@ func (dfq *DuplexFlowQueue) FlowHandler(_ context.Context) error {
 
 	// Drain all queues when shutting down.
 	defer func() {
-		select {
-		case msg := <-dfq.sendQueue:
-			msg.FinishUnit()
-		case msg := <-dfq.recvQueue:
-			msg.FinishUnit()
-		default:
-			return
+		for {
+			select {
+			case msg := <-dfq.sendQueue:
+				msg.FinishUnit()
+			case msg := <-dfq.recvQueue:
+				msg.FinishUnit()
+			default:
+				return
+			}
 		}
 	}()
 

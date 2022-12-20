@@ -203,7 +203,7 @@ func testTerminals(t *testing.T, identity *cabin.Identity, terminalOpts *Termina
 func createForwardingUpstream(t *testing.T, srcName, dstName string, deliverFunc func(*Msg) *Error) Upstream {
 	t.Helper()
 
-	return UpstreamFromSendFunc(func(msg *Msg, _ time.Duration) *Error {
+	return UpstreamSendFunc(func(msg *Msg, _ time.Duration) *Error {
 		// Fast track nil containers.
 		if msg == nil {
 			dErr := deliverFunc(msg)
