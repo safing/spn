@@ -133,7 +133,7 @@ func (t *StreamingTerminal) Deliver(msg *terminal.Msg) *terminal.Error {
 
 func (t *StreamingTerminal) Abandon(err *terminal.Error) {
 	t.crane.AbandonTerminal(t.ID(), err)
-	if err.IsError() {
+	if err != nil {
 		t.test.Errorf("streaming terminal %d failed: %s", t.id, err)
 	}
 }

@@ -81,7 +81,7 @@ func (op *OperationBase) Send(msg *Msg, timeout time.Duration) *Error {
 
 	// Send message.
 	tErr := op.terminal.Send(msg, timeout)
-	if tErr.IsError() {
+	if tErr != nil {
 		// Finish message unit on failure.
 		msg.FinishUnit()
 	}

@@ -220,7 +220,7 @@ func (t *TerminalBase) Deliver(msg *Msg) *Error {
 
 	// Deliver via configured proxy.
 	err := t.deliverProxy(msg)
-	if err.IsError() {
+	if err != nil {
 		msg.FinishUnit()
 	}
 
@@ -271,7 +271,7 @@ func (t *TerminalBase) Handler(_ context.Context) error {
 
 		case msg = <-t.recvProxy():
 			err := t.handleReceive(msg)
-			if err.IsError() {
+			if err != nil {
 				t.Abandon(err.Wrap("failed to handle"))
 				return nil
 			}
@@ -297,7 +297,7 @@ func (t *TerminalBase) submit(msg *Msg, timeout time.Duration) {
 
 	// Hand over to flow control.
 	err := t.flowControl.Send(msg, timeout)
-	if err.IsError() {
+	if err != nil {
 		msg.FinishUnit()
 		t.Abandon(err.Wrap("failed to submit to flow control"))
 	}
@@ -317,7 +317,7 @@ func (t *TerminalBase) submitToUpstream(msg *Msg, timeout time.Duration) {
 
 	// Submit to upstream.
 	err := t.upstream.Send(msg, timeout)
-	if err.IsError() {
+	if err != nil {
 		msg.FinishUnit()
 		t.Abandon(err.Wrap("failed to submit to upstream"))
 	}
@@ -683,7 +683,8 @@ func (t *TerminalBase) handleOpMsg(data *container.Container) *Error {
 
 			// Deliver message to operation.
 			tErr := op.Deliver(msg)
-			if tErr.IsError() {
+			if tErr != nil {
+				// Also stop on "success" errors!
 				msg.FinishUnit()
 				t.StopOperation(op, tErr)
 			}

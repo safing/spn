@@ -121,7 +121,7 @@ func Ping(ctx context.Context, t terminal.Terminal, timeout time.Duration) (time
 		}
 		// Handle response
 		tErr := op.handleResponse(msg)
-		if tErr.IsError() {
+		if tErr != nil {
 			return 0, tErr
 		}
 		return time.Since(op.lastPingSentAt), nil
@@ -175,9 +175,9 @@ func (op *LatencyTestClientOp) handler(ctx context.Context) error {
 
 			// Handle response
 			tErr := op.handleResponse(msg)
-			if tErr.IsError() {
+			if tErr != nil {
 				returnErr = tErr
-				return nil
+				return nil //nolint:nilerr
 			}
 
 			// Check if we have enough latency tests.

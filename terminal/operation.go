@@ -256,7 +256,7 @@ func (t *TerminalBase) StopOperation(op Operation, err *Error) {
 			msg.Type = MsgTypeStop
 
 			tErr := t.Send(msg, 10*time.Second)
-			if tErr.IsError() {
+			if tErr != nil {
 				msg.FinishUnit()
 				log.Warningf("spn/terminal: failed to send stop msg: %s", tErr)
 			}

@@ -208,7 +208,7 @@ func startConnectOp(t terminal.Terminal, opID uint32, data *container.Container)
 
 func (op *ConnectOp) submitUpstream(msg *terminal.Msg, timeout time.Duration) {
 	err := op.Send(msg, timeout)
-	if err.IsError() {
+	if err != nil {
 		msg.FinishUnit()
 		op.Stop(op, err.Wrap("failed to send data (op) read from %s", op.connectedType()))
 	}
@@ -279,7 +279,7 @@ func (op *ConnectOp) connReader(_ context.Context) error {
 			msg,
 			30*time.Second,
 		)
-		if tErr.IsError() {
+		if tErr != nil {
 			msg.FinishUnit()
 			op.Stop(op, tErr.Wrap("failed to send data (dfq) from %s", op.connectedType()))
 			return nil
@@ -384,7 +384,6 @@ func (op *ConnectOp) HandleStop(err *terminal.Error) (errorToSend *terminal.Erro
 	// Avoid connecting to destination via this Hub if the was a connection
 	// error and no data was received.
 	if op.entry && // On clients only.
-		err.IsError() &&
 		err.Is(terminal.ErrConnectionError) &&
 		atomic.LoadUint64(op.outgoingTraffic) == 0 {
 		// Only if no data was received (ie. sent to local application).

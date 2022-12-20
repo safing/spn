@@ -62,7 +62,7 @@ func NewGossipOp(controller *docks.CraneControllerTerminal) (*GossipOp, *termina
 		craneID: controller.Crane.ID,
 	}
 	err := controller.StartOperation(op, nil, 1*time.Minute)
-	if err.IsError() {
+	if err != nil {
 		return nil, err
 	}
 
@@ -98,7 +98,7 @@ func (op *GossipOp) sendMsg(msgType GossipMsgType, data []byte) {
 
 	// Send.
 	err := op.Send(msg, 1*time.Second)
-	if err.IsError() {
+	if err != nil {
 		log.Debugf("spn/captain: failed to forward %s via %s: %s", msgType, op.craneID, err)
 	}
 }

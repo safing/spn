@@ -181,7 +181,7 @@ func verifyHubIP(ctx context.Context, h *hub.Hub, ip net.IP) error {
 
 	// End connection.
 	tErr := crane.endInit()
-	if tErr.IsError() {
+	if tErr != nil {
 		log.Debugf("spn/docks: failed to end verification connection to %s: %s", ip, tErr)
 	}
 

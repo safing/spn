@@ -220,7 +220,7 @@ func (op *CapacityTestOp) handler(ctx context.Context) error {
 			// Send the data received signal when we received the full test volume.
 			if op.dataReceived >= op.opts.TestVolume && !op.dataReceivedAckWasAckd {
 				tErr := op.Send(op.NewMsg(capacityTestDataReceivedSignal), capacityTestSendTimeout)
-				if tErr.IsError() {
+				if tErr != nil {
 					returnErr = tErr.Wrap("failed to send data received signal")
 					return nil
 				}
@@ -247,7 +247,7 @@ func (op *CapacityTestOp) sender(ctx context.Context) error {
 		msg := op.NewMsg(capacityTestSendData)
 		msg.MakeUnitHighPriority()
 		tErr := op.Send(msg, capacityTestSendTimeout)
-		if tErr.IsError() {
+		if tErr != nil {
 			op.Stop(op, tErr.Wrap("failed to send capacity test data"))
 			return nil
 		}
