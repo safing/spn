@@ -22,6 +22,7 @@ func start() error {
 
 func stop() error {
 	clearStickyHubs()
+	terminal.StopScheduler()
 
 	return nil
 }

@@ -38,8 +38,7 @@ var (
 
 // CapacityTestOp is used for capacity test operations.
 type CapacityTestOp struct { //nolint:maligned
-	terminal.OpBase
-	t terminal.OpTerminal
+	terminal.OperationBase
 
 	opts *CapacityTestOptions
 
@@ -47,7 +46,7 @@ type CapacityTestOp struct { //nolint:maligned
 	startTime     time.Time
 	senderStarted bool
 
-	recvQueue              chan *container.Container
+	recvQueue              chan *terminal.Msg
 	dataReceived           int
 	dataReceivedAckWasAckd bool
 
@@ -71,15 +70,15 @@ func (op *CapacityTestOp) Type() string {
 }
 
 func init() {
-	terminal.RegisterOpType(terminal.OpParams{
+	terminal.RegisterOpType(terminal.OperationFactory{
 		Type:     CapacityTestOpType,
 		Requires: terminal.IsCraneController,
-		RunOp:    runCapacityTestOp,
+		Start:    startCapacityTestOp,
 	})
 }
 
 // NewCapacityTestOp runs a capacity test.
-func NewCapacityTestOp(t terminal.OpTerminal, opts *CapacityTestOptions) (*CapacityTestOp, *terminal.Error) {
+func NewCapacityTestOp(t terminal.Terminal, opts *CapacityTestOptions) (*CapacityTestOp, *terminal.Error) {
 	// Check options.
 	if opts == nil {
 		opts = &CapacityTestOptions{
@@ -95,14 +94,12 @@ func NewCapacityTestOp(t terminal.OpTerminal, opts *CapacityTestOptions) (*Capac
 
 	// Create and init.
 	op := &CapacityTestOp{
-		t:               t,
 		opts:            opts,
-		recvQueue:       make(chan *container.Container),
+		recvQueue:       make(chan *terminal.Msg),
 		dataSent:        new(int64),
 		dataSentWasAckd: abool.New(),
 		result:          make(chan *terminal.Error, 1),
 	}
-	op.OpBase.Init()
 
 	// Make capacity test request.
 	request, err := dsd.Dump(op.opts, dsd.CBOR)
@@ -112,7 +109,7 @@ func NewCapacityTestOp(t terminal.OpTerminal, opts *CapacityTestOptions) (*Capac
 	}
 
 	// Send test request.
-	tErr := t.OpInit(op, container.New(request))
+	tErr := t.StartOperation(op, container.New(request), 1*time.Second)
 	if tErr != nil {
 		capacityTestRunning.UnSet()
 		return nil, tErr
@@ -124,7 +121,7 @@ func NewCapacityTestOp(t terminal.OpTerminal, opts *CapacityTestOptions) (*Capac
 	return op, nil
 }
 
-func runCapacityTestOp(t terminal.OpTerminal, opID uint32, data *container.Container) (terminal.Operation, *terminal.Error) {
+func startCapacityTestOp(t terminal.Terminal, opID uint32, data *container.Container) (terminal.Operation, *terminal.Error) {
 	// Check if another test is already running.
 	if !capacityTestRunning.SetToIf(false, true) {
 		return nil, terminal.ErrTryAgainLater.With("another capacity op is already running")
@@ -150,15 +147,13 @@ func runCapacityTestOp(t terminal.OpTerminal, opID uint32, data *container.Conta
 
 	// Create operation.
 	op := &CapacityTestOp{
-		t:               t,
 		opts:            opts,
-		recvQueue:       make(chan *container.Container),
+		recvQueue:       make(chan *terminal.Msg, 1000),
 		dataSent:        new(int64),
 		dataSentWasAckd: abool.New(),
 		result:          make(chan *terminal.Error, 1),
 	}
-	op.OpBase.Init()
-	op.OpBase.SetID(opID)
+	op.InitOperationBase(t, opID)
 
 	// Start handler and sender.
 	op.senderStarted = true
@@ -174,13 +169,20 @@ func (op *CapacityTestOp) handler(ctx context.Context) error {
 	returnErr := terminal.ErrStopping
 	defer func() {
 		// Linters don't get that returnErr is used when directly used as defer.
-		op.t.OpEnd(op, returnErr)
+		op.Stop(op, returnErr)
 	}()
 
 	var maxTestTimeReached <-chan time.Time
 	opTimeout := time.After(capacityTestTimeout)
 
+	// Setup unit handling
+	var msg *terminal.Msg
+	defer msg.Finish()
+
+	// Handle receives.
 	for {
+		msg.Finish()
+
 		select {
 		case <-ctx.Done():
 			returnErr = terminal.ErrCanceled
@@ -194,7 +196,7 @@ func (op *CapacityTestOp) handler(ctx context.Context) error {
 			returnErr = op.reportMeasuredCapacity()
 			return nil
 
-		case c := <-op.recvQueue:
+		case msg = <-op.recvQueue:
 			// Record start time and start sender.
 			if !op.started {
 				op.started = true
@@ -207,18 +209,18 @@ func (op *CapacityTestOp) handler(ctx context.Context) error {
 			}
 
 			// Add to received data counter.
-			op.dataReceived += c.Length()
+			op.dataReceived += msg.Data.Length()
 
 			// Check if we received the data received signal.
-			if c.Length() == len(capacityTestDataReceivedSignal) &&
-				bytes.Equal(c.CompileData(), capacityTestDataReceivedSignal) {
+			if msg.Data.Length() == len(capacityTestDataReceivedSignal) &&
+				bytes.Equal(msg.Data.CompileData(), capacityTestDataReceivedSignal) {
 				op.dataSentWasAckd.Set()
 			}
 
 			// Send the data received signal when we received the full test volume.
 			if op.dataReceived >= op.opts.TestVolume && !op.dataReceivedAckWasAckd {
-				tErr := op.t.OpSend(op, container.New(capacityTestDataReceivedSignal), capacityTestSendTimeout, true)
-				if !tErr.IsOK() {
+				tErr := op.Send(op.NewMsg(capacityTestDataReceivedSignal), capacityTestSendTimeout)
+				if tErr != nil {
 					returnErr = tErr.Wrap("failed to send data received signal")
 					return nil
 				}
@@ -226,7 +228,7 @@ func (op *CapacityTestOp) handler(ctx context.Context) error {
 				op.dataReceivedAckWasAckd = true
 
 				// Flush last message.
-				op.t.Flush()
+				op.Flush()
 			}
 
 			// Check if we can complete the test.
@@ -242,9 +244,12 @@ func (op *CapacityTestOp) handler(ctx context.Context) error {
 func (op *CapacityTestOp) sender(ctx context.Context) error {
 	for {
 		// Send next chunk.
-		tErr := op.t.OpSend(op, container.New(capacityTestSendData), capacityTestSendTimeout, true)
-		if tErr.IsError() {
-			op.t.OpEnd(op, tErr.Wrap("failed to send capacity test data"))
+		msg := op.NewMsg(capacityTestSendData)
+		msg.Unit.MakeHighPriority()
+		tErr := op.Send(msg, capacityTestSendTimeout)
+		if tErr != nil {
+			op.Stop(op, tErr.Wrap("failed to send capacity test data"))
+			return nil
 		}
 
 		// Add to sent data counter and stop sending if sending is complete.
@@ -258,7 +263,7 @@ func (op *CapacityTestOp) sender(ctx context.Context) error {
 		}
 
 		// Check if op has ended.
-		if op.HasEnded(false) {
+		if op.Stopped() {
 			return nil
 		}
 	}
@@ -276,7 +281,7 @@ func (op *CapacityTestOp) reportMeasuredCapacity() *terminal.Error {
 	op.testResult = int(bitRate)
 
 	// Save the result to the crane.
-	if controller, ok := op.t.(*CraneControllerTerminal); ok {
+	if controller, ok := op.Terminal().(*CraneControllerTerminal); ok {
 		if controller.Crane.ConnectedHub != nil {
 			controller.Crane.ConnectedHub.GetMeasurements().SetCapacity(op.testResult)
 			log.Infof(
@@ -292,29 +297,32 @@ func (op *CapacityTestOp) reportMeasuredCapacity() *terminal.Error {
 			return terminal.ErrInternalError.With("capacity operation was run on %s without a connected hub set", controller.Crane)
 		}
 	} else if !runningTests {
-		return terminal.ErrInternalError.With("capacity operation was run on terminal that is not a crane controller, but %T", op.t)
+		return terminal.ErrInternalError.With("capacity operation was run on terminal that is not a crane controller, but %T", op.Terminal())
 	}
 
 	return nil
 }
 
 // Deliver delivers a message.
-func (op *CapacityTestOp) Deliver(c *container.Container) *terminal.Error {
+func (op *CapacityTestOp) Deliver(msg *terminal.Msg) *terminal.Error {
 	// Optimized delivery with 1s timeout.
 	select {
-	case op.recvQueue <- c:
+	case op.recvQueue <- msg:
 	default:
 		select {
-		case op.recvQueue <- c:
+		case op.recvQueue <- msg:
 		case <-time.After(1 * time.Second):
+			msg.Finish()
 			return terminal.ErrTimeout
 		}
 	}
 	return nil
 }
 
-// End ends the operation.
-func (op *CapacityTestOp) End(tErr *terminal.Error) (errorToSend *terminal.Error) {
+// HandleStop gives the operation the ability to cleanly shut down.
+// The returned error is the error to send to the other side.
+// Should never be called directly. Call Stop() instead.
+func (op *CapacityTestOp) HandleStop(tErr *terminal.Error) (errorToSend *terminal.Error) {
 	select {
 	case op.result <- tErr:
 	default:

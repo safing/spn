@@ -15,9 +15,7 @@ const SyncStateOpType = "sync/state"
 
 // SyncStateOp is used to sync the crane state.
 type SyncStateOp struct {
-	terminal.OpBase
-	t      terminal.OpTerminal
-	result chan *terminal.Error
+	terminal.OneOffOperationBase
 }
 
 // SyncStateMessage holds the sync data.
@@ -32,10 +30,10 @@ func (op *SyncStateOp) Type() string {
 }
 
 func init() {
-	terminal.RegisterOpType(terminal.OpParams{
+	terminal.RegisterOpType(terminal.OperationFactory{
 		Type:     SyncStateOpType,
 		Requires: terminal.IsCraneController,
-		RunOp:    runSyncStateOp,
+		Start:    runSyncStateOp,
 	})
 }
 
@@ -43,7 +41,7 @@ func init() {
 func (crane *Crane) startSyncStateOp() {
 	module.StartWorker("sync crane state", func(ctx context.Context) error {
 		tErr := crane.Controller.SyncState(ctx)
-		if tErr.IsError() {
+		if tErr != nil {
 			return tErr
 		}
 
@@ -59,11 +57,8 @@ func (controller *CraneControllerTerminal) SyncState(ctx context.Context) *termi
 	}
 
 	// Create and init.
-	op := &SyncStateOp{
-		t:      controller,
-		result: make(chan *terminal.Error, 1),
-	}
-	op.OpBase.Init()
+	op := &SyncStateOp{}
+	op.Init()
 
 	// Get optimization states.
 	requestStopping := false
@@ -85,14 +80,14 @@ func (controller *CraneControllerTerminal) SyncState(ctx context.Context) *termi
 	}
 
 	// Send message.
-	tErr := controller.OpInit(op, container.New(data))
+	tErr := controller.StartOperation(op, container.New(data), 30*time.Second)
 	if tErr != nil {
 		return tErr
 	}
 
 	// Wait for reply
 	select {
-	case tErr = <-op.result:
+	case tErr = <-op.Result:
 		if tErr.IsError() {
 			return tErr
 		}
@@ -104,7 +99,7 @@ func (controller *CraneControllerTerminal) SyncState(ctx context.Context) *termi
 	}
 }
 
-func runSyncStateOp(t terminal.OpTerminal, opID uint32, data *container.Container) (terminal.Operation, *terminal.Error) {
+func runSyncStateOp(t terminal.Terminal, opID uint32, data *container.Container) (terminal.Operation, *terminal.Error) {
 	// Check if we are a on a crane controller.
 	var ok bool
 	var controller *CraneControllerTerminal
@@ -152,20 +147,4 @@ func runSyncStateOp(t terminal.OpTerminal, opID uint32, data *container.Containe
 	}
 
 	return nil, nil
-}
-
-// Deliver delivers a message to the operation.
-func (op *SyncStateOp) Deliver(c *container.Container) *terminal.Error {
-	return terminal.ErrIncorrectUsage
-}
-
-// End ends the operation.
-func (op *SyncStateOp) End(tErr *terminal.Error) (errorToSend *terminal.Error) {
-	if op.result != nil {
-		select {
-		case op.result <- tErr:
-		default:
-		}
-	}
-	return tErr
 }

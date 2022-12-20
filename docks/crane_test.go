@@ -11,7 +11,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/safing/portbase/container"
 	"github.com/safing/spn/cabin"
 	"github.com/safing/spn/hub"
 	"github.com/safing/spn/ships"
@@ -109,9 +108,12 @@ func testCraneWithCounter(t *testing.T, testID string, encrypting bool, loadSize
 }
 
 type StreamingTerminal struct {
+	terminal.BareTerminal
+
 	test     *testing.T
 	id       uint32
-	recv     chan *container.Container
+	crane    *Crane
+	recv     chan *terminal.Msg
 	testData []byte
 }
 
@@ -123,12 +125,14 @@ func (t *StreamingTerminal) Ctx() context.Context {
 	return module.Ctx
 }
 
-func (t *StreamingTerminal) Deliver(c *container.Container) *terminal.Error {
-	t.recv <- c
+func (t *StreamingTerminal) Deliver(msg *terminal.Msg) *terminal.Error {
+	t.recv <- msg
+	msg.Finish()
 	return nil
 }
 
 func (t *StreamingTerminal) Abandon(err *terminal.Error) {
+	t.crane.AbandonTerminal(t.ID(), err)
 	if err != nil {
 		t.test.Errorf("streaming terminal %d failed: %s", t.id, err)
 	}
@@ -137,8 +141,6 @@ func (t *StreamingTerminal) Abandon(err *terminal.Error) {
 func (t *StreamingTerminal) FmtID() string {
 	return fmt.Sprintf("test-%d", t.id)
 }
-
-func (t *StreamingTerminal) Flush() {}
 
 func TestCraneLoadingUnloading(t *testing.T) {
 	t.Parallel()
@@ -209,22 +211,23 @@ func testCraneWithStreaming(t *testing.T, testID string, encrypting bool, loadSi
 	st := &StreamingTerminal{
 		test:     t,
 		id:       8,
-		recv:     make(chan *container.Container),
+		crane:    crane2,
+		recv:     make(chan *terminal.Msg),
 		testData: []byte("The quick brown fox jumps over the lazy dog."),
 	}
-	crane1.terminals[st.ID()] = st
 	crane2.terminals[st.ID()] = st
 
 	// Run streaming test.
 	var streamingWg sync.WaitGroup
 	streamingWg.Add(2)
-	count := 1000
+	count := 10000
 	go func() {
 		for i := 1; i <= count; i++ {
-			c := container.New(st.testData)
-			terminal.MakeMsg(c, st.ID(), terminal.MsgTypeData)
-			err := crane1.submitTerminalMsg(c, false)
+			msg := terminal.NewMsg(st.testData)
+			msg.FlowID = st.id
+			err := crane1.Send(msg, 1*time.Second)
 			if err != nil {
+				msg.Finish()
 				crane1.Stop(err.Wrap("failed to submit terminal msg"))
 			}
 			// log.Tracef("spn/testing: + %d", i)
@@ -234,8 +237,8 @@ func testCraneWithStreaming(t *testing.T, testID string, encrypting bool, loadSi
 	}()
 	go func() {
 		for i := 1; i <= count; i++ {
-			c := <-st.recv
-			assert.Equal(t, st.testData, c.CompileData(), "data mismatched")
+			msg := <-st.recv
+			assert.Equal(t, st.testData, msg.Data.CompileData(), "data mismatched")
 			// log.Tracef("spn/testing: - %d", i)
 		}
 		t.Logf("crane test %s done with receiving", testID)

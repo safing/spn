@@ -37,17 +37,13 @@ func TestTerminals(t *testing.T) {
 				flowControlSize: defaultTestQueueSize,
 			},
 		} {
-			// Test with different submit controls.
-			for _, submitControl := range []SubmitControlType{SubmitControlPlain, SubmitControlFair} {
-				// Run tests with combined options.
-				testTerminals(t, identity, &TerminalOpts{
-					Encrypt:         encrypt,
-					Padding:         defaultTestPadding,
-					FlowControl:     fc.flowControl,
-					FlowControlSize: fc.flowControlSize,
-					SubmitControl:   submitControl,
-				})
-			}
+			// Run tests with combined options.
+			testTerminals(t, identity, &TerminalOpts{
+				Encrypt:         encrypt,
+				Padding:         defaultTestPadding,
+				FlowControl:     fc.flowControl,
+				FlowControlSize: fc.flowControlSize,
+			})
 		}
 	}
 }
@@ -69,9 +65,9 @@ func testTerminals(t *testing.T, identity *cabin.Identity, terminalOpts *Termina
 	var initData *container.Container
 	var err *Error
 	term1, initData, err = NewLocalTestTerminal(
-		module.Ctx, 127, "c1", dstHub, terminalOpts, createTestForwardingFunc(
-			t, "c1", "c2", func(c *container.Container) *Error {
-				return term2.Deliver(c)
+		module.Ctx, 127, "c1", dstHub, terminalOpts, createForwardingUpstream(
+			t, "c1", "c2", func(msg *Msg) *Error {
+				return term2.Deliver(msg)
 			},
 		),
 	)
@@ -79,9 +75,9 @@ func testTerminals(t *testing.T, identity *cabin.Identity, terminalOpts *Termina
 		t.Fatalf("failed to create local terminal: %s", err)
 	}
 	term2, _, err = NewRemoteTestTerminal(
-		module.Ctx, 127, "c2", identity, initData, createTestForwardingFunc(
-			t, "c2", "c1", func(c *container.Container) *Error {
-				return term1.Deliver(c)
+		module.Ctx, 127, "c2", identity, initData, createForwardingUpstream(
+			t, "c2", "c1", func(msg *Msg) *Error {
+				return term1.Deliver(msg)
 			},
 		),
 	)
@@ -92,10 +88,9 @@ func testTerminals(t *testing.T, identity *cabin.Identity, terminalOpts *Termina
 	// Start testing with counters.
 	countToQueueSize := uint64(terminalOpts.FlowControlSize)
 	optionsSuffix := fmt.Sprintf(
-		"encrypt=%v,flowType=%d,submitType=%d",
+		"encrypt=%v,flowType=%d",
 		terminalOpts.Encrypt,
 		terminalOpts.FlowControl,
-		terminalOpts.SubmitControl,
 	)
 
 	testTerminalWithCounters(t, term1, term2, &testWithCounterOpts{
@@ -196,15 +191,22 @@ func testTerminals(t *testing.T, identity *cabin.Identity, terminalOpts *Termina
 		clientCountTo: countToQueueSize * 1000,
 		serverCountTo: countToQueueSize * 1000,
 	})
+
+	// Clean up.
+	term1.Abandon(nil)
+	term2.Abandon(nil)
+
+	// Give some time for the last log messages and clean up.
+	time.Sleep(100 * time.Millisecond)
 }
 
-func createTestForwardingFunc(t *testing.T, srcName, dstName string, deliverFunc func(*container.Container) *Error) func(c *container.Container, highPriority bool) *Error {
+func createForwardingUpstream(t *testing.T, srcName, dstName string, deliverFunc func(*Msg) *Error) Upstream {
 	t.Helper()
 
-	return func(c *container.Container, _ bool) *Error {
+	return UpstreamSendFunc(func(msg *Msg, _ time.Duration) *Error {
 		// Fast track nil containers.
-		if c == nil {
-			dErr := deliverFunc(c)
+		if msg == nil {
+			dErr := deliverFunc(msg)
 			if dErr != nil {
 				t.Errorf("%s>%s: failed to deliver nil msg to terminal: %s", srcName, dstName, dErr)
 				return dErr.With("failed to deliver nil msg to terminal")
@@ -214,18 +216,18 @@ func createTestForwardingFunc(t *testing.T, srcName, dstName string, deliverFunc
 
 		// Log messages.
 		if logTestCraneMsgs {
-			t.Logf("%s>%s: %v\n", srcName, dstName, c.CompileData())
+			t.Logf("%s>%s: %v\n", srcName, dstName, msg.Data.CompileData())
 		}
 
 		// Deliver to other terminal.
-		dErr := deliverFunc(c)
+		dErr := deliverFunc(msg)
 		if dErr != nil {
 			t.Errorf("%s>%s: failed to deliver to terminal: %s", srcName, dstName, dErr)
 			return dErr.With("failed to deliver to terminal")
 		}
 
 		return nil
-	}
+	})
 }
 
 type testWithCounterOpts struct {

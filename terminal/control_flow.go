@@ -5,17 +5,17 @@ import (
 	"fmt"
 	"sync"
 	"sync/atomic"
+	"time"
 
-	"github.com/safing/portbase/container"
 	"github.com/safing/portbase/formats/varint"
 	"github.com/safing/portbase/modules"
 )
 
 // FlowControl defines the flow control interface.
 type FlowControl interface {
-	Deliver(c *container.Container) *Error
-	Receive() <-chan *container.Container
-	Send(c *container.Container, highPriority bool) *Error
+	Deliver(msg *Msg) *Error
+	Receive() <-chan *Msg
+	Send(msg *Msg, timeout time.Duration) *Error
 	ReadyToSend() <-chan struct{}
 	Flush()
 	StartWorkers(m *modules.Module, terminalName string)
@@ -65,11 +65,11 @@ type DuplexFlowQueue struct {
 	// ti is the Terminal that is using the DFQ.
 	ctx context.Context
 
-	// upstream is the channel to put containers into to send them upstream.
-	submitUpstream func(data *container.Container, highPriority bool) *Error
+	// submitUpstream is used to submit messages to the upstream channel.
+	submitUpstream func(msg *Msg, timeout time.Duration)
 
-	// sendQueue holds the containers that are waiting to be sent.
-	sendQueue chan *container.Container
+	// sendQueue holds the messages that are waiting to be sent.
+	sendQueue chan *Msg
 	// prioMsgs holds the number of messages to send with high priority.
 	prioMsgs *int32
 	// sendSpace indicates the amount free slots in the recvQueue on the other end.
@@ -80,8 +80,8 @@ type DuplexFlowQueue struct {
 	// sender is waiting for available space.
 	wakeSender chan struct{}
 
-	// recvQueue holds the containers that are waiting to be processed.
-	recvQueue chan *container.Container
+	// recvQueue holds the messages that are waiting to be processed.
+	recvQueue chan *Msg
 	// reportedSpace indicates the amount of free slots that the other end knows
 	// about.
 	reportedSpace *int32
@@ -99,17 +99,17 @@ type DuplexFlowQueue struct {
 func NewDuplexFlowQueue(
 	ctx context.Context,
 	queueSize uint32,
-	submitUpstream func(c *container.Container, highPriority bool) *Error,
+	submitUpstream func(msg *Msg, timeout time.Duration),
 ) *DuplexFlowQueue {
 	dfq := &DuplexFlowQueue{
 		ctx:              ctx,
 		submitUpstream:   submitUpstream,
-		sendQueue:        make(chan *container.Container, queueSize),
+		sendQueue:        make(chan *Msg, queueSize),
 		prioMsgs:         new(int32),
 		sendSpace:        new(int32),
 		readyToSend:      make(chan struct{}),
 		wakeSender:       make(chan struct{}, 1),
-		recvQueue:        make(chan *container.Container, queueSize),
+		recvQueue:        make(chan *Msg, queueSize),
 		reportedSpace:    new(int32),
 		forceSpaceReport: make(chan struct{}, 1),
 		flush:            make(chan func()),
@@ -195,15 +195,22 @@ func (dfq *DuplexFlowQueue) FlowHandler(_ context.Context) error {
 	var sendSpaceDepleted bool
 	var flushFinished func()
 
-	// Setup micro task done signal.
-	microTaskDone := func() {}
-	defer microTaskDone()
+	// Drain all queues when shutting down.
+	defer func() {
+		for {
+			select {
+			case msg := <-dfq.sendQueue:
+				msg.Finish()
+			case msg := <-dfq.recvQueue:
+				msg.Finish()
+			default:
+				return
+			}
+		}
+	}()
 
 sending:
 	for {
-		// Signal that we've finished the micro task.
-		microTaskDone()
-
 		// If the send queue is depleted, wait to be woken.
 		if sendSpaceDepleted {
 			select {
@@ -220,10 +227,8 @@ sending:
 				// no data included.
 				spaceToReport := dfq.reportableRecvSpace()
 				if spaceToReport > 0 {
-					_ = dfq.submitUpstream(
-						container.New(varint.Pack64(uint64(spaceToReport))),
-						false,
-					)
+					msg := NewMsg(varint.Pack64(uint64(spaceToReport)))
+					dfq.submitUpstream(msg, 0)
 				}
 				continue sending
 
@@ -232,40 +237,41 @@ sending:
 			}
 		}
 
-		// Get Container from send queue.
+		// Get message from send queue.
 
 		select {
 		case dfq.readyToSend <- struct{}{}:
 			// Notify that we are ready to send.
 
-		case c := <-dfq.sendQueue:
-			// Send Container from queue.
+		case msg := <-dfq.sendQueue:
+			// Send message from queue.
 
 			// If nil, the queue is being shut down.
-			if c == nil {
+			if msg == nil {
 				return nil
 			}
 
-			// Check if we are handling a high priority message.
+			// Check if we are handling a high priority message or waiting for one.
+			// Mark any msgs as high priority, when there is one in the pipeline.
 			remainingPrioMsgs := atomic.AddInt32(dfq.prioMsgs, -1)
-			if remainingPrioMsgs >= 0 {
-				microTaskDone = module.SignalHighPriorityMicroTask()
-			} else {
-				microTaskDone = module.SignalMicroTask(DefaultMediumPriorityMaxDelay)
-				// Protect against wrapping.
-				if remainingPrioMsgs < -2_000_000_000 {
-					atomic.StoreInt32(dfq.prioMsgs, 0)
-				}
+			switch {
+			case remainingPrioMsgs >= 0:
+				msg.Unit.MakeHighPriority()
+			case remainingPrioMsgs < -30_000:
+				// Prevent wrap to positive.
+				// Compatible with int16 or bigger.
+				atomic.StoreInt32(dfq.prioMsgs, 0)
 			}
 
-			// Prepend available receiving space and flow ID.
-			c.Prepend(varint.Pack64(uint64(dfq.reportableRecvSpace())))
+			// Wait for processing slot.
+			msg.Unit.WaitForSlot()
+
+			// Prepend available receiving space.
+			msg.Data.Prepend(varint.Pack64(uint64(dfq.reportableRecvSpace())))
 
 			// Submit for sending upstream.
-			_ = dfq.submitUpstream(
-				c,
-				remainingPrioMsgs >= 0,
-			)
+			msg.Unit.Pause()
+			dfq.submitUpstream(msg, 0)
 			// Decrease the send space and set flag if depleted.
 			if dfq.decrementSendSpace() <= 0 {
 				sendSpaceDepleted = true
@@ -283,10 +289,8 @@ sending:
 			// no data included.
 			spaceToReport := dfq.reportableRecvSpace()
 			if spaceToReport > 0 {
-				_ = dfq.submitUpstream(
-					container.New(varint.Pack64(uint64(spaceToReport))),
-					false,
-				)
+				msg := NewMsg(varint.Pack64(uint64(spaceToReport)))
+				dfq.submitUpstream(msg, 0)
 			}
 
 		case newFlushFinishedFn := <-dfq.flush:
@@ -347,22 +351,29 @@ func (dfq *DuplexFlowQueue) ReadyToSend() <-chan struct{} {
 }
 
 // Send adds the given container to the send queue.
-func (dfq *DuplexFlowQueue) Send(c *container.Container, highPriority bool) *Error {
+func (dfq *DuplexFlowQueue) Send(msg *Msg, timeout time.Duration) *Error {
 	select {
-	case dfq.sendQueue <- c:
-		if highPriority {
+	case dfq.sendQueue <- msg:
+		msg.Unit.Pause()
+		if msg.Unit.IsHighPriority() {
 			// Reset prioMsgs to the current queue size, so that all waiting and the
-			// message we just added are all sent with high priority.
+			// message we just added are all handled as high priority.
 			atomic.StoreInt32(dfq.prioMsgs, int32(len(dfq.sendQueue)))
 		}
 		return nil
+
+	case <-TimedOut(timeout):
+		msg.Finish()
+		return ErrTimeout
+
 	case <-dfq.ctx.Done():
+		msg.Finish()
 		return ErrStopping
 	}
 }
 
 // Receive receives a container from the recv queue.
-func (dfq *DuplexFlowQueue) Receive() <-chan *container.Container {
+func (dfq *DuplexFlowQueue) Receive() <-chan *Msg {
 	// If the reported recv space is nearing its end, force a report.
 	if dfq.shouldReportRecvSpace() {
 		select {
@@ -375,27 +386,32 @@ func (dfq *DuplexFlowQueue) Receive() <-chan *container.Container {
 }
 
 // Deliver submits a container for receiving from upstream.
-func (dfq *DuplexFlowQueue) Deliver(c *container.Container) *Error {
+func (dfq *DuplexFlowQueue) Deliver(msg *Msg) *Error {
 	// Ignore nil containers.
-	if c == nil {
+	if msg == nil || msg.Data == nil {
+		msg.Finish()
 		return ErrMalformedData.With("no data")
 	}
 
 	// Get and add new reported space.
-	addSpace, err := c.GetNextN16()
+	addSpace, err := msg.Data.GetNextN16()
 	if err != nil {
+		msg.Finish()
 		return ErrMalformedData.With("failed to parse reported space: %w", err)
 	}
 	if addSpace > 0 {
 		dfq.addToSendSpace(int32(addSpace))
 	}
 	// Abort processing if the container only contained a space update.
-	if !c.HoldsData() {
+	if !msg.Data.HoldsData() {
+		msg.Finish()
 		return nil
 	}
 
+	msg.Unit.Pause()
 	select {
-	case dfq.recvQueue <- c:
+	case dfq.recvQueue <- msg:
+
 		// If the recv queue accepted the Container, decrement the recv space.
 		shouldReportRecvSpace := dfq.decrementReportedRecvSpace()
 		// If the reported recv space is nearing its end, force a report, if the
@@ -411,6 +427,7 @@ func (dfq *DuplexFlowQueue) Deliver(c *container.Container) *Error {
 	default:
 		// If the recv queue is full, return an error.
 		// The whole point of the flow queue is to guarantee that this never happens.
+		msg.Finish()
 		return ErrQueueOverflow
 	}
 }
@@ -426,7 +443,7 @@ func (dfq *DuplexFlowQueue) FlowStats() string {
 	)
 }
 
-// RecvQueueLen returns the current length of the receiv queue.
+// RecvQueueLen returns the current length of the receive queue.
 func (dfq *DuplexFlowQueue) RecvQueueLen() int {
 	return len(dfq.recvQueue)
 }

@@ -2,11 +2,11 @@ package docks
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/tevino/abool"
 
 	"github.com/safing/portbase/container"
-	"github.com/safing/portbase/log"
 	"github.com/safing/spn/hub"
 	"github.com/safing/spn/terminal"
 )
@@ -15,129 +15,70 @@ import (
 type ExpansionTerminal struct {
 	*terminal.TerminalBase
 
-	opID         uint32
-	relayOp      terminal.OpTerminal
-	relayOpEnded *abool.AtomicBool
+	relayOp *ExpansionTerminalRelayOp
 
 	changeNotifyFuncReady *abool.AtomicBool
 	changeNotifyFunc      func()
 }
 
+// ExpansionTerminalRelayOp the operation that connects to the relay.
+type ExpansionTerminalRelayOp struct {
+	terminal.OperationBase
+
+	expansionTerminal *ExpansionTerminal
+}
+
+// Type returns the type ID.
+func (op *ExpansionTerminalRelayOp) Type() string {
+	return ExpandOpType
+}
+
 // ExpandTo initiates an expansion.
-func ExpandTo(t terminal.OpTerminal, routeTo string, encryptFor *hub.Hub) (*ExpansionTerminal, *terminal.Error) {
-	// Create expansion terminal.
+func ExpandTo(from terminal.Terminal, routeTo string, encryptFor *hub.Hub) (*ExpansionTerminal, *terminal.Error) {
+	// First, create the local endpoint terminal to generate the init data.
+
+	// Create options and bare expansion terminal.
 	opts := terminal.DefaultExpansionTerminalOpts()
 	opts.Encrypt = encryptFor != nil
 	expansion := &ExpansionTerminal{
-		relayOp:               t,
-		relayOpEnded:          abool.New(),
 		changeNotifyFuncReady: abool.New(),
+	}
+	expansion.relayOp = &ExpansionTerminalRelayOp{
+		expansionTerminal: expansion,
 	}
 
 	// Create base terminal for expansion.
-	tBase, initData, tErr := terminal.NewLocalBaseTerminal(
+	base, initData, tErr := terminal.NewLocalBaseTerminal(
 		module.Ctx,
-		0,
-		t.FmtID(),
+		0, // Ignore; The ID of the operation is used for communication.
+		from.FmtID(),
 		encryptFor,
 		opts,
-		expansion.submitUpstream,
-		false,
+		expansion.relayOp,
 	)
 	if tErr != nil {
 		return nil, tErr.Wrap("failed to create expansion terminal base")
 	}
-	tBase.SetTerminalExtension(expansion)
-	tBase.SetTimeout(expansionClientTimeout)
-	expansion.TerminalBase = tBase
+	expansion.TerminalBase = base
+	base.SetTerminalExtension(expansion)
 
-	// Create setup message.
-	opMsg := container.New()
-	opMsg.AppendAsBlock([]byte(routeTo))
-	opMsg.AppendContainer(initData)
+	// Second, start the actual relay operation.
 
-	// Initialize expansion.
-	tErr = t.OpInit(expansion, opMsg)
+	// Create setup message for relay operation.
+	opInitData := container.New()
+	opInitData.AppendAsBlock([]byte(routeTo))
+	opInitData.AppendContainer(initData)
+
+	// Start relay operation on connected Hub.
+	tErr = from.StartOperation(expansion.relayOp, opInitData, 5*time.Second)
 	if tErr != nil {
-		return nil, tErr.Wrap("failed to init expansion")
+		return nil, tErr.Wrap("failed to start expansion operation")
 	}
 
 	// Start Workers.
-	tBase.StartWorkers(module, "expansion terminal")
+	base.StartWorkers(module, "expansion terminal")
 
 	return expansion, nil
-}
-
-func (t *ExpansionTerminal) submitUpstream(c *container.Container, highPriority bool) *terminal.Error {
-	err := t.relayOp.OpSend(t, c, 0, highPriority)
-	if err != nil {
-		t.relayOp.OpEnd(t, err.Wrap("failed to send relay op msg"))
-	}
-	return err
-}
-
-// ID returns the operation ID.
-func (t *ExpansionTerminal) ID() uint32 {
-	return t.opID
-}
-
-// SetID sets the operation ID.
-func (t *ExpansionTerminal) SetID(id uint32) {
-	t.opID = id
-}
-
-// Type returns the type ID.
-func (t *ExpansionTerminal) Type() string {
-	return ExpandOpType
-}
-
-// HasEnded returns whether the operation has ended.
-func (t *ExpansionTerminal) HasEnded(end bool) bool {
-	if end {
-		// Return false if we just only set it to ended.
-		return !t.relayOpEnded.SetToIf(false, true)
-	}
-	return t.relayOpEnded.IsSet()
-}
-
-// End ends the operation.
-func (t *ExpansionTerminal) End(err *terminal.Error) (errorToSend *terminal.Error) {
-	t.stop(err)
-	return err
-}
-
-// Abandon ends the terminal.
-func (t *ExpansionTerminal) Abandon(err *terminal.Error) {
-	t.stop(err)
-}
-
-func (t *ExpansionTerminal) stop(err *terminal.Error) {
-	if t.Abandoning.SetToIf(false, true) {
-		switch {
-		case err == nil:
-			log.Debugf("spn/docks: expansion terminal %s is being abandoned", t.FmtID())
-		case err.IsOK():
-			log.Infof("spn/docks: expansion terminal %s is being abandoned: %s", t.FmtID(), err)
-		default:
-			log.Warningf("spn/docks: expansion terminal %s: %s", t.FmtID(), err)
-		}
-
-		// End all operations.
-		t.StartAbandonProcedure(nil, false, func() {
-			// Send stop message.
-			t.relayOp.OpEnd(t, nil)
-
-			// Trigger update of connected Pin.
-			if t.changeNotifyFuncReady.IsSet() {
-				t.changeNotifyFunc()
-			}
-		})
-	}
-}
-
-// IsBeingAbandoned returns whether the terminal is being abandoned.
-func (t *ExpansionTerminal) IsBeingAbandoned() bool {
-	return t.Abandoning.IsSet()
 }
 
 // SetChangeNotifyFunc sets a callback function that is called when the terminal state changes.
@@ -149,7 +90,38 @@ func (t *ExpansionTerminal) SetChangeNotifyFunc(f func()) {
 	t.changeNotifyFuncReady.Set()
 }
 
-// FmtID formats the operation ID.
-func (t *ExpansionTerminal) FmtID() string {
-	return fmt.Sprintf("%s#%d", t.relayOp.FmtID(), t.opID)
+// HandleDestruction gives the terminal the ability to clean up.
+// The terminal has already fully shut down at this point.
+// Should never be called directly. Call Abandon() instead.
+func (t *ExpansionTerminal) HandleDestruction(err *terminal.Error) {
+	// Trigger update of connected Pin.
+	if t.changeNotifyFuncReady.IsSet() {
+		t.changeNotifyFunc()
+	}
+
+	// Stop the relay operation.
+	// The error message is arlready sent by the terminal.
+	t.relayOp.Stop(t.relayOp, nil)
+}
+
+// CustomIDFormat formats the terminal ID.
+func (t *ExpansionTerminal) CustomIDFormat() string {
+	return fmt.Sprintf("%s~%d", t.relayOp.Terminal().FmtID(), t.relayOp.ID())
+}
+
+// Deliver delivers a message to the operation.
+func (op *ExpansionTerminalRelayOp) Deliver(msg *terminal.Msg) *terminal.Error {
+	// Proxy directly to expansion terminal.
+	return op.expansionTerminal.Deliver(msg)
+}
+
+// HandleStop gives the operation the ability to cleanly shut down.
+// The returned error is the error to send to the other side.
+// Should never be called directly. Call Stop() instead.
+func (op *ExpansionTerminalRelayOp) HandleStop(err *terminal.Error) (errorToSend *terminal.Error) {
+	// Stop the expansion terminal.
+	// The error message will be sent by the operation.
+	op.expansionTerminal.Abandon(nil)
+
+	return err
 }

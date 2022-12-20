@@ -119,6 +119,13 @@ findCandidates:
 }
 
 func connectToHomeHub(ctx context.Context, dst *hub.Hub) error {
+	// Create new context with timeout.
+	// The maximum timeout is a worst case safeguard.
+	// Keep in mind that multiple IPs and protocols may be tried in all configurations.
+	// Some servers will be (possibly on purpose) hard to reach.
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+	defer cancel()
+
 	// Set and clean up exceptions.
 	setExceptions(dst.Info.IPv4, dst.Info.IPv6)
 	defer setExceptions(nil, nil)
@@ -150,7 +157,7 @@ func connectToHomeHub(ctx context.Context, dst *hub.Hub) error {
 	}
 
 	// Create communication terminal.
-	homeTerminal, initData, tErr := docks.NewLocalCraneTerminal(crane, nil, terminal.DefaultHomeHubTerminalOpts(), nil)
+	homeTerminal, initData, tErr := docks.NewLocalCraneTerminal(crane, nil, terminal.DefaultHomeHubTerminalOpts())
 	if tErr != nil {
 		return tErr.Wrap("failed to create home terminal")
 	}
@@ -165,7 +172,7 @@ func connectToHomeHub(ctx context.Context, dst *hub.Hub) error {
 		return tErr.Wrap("failed to authorize")
 	}
 	select {
-	case tErr := <-authOp.Ended:
+	case tErr := <-authOp.Result:
 		if !tErr.Is(terminal.ErrExplicitAck) {
 			return tErr.Wrap("failed to authenticate to")
 		}

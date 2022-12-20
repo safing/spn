@@ -42,18 +42,16 @@ func TestEffectiveBandwidth(t *testing.T) { //nolint:paralleltest // Run alone.
 
 	// Re-use the capacity test for the bandwidth test.
 	op := &CapacityTestOp{
-		t: a,
 		opts: &CapacityTestOptions{
 			TestVolume: bwTestVolume,
 			MaxTime:    beTestTime,
 			testing:    true,
 		},
-		recvQueue:       make(chan *container.Container),
+		recvQueue:       make(chan *terminal.Msg),
 		dataSent:        new(int64),
 		dataSentWasAckd: abool.New(),
 		result:          make(chan *terminal.Error, 1),
 	}
-	op.OpBase.Init()
 	// Disable sender again.
 	op.senderStarted = true
 	op.dataSentWasAckd.Set()
@@ -63,7 +61,7 @@ func TestEffectiveBandwidth(t *testing.T) { //nolint:paralleltest // Run alone.
 		t.Fatal(terminal.ErrInternalError.With("failed to serialize capactity test options: %w", err))
 	}
 	// Send test request.
-	tErr := a.OpInit(op, container.New(request))
+	tErr := a.StartOperation(op, container.New(request), 1*time.Second)
 	if tErr != nil {
 		t.Fatal(tErr)
 	}

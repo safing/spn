@@ -2,7 +2,6 @@ package docks
 
 import (
 	"github.com/safing/portbase/container"
-	"github.com/safing/portbase/log"
 	"github.com/safing/spn/terminal"
 )
 
@@ -28,8 +27,7 @@ func NewLocalCraneControllerTerminal(
 		crane.ID,
 		nil,
 		initMsg,
-		crane.submitImportantTerminalMsg,
-		true,
+		terminal.UpstreamSendFunc(crane.sendImportantTerminalMsg),
 	)
 	if err != nil {
 		return nil, nil, err
@@ -50,8 +48,7 @@ func NewRemoteCraneControllerTerminal(
 		crane.ID,
 		nil,
 		initData,
-		crane.submitImportantTerminalMsg,
-		true,
+		terminal.UpstreamSendFunc(crane.sendImportantTerminalMsg),
 	)
 	if err != nil {
 		return nil, nil, err
@@ -88,27 +85,16 @@ func initCraneController(
 	return cct
 }
 
-// Abandon abandons the crane controller.
-func (controller *CraneControllerTerminal) Abandon(err *terminal.Error) {
-	if controller.Abandoning.SetToIf(false, true) {
-		// Send stop msg and end all operations.
-		controller.StartAbandonProcedure(err, false, func() {
-			// Send error manually, as terminal base packs it into another data msg.
-			// TODO: Send via terminal again when DFQ is merged.
-			if !err.IsExternal() {
-				stopMsg := container.New(err.Pack())
-				terminal.MakeMsg(stopMsg, controller.ID(), terminal.MsgTypeStop)
-				err := controller.Crane.submitImportantTerminalMsg(stopMsg, false)
-				if err != nil {
-					log.Warningf("spn/docks: %s controller failed to submit stop msg: %s", controller.Crane, err)
-				}
-			}
+// HandleAbandon gives the terminal the ability to cleanly shut down.
+func (controller *CraneControllerTerminal) HandleAbandon(err *terminal.Error) (errorToSend *terminal.Error) {
+	// Abandon terminal.
+	controller.Crane.AbandonTerminal(0, err)
 
-			// Abandon terminal.
-			controller.Crane.AbandonTerminal(0, err)
+	return err
+}
 
-			// Stop controlled crane.
-			controller.Crane.Stop(nil)
-		})
-	}
+// HandleDestruction gives the terminal the ability to clean up.
+func (controller *CraneControllerTerminal) HandleDestruction(err *terminal.Error) {
+	// Stop controlled crane.
+	controller.Crane.Stop(nil)
 }

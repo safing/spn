@@ -92,12 +92,12 @@ type Crane struct {
 	// loading moves containers from the crane to the ship.
 	loading chan *container.Container
 	// terminalMsgs holds containers from terminals waiting to be laoded.
-	terminalMsgs chan *container.Container
-	// importantMsgs holds important containers from terminals waiting to be laoded.
-	importantMsgs chan *container.Container
+	terminalMsgs chan *terminal.Msg
+	// controllerMsgs holds important containers from terminals waiting to be laoded.
+	controllerMsgs chan *terminal.Msg
 
 	// terminals holds all the connected terminals.
-	terminals map[uint32]terminal.TerminalInterface
+	terminals map[uint32]terminal.Terminal
 	// terminalsLock locks terminals.
 	terminalsLock sync.Mutex
 	// nextTerminalID holds the next terminal ID.
@@ -123,13 +123,13 @@ func NewCrane(ship ships.Ship, connectedHub *hub.Hub, id *cabin.Identity) (*Cran
 		NetState:     newNetworkOptimizationState(),
 		identity:     id,
 
-		ship:          ship,
-		unloading:     make(chan *container.Container),
-		loading:       make(chan *container.Container, 100),
-		terminalMsgs:  make(chan *container.Container, 100),
-		importantMsgs: make(chan *container.Container, 100),
+		ship:           ship,
+		unloading:      make(chan *container.Container),
+		loading:        make(chan *container.Container, 100),
+		terminalMsgs:   make(chan *terminal.Msg, 100),
+		controllerMsgs: make(chan *terminal.Msg, 100),
 
-		terminals: make(map[uint32]terminal.TerminalInterface),
+		terminals: make(map[uint32]terminal.Terminal),
 	}
 	err := registerCrane(newCrane)
 	if err != nil {
@@ -290,7 +290,7 @@ func (crane *Crane) terminalCount() int {
 	return len(crane.terminals)
 }
 
-func (crane *Crane) getTerminal(id uint32) (t terminal.TerminalInterface, ok bool) {
+func (crane *Crane) getTerminal(id uint32) (t terminal.Terminal, ok bool) {
 	crane.terminalsLock.Lock()
 	defer crane.terminalsLock.Unlock()
 
@@ -298,14 +298,14 @@ func (crane *Crane) getTerminal(id uint32) (t terminal.TerminalInterface, ok boo
 	return
 }
 
-func (crane *Crane) setTerminal(t terminal.TerminalInterface) {
+func (crane *Crane) setTerminal(t terminal.Terminal) {
 	crane.terminalsLock.Lock()
 	defer crane.terminalsLock.Unlock()
 
 	crane.terminals[t.ID()] = t
 }
 
-func (crane *Crane) deleteTerminal(id uint32) (t terminal.TerminalInterface, ok bool) {
+func (crane *Crane) deleteTerminal(id uint32) (t terminal.Terminal, ok bool) {
 	crane.terminalsLock.Lock()
 	defer crane.terminalsLock.Unlock()
 
@@ -353,6 +353,8 @@ func (crane *Crane) AbandonTerminal(id uint32, err *terminal.Error) {
 			crane.terminalCount() <= 1 {
 			// Stop the crane in worker, so the caller can do some work.
 			module.StartWorker("retire crane", func(_ context.Context) error {
+				// Let enough time for the last errors to be sent, as terminals are abandoned in a goroutine.
+				time.Sleep(3 * time.Second)
 				crane.Stop(nil)
 				return nil
 			})
@@ -360,20 +362,27 @@ func (crane *Crane) AbandonTerminal(id uint32, err *terminal.Error) {
 	}
 }
 
-func (crane *Crane) submitImportantTerminalMsg(c *container.Container, _ bool) *terminal.Error {
+func (crane *Crane) sendImportantTerminalMsg(msg *terminal.Msg, timeout time.Duration) *terminal.Error {
+	msg.Unit.Pause()
+
 	select {
-	case crane.importantMsgs <- c:
+	case crane.controllerMsgs <- msg:
 		return nil
 	case <-crane.ctx.Done():
+		msg.Finish()
 		return terminal.ErrCanceled
 	}
 }
 
-func (crane *Crane) submitTerminalMsg(c *container.Container, _ bool) *terminal.Error {
+// Send is used by others to send a message through the crane.
+func (crane *Crane) Send(msg *terminal.Msg, timeout time.Duration) *terminal.Error {
+	msg.Unit.Pause()
+
 	select {
-	case crane.terminalMsgs <- c:
+	case crane.terminalMsgs <- msg:
 		return nil
 	case <-crane.ctx.Done():
+		msg.Finish()
 		return terminal.ErrCanceled
 	}
 }
@@ -601,8 +610,18 @@ handling:
 					// Get terminal and let it further handle the message.
 					t, ok := crane.getTerminal(terminalID)
 					if ok {
-						deliveryErr := t.Deliver(segment)
+						// Create msg and set priority.
+						msg := terminal.NewEmptyMsg()
+						msg.FlowID = terminalID
+						msg.Type = terminalMsgType
+						msg.Data = segment
+						if msg.Type == terminal.MsgTypePriorityData {
+							msg.Unit.MakeHighPriority()
+						}
+						// Deliver to terminal.
+						deliveryErr := t.Deliver(msg)
 						if deliveryErr != nil {
+							msg.Finish()
 							// This is a hot path. Start a worker for abandoning the terminal.
 							module.StartWorker("end terminal", func(_ context.Context) error {
 								crane.AbandonTerminal(t.ID(), deliveryErr.Wrap("failed to deliver data"))
@@ -644,16 +663,23 @@ func (crane *Crane) loader(ctx context.Context) (err error) {
 		return nil
 	}
 
+	// Make sure any received message is finished
+	var msg, firstMsg *terminal.Msg
+	defer msg.Finish()
+	defer firstMsg.Finish()
+
 	for {
+		// Reset first message in shipment.
+		firstMsg.Finish()
+		firstMsg = nil
 
 	fillingShipment:
 		for shipment.Length() < crane.targetLoadSize {
 			// Gather segments until shipment is filled.
-			var newSegment *container.Container
 
 			// Prioritize messages from the controller.
 			select {
-			case newSegment = <-crane.importantMsgs:
+			case msg = <-crane.controllerMsgs:
 			case <-ctx.Done():
 				crane.Stop(nil)
 				return nil
@@ -661,8 +687,8 @@ func (crane *Crane) loader(ctx context.Context) (err error) {
 			default:
 				// Then listen for all.
 				select {
-				case newSegment = <-crane.importantMsgs:
-				case newSegment = <-crane.terminalMsgs:
+				case msg = <-crane.controllerMsgs:
+				case msg = <-crane.terminalMsgs:
 				case <-loadNow():
 					break fillingShipment
 				case <-ctx.Done():
@@ -671,8 +697,24 @@ func (crane *Crane) loader(ctx context.Context) (err error) {
 				}
 			}
 
-			// Handle new segment.
-			if newSegment != nil {
+			// Debug unit leaks.
+			// msg.Debug()
+
+			// Handle new message.
+			if msg != nil {
+				// Pack msg and add to segment.
+				msg.Pack()
+				newSegment := msg.Data
+
+				// Check if this is the first message.
+				// This is the only message where we wait for a slot.
+				if firstMsg == nil {
+					firstMsg = msg
+					firstMsg.Unit.WaitForSlot()
+				} else {
+					msg.Finish()
+				}
+
 				// Check length.
 				if newSegment.Length() > maxSegmentLength {
 					log.Warningf("spn/docks: %s ignored oversized segment with length %d", crane, newSegment.Length())
@@ -847,11 +889,11 @@ func (crane *Crane) Stop(err *terminal.Error) {
 	crane.NotifyUpdate()
 }
 
-func (crane *Crane) allTerms() []terminal.TerminalInterface {
+func (crane *Crane) allTerms() []terminal.Terminal {
 	crane.terminalsLock.Lock()
 	defer crane.terminalsLock.Unlock()
 
-	terms := make([]terminal.TerminalInterface, 0, len(crane.terminals))
+	terms := make([]terminal.Terminal, 0, len(crane.terminals))
 	for _, term := range crane.terminals {
 		terms = append(terms, term)
 	}

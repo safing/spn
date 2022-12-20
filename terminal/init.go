@@ -35,9 +35,6 @@ type TerminalOpts struct { //nolint:golint,maligned // TODO: Rename.
 	FlowControl     FlowControlType `json:"fc,omitempty"`
 	FlowControlSize uint32          `json:"qs,omitempty"` // Previously was "QueueSize".
 
-	SubmitControl     SubmitControlType `json:"sc,omitempty"`
-	SubmitControlSize uint32            `json:"ss,omitempty"`
-
 	UsePriorityDataMsgs bool `json:"pr,omitempty"`
 }
 
@@ -121,25 +118,6 @@ func (opts *TerminalOpts) Check(useDefaultsForRequired bool) *Error {
 		return ErrInvalidOptions.With("invalid flow control size of %d", opts.FlowControlSize)
 	}
 
-	// SubmitControl is optional.
-	switch opts.SubmitControl {
-	case SubmitControlDefault:
-		// Set to default submit control.
-		opts.SubmitControl = defaultSubmitControl
-	case SubmitControlPlain, SubmitControlFair:
-		// Ok.
-	default:
-		return ErrInvalidOptions.With("unknown submit control type: %d", opts.SubmitControl)
-	}
-
-	// SubmitControlSize is optional.
-	if opts.SubmitControlSize == 0 {
-		opts.SubmitControlSize = opts.SubmitControl.DefaultSize()
-	}
-	if opts.SubmitControlSize > MaxSubmitControlSize {
-		return ErrInvalidOptions.With("invalid flow control size of %d", opts.SubmitControlSize)
-	}
-
 	return nil
 }
 
@@ -150,8 +128,7 @@ func NewLocalBaseTerminal(
 	parentID string,
 	remoteHub *hub.Hub,
 	initMsg *TerminalOpts,
-	submitUpstream func(c *container.Container, highPriority bool) *Error,
-	addTerminalIDType bool,
+	upstream Upstream,
 ) (
 	t *TerminalBase,
 	initData *container.Container,
@@ -164,7 +141,7 @@ func NewLocalBaseTerminal(
 	}
 
 	// Create baseline.
-	t, err = createTerminalBase(ctx, id, parentID, false, initMsg, submitUpstream, addTerminalIDType)
+	t, err = createTerminalBase(ctx, id, parentID, false, initMsg, upstream)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -203,8 +180,7 @@ func NewRemoteBaseTerminal(
 	parentID string,
 	identity *cabin.Identity,
 	initData *container.Container,
-	submitUpstream func(c *container.Container, highPriority bool) *Error,
-	addTerminalIDType bool,
+	upstream Upstream,
 ) (
 	t *TerminalBase,
 	initMsg *TerminalOpts,
@@ -217,7 +193,7 @@ func NewRemoteBaseTerminal(
 	}
 
 	// Create baseline.
-	t, err = createTerminalBase(ctx, id, parentID, true, initMsg, submitUpstream, addTerminalIDType)
+	t, err = createTerminalBase(ctx, id, parentID, true, initMsg, upstream)
 	if err != nil {
 		return nil, nil, err
 	}
