@@ -177,11 +177,11 @@ func (op *CapacityTestOp) handler(ctx context.Context) error {
 
 	// Setup unit handling
 	var msg *terminal.Msg
-	defer msg.FinishUnit()
+	defer msg.Finish()
 
 	// Handle receives.
 	for {
-		msg.FinishUnit()
+		msg.Finish()
 
 		select {
 		case <-ctx.Done():
@@ -245,7 +245,7 @@ func (op *CapacityTestOp) sender(ctx context.Context) error {
 	for {
 		// Send next chunk.
 		msg := op.NewMsg(capacityTestSendData)
-		msg.MakeUnitHighPriority()
+		msg.Unit.MakeHighPriority()
 		tErr := op.Send(msg, capacityTestSendTimeout)
 		if tErr != nil {
 			op.Stop(op, tErr.Wrap("failed to send capacity test data"))
@@ -312,7 +312,7 @@ func (op *CapacityTestOp) Deliver(msg *terminal.Msg) *terminal.Error {
 		select {
 		case op.recvQueue <- msg:
 		case <-time.After(1 * time.Second):
-			msg.FinishUnit()
+			msg.Finish()
 			return terminal.ErrTimeout
 		}
 	}

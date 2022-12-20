@@ -24,18 +24,18 @@ func (s *Scheduler) NewUnit() *Unit {
 	}
 }
 
-// ReUseUnit re-initilizes the unit to be able to reuse already allocated structs.
-func (u *Unit) ReUseUnit() {
+// ReUse re-initilizes the unit to be able to reuse already allocated structs.
+func (u *Unit) ReUse() {
 	// Finish previous unit.
-	u.FinishUnit()
+	u.Finish()
 
 	// Get new ID and unset finish flag.
 	u.id = u.scheduler.currentUnitID.Add(1)
 	u.finished.UnSet()
 }
 
-// WaitForUnitSlot blocks until the unit may be processed.
-func (u *Unit) WaitForUnitSlot() {
+// WaitForSlot blocks until the unit may be processed.
+func (u *Unit) WaitForSlot() {
 	// Unpause.
 	u.unpause()
 
@@ -58,9 +58,9 @@ func (u *Unit) WaitForUnitSlot() {
 	}
 }
 
-// FinishUnit signals the unit scheduler that this unit has finished processing.
+// Finish signals the unit scheduler that this unit has finished processing.
 // Will no-op if called on a nil Unit.
-func (u *Unit) FinishUnit() {
+func (u *Unit) Finish() {
 	if u == nil {
 		return
 	}
@@ -75,14 +75,14 @@ func (u *Unit) FinishUnit() {
 			u.scheduler.finishedTotal.Add(1)
 		}
 	}
-	u.RemoveUnitPriority()
+	u.RemovePriority()
 	u.unpause()
 }
 
-// PauseUnit signals the unit scheduler that this unit is paused and not being
+// Pause signals the unit scheduler that this unit is paused and not being
 // processed at the moment. May only be called if WaitForUnitSlot() was called
 // at least once.
-func (u *Unit) PauseUnit() {
+func (u *Unit) Pause() {
 	// Only change if within the origin epoch.
 	if u.epoch != u.scheduler.epoch.Load() {
 		return
@@ -117,8 +117,8 @@ func (u *Unit) unpause() {
 	}
 }
 
-// MakeUnitHighPriority marks the unit as high priority.
-func (u *Unit) MakeUnitHighPriority() {
+// MakeHighPriority marks the unit as high priority.
+func (u *Unit) MakeHighPriority() {
 	// Only change if within the origin epoch.
 	if u.epoch != u.scheduler.epoch.Load() {
 		return
@@ -129,13 +129,13 @@ func (u *Unit) MakeUnitHighPriority() {
 	}
 }
 
-// IsHighPriorityUnit returns whether the unit has high priority.
-func (u *Unit) IsHighPriorityUnit() bool {
+// IsHighPriority returns whether the unit has high priority.
+func (u *Unit) IsHighPriority() bool {
 	return u.highPriority.IsSet()
 }
 
-// RemoveUnitPriority removes the high priority mark.
-func (u *Unit) RemoveUnitPriority() {
+// RemovePriority removes the high priority mark.
+func (u *Unit) RemovePriority() {
 	// Only change if within the origin epoch.
 	if u.epoch != u.scheduler.epoch.Load() {
 		return

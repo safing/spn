@@ -30,8 +30,8 @@ func BenchmarkScheduler(b *testing.B) {
 		go func() {
 			for {
 				u := s.NewUnit()
-				u.WaitForUnitSlot()
-				u.FinishUnit()
+				u.WaitForSlot()
+				u.Finish()
 				select {
 				case finishedCh <- struct{}{}:
 				case <-done:

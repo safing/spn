@@ -128,7 +128,7 @@ iterating:
 			// Send msg.
 			if c != nil {
 				msg := op.NewEmptyMsg()
-				msg.MakeUnitHighPriority()
+				msg.Unit.MakeHighPriority()
 				msg.Data = c
 				tErr := op.Send(msg, 1*time.Second)
 				if tErr != nil {
@@ -144,7 +144,7 @@ iterating:
 
 // Deliver delivers the message to the operation.
 func (op *GossipQueryOp) Deliver(msg *terminal.Msg) *terminal.Error {
-	defer msg.FinishUnit()
+	defer msg.Finish()
 
 	gossipMsgTypeN, err := msg.Data.GetNextN8()
 	if err != nil {

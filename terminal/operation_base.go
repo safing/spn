@@ -69,21 +69,21 @@ func (op *OperationBase) NewEmptyMsg() *Msg {
 func (op *OperationBase) Send(msg *Msg, timeout time.Duration) *Error {
 	// Add and update metadata.
 	msg.FlowID = op.id
-	if msg.Type == MsgTypeData && msg.IsHighPriorityUnit() && UsePriorityDataMsgs {
+	if msg.Type == MsgTypeData && msg.Unit.IsHighPriority() && UsePriorityDataMsgs {
 		msg.Type = MsgTypePriorityData
 	}
 
 	// Wait for processing slot.
-	msg.WaitForUnitSlot()
+	msg.Unit.WaitForSlot()
 
 	// Pause unit before handing away.
-	msg.PauseUnit()
+	msg.Unit.Pause()
 
 	// Send message.
 	tErr := op.terminal.Send(msg, timeout)
 	if tErr != nil {
 		// Finish message unit on failure.
-		msg.FinishUnit()
+		msg.Finish()
 	}
 	return tErr
 }

@@ -87,7 +87,7 @@ func (t *ExpansionRelayTerminal) Ctx() context.Context {
 // Deliver delivers a message to the relay operation.
 func (op *ExpandOp) Deliver(msg *terminal.Msg) *terminal.Error {
 	// Pause unit before handing away.
-	msg.PauseUnit()
+	msg.Unit.Pause()
 
 	return op.deliverProxy(msg)
 }
@@ -95,7 +95,7 @@ func (op *ExpandOp) Deliver(msg *terminal.Msg) *terminal.Error {
 // Deliver delivers a message to the relay terminal.
 func (t *ExpansionRelayTerminal) Deliver(msg *terminal.Msg) *terminal.Error {
 	// Pause unit before handing away.
-	msg.PauseUnit()
+	msg.Unit.Pause()
 
 	return t.deliverProxy(msg)
 }
@@ -222,7 +222,7 @@ func expand(t terminal.Terminal, opID uint32, data *container.Container) (termin
 func (op *ExpandOp) submitForwardFlowControl(msg *terminal.Msg, timeout time.Duration) {
 	err := op.relayTerminal.flowControl.Send(msg, timeout)
 	if err != nil {
-		msg.FinishUnit()
+		msg.Finish()
 		op.Stop(op, err.Wrap("failed to submit to forward flow control"))
 	}
 }
@@ -230,37 +230,37 @@ func (op *ExpandOp) submitForwardFlowControl(msg *terminal.Msg, timeout time.Dur
 func (op *ExpandOp) submitBackwardFlowControl(msg *terminal.Msg, timeout time.Duration) {
 	err := op.flowControl.Send(msg, timeout)
 	if err != nil {
-		msg.FinishUnit()
+		msg.Finish()
 		op.Stop(op, err.Wrap("failed to submit to backward flow control"))
 	}
 }
 
 func (op *ExpandOp) submitForwardUpstream(msg *terminal.Msg, timeout time.Duration) {
 	msg.FlowID = op.relayTerminal.id
-	if msg.IsHighPriorityUnit() && op.opts.UsePriorityDataMsgs {
+	if msg.Unit.IsHighPriority() && op.opts.UsePriorityDataMsgs {
 		msg.Type = terminal.MsgTypePriorityData
 	} else {
 		msg.Type = terminal.MsgTypeData
 	}
 	err := op.relayTerminal.crane.Send(msg, timeout)
 	if err != nil {
-		msg.FinishUnit()
+		msg.Finish()
 		op.Stop(op, err.Wrap("failed to submit to forward upstream"))
 	}
 }
 
 func (op *ExpandOp) submitBackwardUpstream(msg *terminal.Msg, timeout time.Duration) {
 	msg.FlowID = op.relayTerminal.id
-	if msg.IsHighPriorityUnit() && op.opts.UsePriorityDataMsgs {
+	if msg.Unit.IsHighPriority() && op.opts.UsePriorityDataMsgs {
 		msg.Type = terminal.MsgTypePriorityData
 	} else {
 		msg.Type = terminal.MsgTypeData
-		msg.RemoveUnitPriority()
+		msg.Unit.RemovePriority()
 	}
 	// Note: op.Send() will transform high priority units to priority data msgs.
 	err := op.Send(msg, timeout)
 	if err != nil {
-		msg.FinishUnit()
+		msg.Finish()
 		op.Stop(op, err.Wrap("failed to submit to backward upstream"))
 	}
 }
@@ -285,10 +285,10 @@ func (op *ExpandOp) forwardHandler(_ context.Context) error {
 			atomic.AddUint64(op.dataRelayed, uint64(msg.Data.Length()))
 
 			// Wait for processing slot.
-			msg.WaitForUnitSlot()
+			msg.Unit.WaitForSlot()
 
 			// Receive data from the origin and forward it to the relay.
-			msg.PauseUnit()
+			msg.Unit.Pause()
 			op.relayTerminal.sendProxy(msg, 1*time.Minute)
 
 		case <-op.ctx.Done():
@@ -305,13 +305,13 @@ func (op *ExpandOp) backwardHandler(_ context.Context) error {
 			// log.Debugf("spn/testing: backwarding at %s: %s", op.FmtID(), spew.Sdump(c.CompileData()))
 
 			// Wait for processing slot.
-			msg.WaitForUnitSlot()
+			msg.Unit.WaitForSlot()
 
 			// Count relayed data for metrics.
 			atomic.AddUint64(op.dataRelayed, uint64(msg.Data.Length()))
 
 			// Receive data from the relay and forward it to the origin.
-			msg.PauseUnit()
+			msg.Unit.Pause()
 			op.sendProxy(msg, 1*time.Minute)
 
 		case <-op.ctx.Done():

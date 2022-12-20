@@ -127,7 +127,7 @@ func (t *StreamingTerminal) Ctx() context.Context {
 
 func (t *StreamingTerminal) Deliver(msg *terminal.Msg) *terminal.Error {
 	t.recv <- msg
-	msg.FinishUnit()
+	msg.Finish()
 	return nil
 }
 
@@ -227,7 +227,7 @@ func testCraneWithStreaming(t *testing.T, testID string, encrypting bool, loadSi
 			msg.FlowID = st.id
 			err := crane1.Send(msg, 1*time.Second)
 			if err != nil {
-				msg.FinishUnit()
+				msg.Finish()
 				crane1.Stop(err.Wrap("failed to submit terminal msg"))
 			}
 			// log.Tracef("spn/testing: + %d", i)

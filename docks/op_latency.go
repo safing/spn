@@ -154,7 +154,7 @@ func (op *LatencyTestClientOp) handler(ctx context.Context) error {
 				return nil
 			}
 			msg := op.NewEmptyMsg()
-			msg.MakeUnitHighPriority()
+			msg.Unit.MakeHighPriority()
 			msg.Data = pingRequest
 
 			// Send it.
@@ -212,7 +212,7 @@ func (op *LatencyTestClientOp) createPingRequest() (*container.Container, error)
 }
 
 func (op *LatencyTestClientOp) handleResponse(msg *terminal.Msg) *terminal.Error {
-	defer msg.FinishUnit()
+	defer msg.Finish()
 
 	rType, err := msg.Data.GetNextN8()
 	if err != nil {
@@ -321,8 +321,8 @@ func (op *LatencyTestOp) Deliver(msg *terminal.Msg) *terminal.Error {
 		// Keep the nonce and just replace the msg type.
 		msg.Data.PrependNumber(latencyPingResponse)
 		msg.Type = terminal.MsgTypeData
-		msg.ReUseUnit()
-		msg.MakeUnitHighPriority()
+		msg.Unit.ReUse()
+		msg.Unit.MakeHighPriority()
 
 		// Send response.
 		tErr := op.Send(msg, latencyTestOpTimeout)

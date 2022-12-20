@@ -363,26 +363,26 @@ func (crane *Crane) AbandonTerminal(id uint32, err *terminal.Error) {
 }
 
 func (crane *Crane) sendImportantTerminalMsg(msg *terminal.Msg, timeout time.Duration) *terminal.Error {
-	msg.PauseUnit()
+	msg.Unit.Pause()
 
 	select {
 	case crane.controllerMsgs <- msg:
 		return nil
 	case <-crane.ctx.Done():
-		msg.FinishUnit()
+		msg.Finish()
 		return terminal.ErrCanceled
 	}
 }
 
 // Send is used by others to send a message through the crane.
 func (crane *Crane) Send(msg *terminal.Msg, timeout time.Duration) *terminal.Error {
-	msg.PauseUnit()
+	msg.Unit.Pause()
 
 	select {
 	case crane.terminalMsgs <- msg:
 		return nil
 	case <-crane.ctx.Done():
-		msg.FinishUnit()
+		msg.Finish()
 		return terminal.ErrCanceled
 	}
 }
@@ -616,12 +616,12 @@ handling:
 						msg.Type = terminalMsgType
 						msg.Data = segment
 						if msg.Type == terminal.MsgTypePriorityData {
-							msg.MakeUnitHighPriority()
+							msg.Unit.MakeHighPriority()
 						}
 						// Deliver to terminal.
 						deliveryErr := t.Deliver(msg)
 						if deliveryErr != nil {
-							msg.FinishUnit()
+							msg.Finish()
 							// This is a hot path. Start a worker for abandoning the terminal.
 							module.StartWorker("end terminal", func(_ context.Context) error {
 								crane.AbandonTerminal(t.ID(), deliveryErr.Wrap("failed to deliver data"))
@@ -665,12 +665,12 @@ func (crane *Crane) loader(ctx context.Context) (err error) {
 
 	// Make sure any received message is finished
 	var msg, firstMsg *terminal.Msg
-	defer msg.FinishUnit()
-	defer firstMsg.FinishUnit()
+	defer msg.Finish()
+	defer firstMsg.Finish()
 
 	for {
 		// Reset first message in shipment.
-		firstMsg.FinishUnit()
+		firstMsg.Finish()
 		firstMsg = nil
 
 	fillingShipment:
@@ -710,9 +710,9 @@ func (crane *Crane) loader(ctx context.Context) (err error) {
 				// This is the only message where we wait for a slot.
 				if firstMsg == nil {
 					firstMsg = msg
-					firstMsg.WaitForUnitSlot()
+					firstMsg.Unit.WaitForSlot()
 				} else {
-					msg.FinishUnit()
+					msg.Finish()
 				}
 
 				// Check length.

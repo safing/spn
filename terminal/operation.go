@@ -191,12 +191,12 @@ func (t *TerminalBase) StartOperation(op Operation, initData *container.Containe
 	msg.FlowID = op.ID()
 	msg.Type = MsgTypeInit
 	msg.Data = initData
-	msg.MakeUnitHighPriority()
+	msg.Unit.MakeHighPriority()
 
 	// Send init msg.
 	err := op.Send(msg, timeout)
 	if err != nil {
-		msg.FinishUnit()
+		msg.Finish()
 	}
 	return err
 }
@@ -205,12 +205,12 @@ func (t *TerminalBase) StartOperation(op Operation, initData *container.Containe
 // If a timeout is set, sending will fail after the given timeout passed.
 func (t *TerminalBase) Send(msg *Msg, timeout time.Duration) *Error {
 	// Wait for processing slot.
-	msg.WaitForUnitSlot()
+	msg.Unit.WaitForSlot()
 
 	// Check if the send queue has available space.
 	select {
 	case t.sendQueue <- msg:
-		msg.PauseUnit()
+		msg.Unit.Pause()
 		return nil
 	default:
 	}
@@ -218,13 +218,13 @@ func (t *TerminalBase) Send(msg *Msg, timeout time.Duration) *Error {
 	// Submit message to buffer, if space is available.
 	select {
 	case t.sendQueue <- msg:
-		msg.PauseUnit()
+		msg.Unit.Pause()
 		return nil
 	case <-TimedOut(timeout):
-		msg.FinishUnit()
+		msg.Finish()
 		return ErrTimeout.With("sending via terminal")
 	case <-t.Ctx().Done():
-		msg.FinishUnit()
+		msg.Finish()
 		return ErrStopping
 	}
 }
@@ -263,7 +263,7 @@ func (t *TerminalBase) StopOperation(op Operation, err *Error) {
 
 			tErr := t.Send(msg, 10*time.Second)
 			if tErr != nil {
-				msg.FinishUnit()
+				msg.Finish()
 				log.Warningf("spn/terminal: failed to send stop msg: %s", tErr)
 			}
 		}

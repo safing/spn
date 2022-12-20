@@ -209,7 +209,7 @@ func startConnectOp(t terminal.Terminal, opID uint32, data *container.Container)
 func (op *ConnectOp) submitUpstream(msg *terminal.Msg, timeout time.Duration) {
 	err := op.Send(msg, timeout)
 	if err != nil {
-		msg.FinishUnit()
+		msg.Finish()
 		op.Stop(op, err.Wrap("failed to send data (op) read from %s", op.connectedType()))
 	}
 }
@@ -273,9 +273,9 @@ func (op *ConnectOp) connReader(_ context.Context) error {
 		// Define priority and possibly wait for slot.
 		switch {
 		case inBytes > highPrioThreshold:
-			msg.WaitForUnitSlot()
+			msg.Unit.WaitForSlot()
 		case op.request.UsePriorityDataMsgs:
-			msg.MakeUnitHighPriority()
+			msg.Unit.MakeHighPriority()
 		}
 
 		// Send packet.
@@ -284,7 +284,7 @@ func (op *ConnectOp) connReader(_ context.Context) error {
 			30*time.Second,
 		)
 		if tErr != nil {
-			msg.FinishUnit()
+			msg.Finish()
 			op.Stop(op, tErr.Wrap("failed to send data (dfq) from %s", op.connectedType()))
 			return nil
 		}
@@ -303,13 +303,13 @@ func (op *ConnectOp) connWriter(_ context.Context) error {
 	}()
 
 	var msg *terminal.Msg
-	defer msg.FinishUnit()
+	defer msg.Finish()
 
 	rateLimiter := terminal.NewRateLimiter(rateLimitMaxMbit)
 
 writing:
 	for {
-		msg.FinishUnit()
+		msg.Finish()
 
 		select {
 		case msg = <-op.dfq.Receive():

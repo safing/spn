@@ -124,7 +124,7 @@ func runPublishOp(t terminal.Terminal, opID uint32, data *container.Container) (
 
 // Deliver delivers a message to the operation.
 func (op *PublishOp) Deliver(msg *terminal.Msg) *terminal.Error {
-	defer msg.FinishUnit()
+	defer msg.Finish()
 
 	if op.identity != nil {
 		// Client

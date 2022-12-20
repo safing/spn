@@ -38,7 +38,7 @@ func TestUnit(t *testing.T) { //nolint:paralleltest
 
 			// Make 1% high priority.
 			if rand.Int()%100 == 0 { //nolint:gosec // This is a test.
-				u.MakeUnitHighPriority()
+				u.MakeHighPriority()
 			}
 
 			// Add to queue.
@@ -53,13 +53,13 @@ func TestUnit(t *testing.T) { //nolint:paralleltest
 	for i := 0; i < workers; i++ {
 		go func() {
 			for u := range unitQ {
-				u.WaitForUnitSlot()
-				u.PauseUnit()
+				u.WaitForSlot()
+				u.Pause()
 
 				time.Sleep(1 * time.Microsecond)
 
-				u.WaitForUnitSlot()
-				u.FinishUnit()
+				u.WaitForSlot()
+				u.Finish()
 			}
 			wg.Done()
 		}()

@@ -200,9 +200,9 @@ func (dfq *DuplexFlowQueue) FlowHandler(_ context.Context) error {
 		for {
 			select {
 			case msg := <-dfq.sendQueue:
-				msg.FinishUnit()
+				msg.Finish()
 			case msg := <-dfq.recvQueue:
-				msg.FinishUnit()
+				msg.Finish()
 			default:
 				return
 			}
@@ -256,7 +256,7 @@ sending:
 			remainingPrioMsgs := atomic.AddInt32(dfq.prioMsgs, -1)
 			switch {
 			case remainingPrioMsgs >= 0:
-				msg.MakeUnitHighPriority()
+				msg.Unit.MakeHighPriority()
 			case remainingPrioMsgs < -30_000:
 				// Prevent wrap to positive.
 				// Compatible with int16 or bigger.
@@ -264,13 +264,13 @@ sending:
 			}
 
 			// Wait for processing slot.
-			msg.WaitForUnitSlot()
+			msg.Unit.WaitForSlot()
 
 			// Prepend available receiving space.
 			msg.Data.Prepend(varint.Pack64(uint64(dfq.reportableRecvSpace())))
 
 			// Submit for sending upstream.
-			msg.PauseUnit()
+			msg.Unit.Pause()
 			dfq.submitUpstream(msg, 0)
 			// Decrease the send space and set flag if depleted.
 			if dfq.decrementSendSpace() <= 0 {
@@ -354,8 +354,8 @@ func (dfq *DuplexFlowQueue) ReadyToSend() <-chan struct{} {
 func (dfq *DuplexFlowQueue) Send(msg *Msg, timeout time.Duration) *Error {
 	select {
 	case dfq.sendQueue <- msg:
-		msg.PauseUnit()
-		if msg.IsHighPriorityUnit() {
+		msg.Unit.Pause()
+		if msg.Unit.IsHighPriority() {
 			// Reset prioMsgs to the current queue size, so that all waiting and the
 			// message we just added are all handled as high priority.
 			atomic.StoreInt32(dfq.prioMsgs, int32(len(dfq.sendQueue)))
@@ -363,11 +363,11 @@ func (dfq *DuplexFlowQueue) Send(msg *Msg, timeout time.Duration) *Error {
 		return nil
 
 	case <-TimedOut(timeout):
-		msg.FinishUnit()
+		msg.Finish()
 		return ErrTimeout
 
 	case <-dfq.ctx.Done():
-		msg.FinishUnit()
+		msg.Finish()
 		return ErrStopping
 	}
 }
@@ -389,14 +389,14 @@ func (dfq *DuplexFlowQueue) Receive() <-chan *Msg {
 func (dfq *DuplexFlowQueue) Deliver(msg *Msg) *Error {
 	// Ignore nil containers.
 	if msg == nil || msg.Data == nil {
-		msg.FinishUnit()
+		msg.Finish()
 		return ErrMalformedData.With("no data")
 	}
 
 	// Get and add new reported space.
 	addSpace, err := msg.Data.GetNextN16()
 	if err != nil {
-		msg.FinishUnit()
+		msg.Finish()
 		return ErrMalformedData.With("failed to parse reported space: %w", err)
 	}
 	if addSpace > 0 {
@@ -404,11 +404,11 @@ func (dfq *DuplexFlowQueue) Deliver(msg *Msg) *Error {
 	}
 	// Abort processing if the container only contained a space update.
 	if !msg.Data.HoldsData() {
-		msg.FinishUnit()
+		msg.Finish()
 		return nil
 	}
 
-	msg.PauseUnit()
+	msg.Unit.Pause()
 	select {
 	case dfq.recvQueue <- msg:
 
@@ -427,7 +427,7 @@ func (dfq *DuplexFlowQueue) Deliver(msg *Msg) *Error {
 	default:
 		// If the recv queue is full, return an error.
 		// The whole point of the flow queue is to guarantee that this never happens.
-		msg.FinishUnit()
+		msg.Finish()
 		return ErrQueueOverflow
 	}
 }

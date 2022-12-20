@@ -95,7 +95,7 @@ func (op *GossipOp) sendMsg(msgType GossipMsgType, data []byte) {
 		varint.Pack8(uint8(msgType)),
 		data,
 	)
-	msg.MakeUnitHighPriority()
+	msg.Unit.MakeHighPriority()
 
 	// Send.
 	err := op.Send(msg, 1*time.Second)
@@ -106,7 +106,7 @@ func (op *GossipOp) sendMsg(msgType GossipMsgType, data []byte) {
 
 // Deliver delivers a message to the operation.
 func (op *GossipOp) Deliver(msg *terminal.Msg) *terminal.Error {
-	defer msg.FinishUnit()
+	defer msg.Finish()
 
 	gossipMsgTypeN, err := msg.Data.GetNextN8()
 	if err != nil {

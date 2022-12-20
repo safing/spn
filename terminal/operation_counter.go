@@ -137,7 +137,7 @@ func (op *CounterOp) isDone() bool {
 
 // Deliver delivers data to the operation.
 func (op *CounterOp) Deliver(msg *Msg) *Error {
-	defer msg.FinishUnit()
+	defer msg.Finish()
 
 	nextStep, err := msg.Data.GetNextN64()
 	if err != nil {

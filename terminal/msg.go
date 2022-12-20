@@ -18,7 +18,7 @@ type Msg struct {
 	// Unit scheduling.
 	// Note: With just 100B per packet, a uint64 (the Unit ID) is enough for
 	// over 1800 Exabyte. No need for overflow support.
-	*unit.Unit
+	Unit *unit.Unit
 }
 
 // NewMsg returns a new msg.
@@ -70,22 +70,22 @@ func (msg *Msg) Consume(other *Msg) {
 	msg.Data.AppendContainer(other.Data)
 
 	// Inherit high priority.
-	if other.IsHighPriorityUnit() {
-		msg.MakeUnitHighPriority()
+	if other.Unit.IsHighPriority() {
+		msg.Unit.MakeHighPriority()
 	}
 
 	// Finish other unit.
-	other.FinishUnit()
+	other.Finish()
 }
 
-// FinishUnit signals the unit scheduler that this unit has finished processing.
+// Finish signals the unit scheduler that this unit has finished processing.
 // Will no-op if called on a nil Msg.
-func (msg *Msg) FinishUnit() {
+func (msg *Msg) Finish() {
 	// Proxying is necessary, as a nil msg still panics.
 	if msg == nil {
 		return
 	}
-	msg.Unit.FinishUnit()
+	msg.Unit.Finish()
 }
 
 // DebugUnit registers the given unit with the given source for debug output.

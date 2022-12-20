@@ -216,12 +216,12 @@ func (t *TerminalBase) SetTimeout(d time.Duration) {
 // overridden by an actual implementation.
 func (t *TerminalBase) Deliver(msg *Msg) *Error {
 	// Pause unit before handing away.
-	msg.PauseUnit()
+	msg.Unit.Pause()
 
 	// Deliver via configured proxy.
 	err := t.deliverProxy(msg)
 	if err != nil {
-		msg.FinishUnit()
+		msg.Finish()
 	}
 
 	return err
@@ -251,7 +251,7 @@ func (t *TerminalBase) Handler(_ context.Context) error {
 	defer t.Abandon(ErrInternalError.With("handler died"))
 
 	var msg *Msg
-	defer msg.FinishUnit()
+	defer msg.Finish()
 
 	for {
 		select {
@@ -293,12 +293,12 @@ func (t *TerminalBase) submit(msg *Msg, timeout time.Duration) {
 	}
 
 	// Pause unit before handing away.
-	msg.PauseUnit()
+	msg.Unit.Pause()
 
 	// Hand over to flow control.
 	err := t.flowControl.Send(msg, timeout)
 	if err != nil {
-		msg.FinishUnit()
+		msg.Finish()
 		t.Abandon(err.Wrap("failed to submit to flow control"))
 	}
 }
@@ -310,7 +310,7 @@ func (t *TerminalBase) submitToUpstream(msg *Msg, timeout time.Duration) {
 	msg.FlowID = t.ID()
 
 	// Pause unit before handing away.
-	msg.PauseUnit()
+	msg.Unit.Pause()
 
 	// Debug unit leaks.
 	// msg.Debug()
@@ -318,7 +318,7 @@ func (t *TerminalBase) submitToUpstream(msg *Msg, timeout time.Duration) {
 	// Submit to upstream.
 	err := t.upstream.Send(msg, timeout)
 	if err != nil {
-		msg.FinishUnit()
+		msg.Finish()
 		t.Abandon(err.Wrap("failed to submit to upstream"))
 	}
 }
@@ -351,7 +351,7 @@ func (t *TerminalBase) Sender(_ context.Context) error {
 	var flushFinished func()
 
 	// Finish any current unit when returning.
-	defer msgBufferMsg.FinishUnit()
+	defer msgBufferMsg.Finish()
 
 	// Only receive message when not sending the current msg buffer.
 	sendQueueOpMsgs := func() <-chan *Msg {
@@ -419,7 +419,7 @@ handling:
 				msgBufferMsg.FlowID = t.ID()
 				msgBufferMsg.Type = MsgTypeData
 				// Wait for clearance on initial msg only.
-				msgBufferMsg.WaitForUnitSlot()
+				msgBufferMsg.Unit.WaitForSlot()
 			}
 			msgBufferLen += msg.Data.Length()
 
@@ -478,7 +478,7 @@ handling:
 			if msgBufferLen > 0 {
 				// Update message type to include priority.
 				if msgBufferMsg.Type == MsgTypeData &&
-					msgBufferMsg.IsHighPriorityUnit() &&
+					msgBufferMsg.Unit.IsHighPriority() &&
 					t.opts.UsePriorityDataMsgs {
 					msgBufferMsg.Type = MsgTypePriorityData
 				}
@@ -604,8 +604,8 @@ func (t *TerminalBase) decrypt(c *container.Container) (*container.Container, *E
 }
 
 func (t *TerminalBase) handleReceive(msg *Msg) *Error {
-	msg.WaitForUnitSlot()
-	defer msg.FinishUnit()
+	msg.Unit.WaitForSlot()
+	defer msg.Finish()
 
 	// Debugging:
 	// log.Errorf("spn/terminal %s handling tmsg: %s", t.FmtID(), spew.Sdump(c.CompileData()))
@@ -675,17 +675,17 @@ func (t *TerminalBase) handleOpMsg(data *container.Container) *Error {
 			msg.Type = msgType
 			msg.Data = data
 			if msg.Type == MsgTypePriorityData {
-				msg.MakeUnitHighPriority()
+				msg.Unit.MakeHighPriority()
 			}
 
 			// Pause unit before handing away.
-			msg.PauseUnit()
+			msg.Unit.Pause()
 
 			// Deliver message to operation.
 			tErr := op.Deliver(msg)
 			if tErr != nil {
 				// Also stop on "success" errors!
-				msg.FinishUnit()
+				msg.Finish()
 				t.StopOperation(op, tErr)
 			}
 			return nil
@@ -744,7 +744,7 @@ func (t *TerminalBase) handlePaddingMsg(c *container.Container) {
 }
 
 func (t *TerminalBase) sendOpMsgs(msg *Msg) *Error {
-	msg.WaitForUnitSlot()
+	msg.Unit.WaitForSlot()
 
 	// Add Padding if needed.
 	if t.opts.Padding > 0 {
