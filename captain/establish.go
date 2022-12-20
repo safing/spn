@@ -55,6 +55,14 @@ func EstablishCrane(callerCtx context.Context, dst *hub.Hub) (*docks.Crane, erro
 
 // EstablishPublicLane establishes a crane to another Hub and publishes it.
 func EstablishPublicLane(ctx context.Context, dst *hub.Hub) (*docks.Crane, *terminal.Error) {
+	// Create new context with timeout.
+	// The maximum timeout is a worst case safeguard.
+	// Keep in mind that multiple IPs and protocols may be tried in all configurations.
+	// Some servers will be (possibly on purpose) hard to reach.
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+	defer cancel()
+
+	// Connect to destination and establish communication.
 	crane, err := EstablishCrane(ctx, dst)
 	if err != nil {
 		return nil, terminal.ErrInternalError.With("failed to establish crane: %w", err)
@@ -80,10 +88,11 @@ func EstablishPublicLane(ctx context.Context, dst *hub.Hub) (*docks.Crane, *term
 		return nil, terminal.ErrStopping
 
 	case <-ctx.Done():
+		defer crane.Stop(nil)
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return nil, terminal.ErrTimeout
+		}
 		return nil, terminal.ErrCanceled
-
-	case <-time.After(30 * time.Second):
-		return nil, terminal.ErrTimeout
 	}
 
 	// Query all gossip msgs.
