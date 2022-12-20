@@ -67,7 +67,13 @@ func (u *Unit) FinishUnit() {
 
 	// Always increase finished, even if the unit is from a previous epoch.
 	if u.finished.SetToIf(false, true) {
-		u.scheduler.finished.Add(1)
+		if u.epoch == u.scheduler.epoch.Load() {
+			// If in same epoch, finish in epoch.
+			u.scheduler.finished.Add(1)
+		} else {
+			// If not in same epoch, just increase the total counter.
+			u.scheduler.finishedTotal.Add(1)
+		}
 	}
 	u.RemoveUnitPriority()
 	u.unpause()

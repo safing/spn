@@ -181,6 +181,7 @@ func (s *Scheduler) SlotScheduler(ctx context.Context) error {
 		// Only load "finished" once, so we don't miss anything.
 		finishedAtEnd := s.finished.Load()
 		finishedInSlot := finishedAtEnd - finishedAtStart
+		s.finishedTotal.Add(finishedInSlot)
 
 		// Adapt pace.
 		if finishedInSlot >= lastClearanceAmount {
@@ -214,9 +215,6 @@ func (s *Scheduler) SlotScheduler(ctx context.Context) error {
 
 			// Switch to new epoch.
 			s.epoch.Add(1)
-
-			// Add the finished amount of the current epoch to the total counter.
-			s.finishedTotal.Add(finishedAtEnd)
 
 			// Only reduce by amount we have seen, for correct metrics.
 			s.finished.Add(-finishedAtEnd)

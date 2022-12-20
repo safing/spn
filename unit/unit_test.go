@@ -13,7 +13,7 @@ import (
 )
 
 func TestUnit(t *testing.T) { //nolint:paralleltest
-	size := 10000000
+	size := 1000000
 	workers := 100
 
 	// Create and start scheduler.
