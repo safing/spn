@@ -142,7 +142,7 @@ func startConnectOp(t terminal.Terminal, opID uint32, data *container.Container)
 
 	// Check if we are running a public hub.
 	if !conf.PublicHub() {
-		return nil, terminal.ErrPermissinDenied.With("connecting is only allowed on public hubs")
+		return nil, terminal.ErrPermissionDenied.With("connecting is only allowed on public hubs")
 	}
 
 	// Parse connect request.
@@ -158,7 +158,7 @@ func startConnectOp(t terminal.Terminal, opID uint32, data *container.Container)
 	// Check if connection target is in global scope.
 	ipScope := netutils.GetIPScope(request.IP)
 	if ipScope != netutils.Global {
-		return nil, terminal.ErrPermissinDenied.With("denied request to connect to non-global IP %s", request.IP)
+		return nil, terminal.ErrPermissionDenied.With("denied request to connect to non-global IP %s", request.IP)
 	}
 
 	// Get protocol net for connecting.

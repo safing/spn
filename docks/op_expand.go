@@ -128,7 +128,7 @@ func expand(t terminal.Terminal, opID uint32, data *container.Container) (termin
 
 	// Check if we are running a public hub.
 	if !conf.PublicHub() {
-		return nil, terminal.ErrPermissinDenied.With("expanding is only allowed on public hubs")
+		return nil, terminal.ErrPermissionDenied.With("expanding is only allowed on public hubs")
 	}
 
 	// Parse destination hub ID.

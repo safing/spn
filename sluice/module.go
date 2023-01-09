@@ -22,7 +22,7 @@ func start() error {
 	// Listening on all interfaces for now, as we need this for Windows.
 	// Handle similarly to the nameserver listener.
 
-	if conf.Client() {
+	if conf.DesktopClient() {
 		StartSluice("tcp4", "0.0.0.0:717")
 		StartSluice("udp4", "0.0.0.0:717")
 

@@ -57,7 +57,7 @@ func checkAccessCode(t terminal.Terminal, opID uint32, initData *container.Conta
 	// Check if token is valid.
 	granted, err := VerifyToken(receivedToken)
 	if err != nil {
-		return nil, terminal.ErrPermissinDenied.With("invalid access token: %w", err)
+		return nil, terminal.ErrPermissionDenied.With("invalid access token: %w", err)
 	}
 
 	// Get the authorizing terminal for applying the granted permission.

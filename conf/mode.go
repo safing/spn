@@ -7,6 +7,7 @@ import (
 var (
 	publicHub = abool.New()
 	client    = abool.New()
+	desktop   = abool.New()
 )
 
 // PublicHub returns whether this is a public Hub.
@@ -27,4 +28,14 @@ func Client() bool {
 // EnableClient enables the client mode.
 func EnableClient(enable bool) {
 	client.SetTo(enable)
+}
+
+// DesktopClient returns whether this is a desktop client.
+func DesktopClient() bool {
+	return desktop.IsSet()
+}
+
+// EnableDesktop enables desktop client mode.
+func EnableDesktop(enable bool) {
+	desktop.SetTo(enable)
 }

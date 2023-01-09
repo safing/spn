@@ -29,7 +29,7 @@ func checkExitPolicy(request *ConnectRequest) *terminal.Error {
 
 	// Check if connect requests are allowed.
 	if connectingHub == nil {
-		return terminal.ErrPermissinDenied.With("connect requests disabled")
+		return terminal.ErrPermissionDenied.With("connect requests disabled")
 	}
 
 	// Create entity.
@@ -44,7 +44,7 @@ func checkExitPolicy(request *ConnectRequest) *terminal.Error {
 	// Check against policy.
 	result, reason := connectingHub.GetInfo().ExitPolicy().Match(context.TODO(), entity)
 	if result == endpoints.Denied {
-		return terminal.ErrPermissinDenied.With("connect request for %s violates the exit policy: %s", request, reason)
+		return terminal.ErrPermissionDenied.With("connect request for %s violates the exit policy: %s", request, reason)
 	}
 
 	return nil

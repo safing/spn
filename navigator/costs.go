@@ -18,23 +18,24 @@ func CalculateLaneCost(latency time.Duration, capacity int) (cost float32) {
 		cost += 1000
 	}
 
+	capacityFloat := float32(capacity)
 	switch {
-	case capacity == 0:
+	case capacityFloat == 0:
 		// Add cautious default cost if capacity is not available.
 		cost += 4000
-	case capacity < cap1Mbit:
+	case capacityFloat < cap1Mbit:
 		// - Between 1000 and 10000 points for ranges below 1Mbit/s
-		cost += 1000 + 9000*((cap1Mbit-float32(capacity))/cap1Mbit)
-	case capacity < cap10Mbit:
+		cost += 1000 + 9000*((cap1Mbit-capacityFloat)/cap1Mbit)
+	case capacityFloat < cap10Mbit:
 		// - Between 100 and 1000 points for ranges below 10Mbit/s
-		cost += 100 + 900*((cap10Mbit-float32(capacity))/cap10Mbit)
-	case capacity < cap100Mbit:
+		cost += 100 + 900*((cap10Mbit-capacityFloat)/cap10Mbit)
+	case capacityFloat < cap100Mbit:
 		// - Between 20 and 100 points for ranges below 100Mbit/s
-		cost += 20 + 80*((cap100Mbit-float32(capacity))/cap100Mbit)
-	case capacity < cap1Gbit:
+		cost += 20 + 80*((cap100Mbit-capacityFloat)/cap100Mbit)
+	case capacityFloat < cap1Gbit:
 		// - Between 5 and 20 points for ranges below 1Gbit/s
-		cost += 5 + 15*((cap1Gbit-float32(capacity))/cap1Gbit)
-	case capacity < cap10Gbit:
+		cost += 5 + 15*((cap1Gbit-capacityFloat)/cap1Gbit)
+	case capacityFloat < cap10Gbit:
 		// - Between 0 and 5 points for ranges below 10Gbit/s
 		cost += 5 * ((cap10Gbit - float32(capacity)) / cap10Gbit)
 	}

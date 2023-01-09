@@ -303,11 +303,11 @@ const (
 	minUnconfirmedLatency  = 10 * time.Millisecond
 	maxUnconfirmedCapacity = 100000000 // 100Mbit/s
 
-	cap1Mbit   = 1000000
-	cap10Mbit  = 10000000
-	cap100Mbit = 100000000
-	cap1Gbit   = 1000000000
-	cap10Gbit  = 10000000000
+	cap1Mbit   float32 = 1000000
+	cap10Mbit  float32 = 10000000
+	cap100Mbit float32 = 100000000
+	cap1Gbit   float32 = 1000000000
+	cap10Gbit  float32 = 10000000000
 )
 
 // updateHubLane updates a lane between two Hubs on the Map.
