@@ -109,7 +109,7 @@ func runSyncStateOp(t terminal.Terminal, opID uint32, data *container.Container)
 
 	// Check if we are a public Hub and whether the lane is public too.
 	if !conf.PublicHub() || !controller.Crane.Public() {
-		return nil, terminal.ErrPermissinDenied.With("only public lanes can sync crane status")
+		return nil, terminal.ErrPermissionDenied.With("only public lanes can sync crane status")
 	}
 
 	// Load message.

@@ -132,7 +132,7 @@ func (op *PublishOp) Deliver(msg *terminal.Msg) *terminal.Error {
 		// Sign the received verification request.
 		response, err := op.identity.SignVerificationRequest(msg.Data.CompileData(), PublishOpType, "", "")
 		if err != nil {
-			return terminal.ErrPermissinDenied.With("signing verification request failed: %w", err)
+			return terminal.ErrPermissionDenied.With("signing verification request failed: %w", err)
 		}
 
 		return op.Send(op.NewMsg(response), 10*time.Second)
@@ -142,7 +142,7 @@ func (op *PublishOp) Deliver(msg *terminal.Msg) *terminal.Error {
 		// Verify the signed request.
 		err := op.verification.Verify(msg.Data.CompileData(), op.requestingHub)
 		if err != nil {
-			return terminal.ErrPermissinDenied.With("checking verification request failed: %w", err)
+			return terminal.ErrPermissionDenied.With("checking verification request failed: %w", err)
 		}
 		return terminal.ErrExplicitAck
 	}

@@ -202,7 +202,7 @@ var (
 	ErrUnexpectedMsgType      = registerError(10, errors.New("unexpected message type"))
 	ErrUnknownOperationType   = registerError(11, errors.New("unknown operation type"))
 	ErrUnknownOperationID     = registerError(12, errors.New("unknown operation id"))
-	ErrPermissinDenied        = registerError(13, errors.New("permission denied"))
+	ErrPermissionDenied       = registerError(13, errors.New("permission denied"))
 	ErrIntegrity              = registerError(14, errors.New("integrity violated"))
 	ErrInvalidOptions         = registerError(15, errors.New("invalid options"))
 	ErrHubNotReady            = registerError(16, errors.New("hub not ready"))

@@ -134,7 +134,7 @@ func (t *TerminalBase) handleOperationStart(opID uint32, initData *container.Con
 
 	// Check if the Terminal has the required permission to run the operation.
 	if !t.HasPermission(factory.Requires) {
-		t.StopOperation(newUnknownOp(opID, factory.Type), ErrPermissinDenied)
+		t.StopOperation(newUnknownOp(opID, factory.Type), ErrPermissionDenied)
 		return
 	}
 

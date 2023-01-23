@@ -11,6 +11,9 @@ var (
 	module *modules.Module
 
 	entrypointInfoMsg = []byte("You have reached the local SPN entry port, but your connection could not be matched to an SPN tunnel.\n")
+
+	// EnableListener indicates if it should start the sluice listeners. Must be set at startup.
+	EnableListener bool = true
 )
 
 func init() {
@@ -22,7 +25,7 @@ func start() error {
 	// Listening on all interfaces for now, as we need this for Windows.
 	// Handle similarly to the nameserver listener.
 
-	if conf.Client() {
+	if conf.Client() && EnableListener {
 		StartSluice("tcp4", "0.0.0.0:717")
 		StartSluice("udp4", "0.0.0.0:717")
 
