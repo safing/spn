@@ -7,9 +7,6 @@ import (
 var (
 	publicHub = abool.New()
 	client    = abool.New()
-
-	// EnableListener indicates if it should start the sluice listeners. Must be set at startup.
-	EnableListener bool = true
 )
 
 // PublicHub returns whether this is a public Hub.
