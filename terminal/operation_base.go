@@ -46,7 +46,7 @@ func (op *OperationBase) NewMsg(data []byte) *Msg {
 	msg.Type = MsgTypeData
 
 	// Debug unit leaks.
-	// msg.Debug()
+	msg.Debug()
 
 	return msg
 }
@@ -59,7 +59,7 @@ func (op *OperationBase) NewEmptyMsg() *Msg {
 	msg.Type = MsgTypeData
 
 	// Debug unit leaks.
-	// msg.Debug()
+	msg.Debug()
 
 	return msg
 }

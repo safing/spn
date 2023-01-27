@@ -1,6 +1,7 @@
 package terminal
 
 import (
+	"flag"
 	"time"
 
 	"github.com/safing/portbase/modules"
@@ -14,9 +15,13 @@ var (
 	rngFeeder *rng.Feeder = rng.NewFeeder()
 
 	scheduler *unit.Scheduler
+
+	debugUnitScheduling bool
 )
 
 func init() {
+	flag.BoolVar(&debugUnitScheduling, "debug-unit-scheduling", false, "enable debug logs of the SPN unit scheduler")
+
 	module = modules.Register("terminal", nil, start, nil, "base")
 }
 
@@ -29,8 +34,9 @@ func start() error {
 	lockOpRegistry()
 
 	// Debug unit leaks.
-	// Search for "Debug unit leaks" to find all other related lines.
-	// scheduler.StartDebugLog()
+	if debugUnitScheduling {
+		scheduler.StartDebugLog()
+	}
 
 	return registerMetrics()
 }

@@ -326,7 +326,7 @@ func (crane *Crane) AbandonTerminal(id uint32, err *terminal.Error) {
 
 		// Log reason the terminal is ending. Override stopping error with nil.
 		switch {
-		case err == nil:
+		case err == nil || err.IsOK():
 			log.Debugf("spn/docks: %T %s is being abandoned", t, t.FmtID())
 		case err.Is(terminal.ErrStopping):
 			err = nil
@@ -698,7 +698,7 @@ func (crane *Crane) loader(ctx context.Context) (err error) {
 			}
 
 			// Debug unit leaks.
-			// msg.Debug()
+			msg.Debug()
 
 			// Handle new message.
 			if msg != nil {
