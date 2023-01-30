@@ -24,7 +24,7 @@ services:
   hub2:
     container_name: spn-test-simple-hub2
     hostname: hub2
-    image: toolset.safing.network/dev
+    image: alpine
     entrypoint: "/opt/shared/entrypoint.sh"
     volumes:
       - ${SPN_TEST_BIN}:/opt/hub2:ro
