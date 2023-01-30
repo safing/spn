@@ -122,15 +122,19 @@ func checkStatusList(pin *Pin, state PinState, requireTrusted bool, endpointList
 		return
 	}
 
-	result, _ := endpointList.Match(context.TODO(), pin.EntityV4)
-	if result == endpoints.Denied {
-		pin.addStates(state)
-		return
+	if pin.EntityV4 != nil {
+		result, _ := endpointList.Match(context.TODO(), pin.EntityV4)
+		if result == endpoints.Denied {
+			pin.addStates(state)
+			return
+		}
 	}
 
-	result, _ = endpointList.Match(context.TODO(), pin.EntityV6)
-	if result == endpoints.Denied {
-		pin.addStates(state)
+	if pin.EntityV6 != nil {
+		result, _ := endpointList.Match(context.TODO(), pin.EntityV6)
+		if result == endpoints.Denied {
+			pin.addStates(state)
+		}
 	}
 }
 
