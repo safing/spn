@@ -56,9 +56,3 @@ func TestCleanDomains(t *testing.T) { //nolint:paralleltest
 
 	fmt.Println("IMPORTANT: do not forget to go through list and check if everything looks good")
 }
-
-func TestRandomDomain(t *testing.T) {
-	for i := 0; i < 10; i++ {
-		t.Log(getRandomTestDomain())
-	}
-}

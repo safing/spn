@@ -26,6 +26,7 @@ const controlledFailureExitCode = 24
 
 var module *modules.Module
 
+// SPNConnectedEvent is the name of the event that is fired when the SPN has connected and is ready.
 const SPNConnectedEvent = "spn connect"
 
 func init() {
