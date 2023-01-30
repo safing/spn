@@ -139,7 +139,7 @@ reconnect:
 		ready.Set()
 		netenv.ConnectedToSPN.Set()
 
-		module.TriggerEvent(onSPNConnectEvent, nil)
+		module.TriggerEvent(SPNConnectedEvent, nil)
 
 		// Back off before starting initial health checks.
 		select {
