@@ -17,10 +17,9 @@ const (
 	UserStateSuspended = "suspended"
 	UserStateLoggedOut = "loggedout" // Portmaster only.
 
-	SubscriptionStatePending   = "pending"
-	SubscriptionStateActive    = "active"
-	SubscriptionStateCancelled = "cancelled"
-	SubscriptionStateExpired   = "expired"
+	SubscriptionStateManual    = "manual"    // Manual renewal.
+	SubscriptionStateActive    = "active"    // Automatic renewal.
+	SubscriptionStateCancelled = "cancelled" // Automatic, but canceled.
 
 	ChargeStatePending   = "pending"
 	ChargeStateCompleted = "completed"
@@ -114,8 +113,10 @@ type Device struct {
 
 // Subscription describes an SPN subscription.
 type Subscription struct {
-	EndsAt *time.Time `json:"ends_at"`
-	State  string     `json:"state"`
+	EndsAt          *time.Time `json:"ends_at"`
+	State           string     `json:"state"`
+	NextBillingDate *time.Time `json:"next_billing_date"`
+	PaymentProvider string     `json:"payment_provider"`
 }
 
 // Plan describes an SPN subscription plan.
