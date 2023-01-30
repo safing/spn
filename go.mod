@@ -13,7 +13,7 @@ require (
 	github.com/safing/portbase v0.16.4
 	github.com/safing/portmaster v1.0.5
 	github.com/spf13/cobra v1.6.1
-	github.com/stretchr/testify v1.8.0
+	github.com/stretchr/testify v1.8.1
 	github.com/tevino/abool v1.2.0
 	golang.org/x/net v0.5.0
 )
