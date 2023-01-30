@@ -81,7 +81,7 @@ func CreateIdentity(ctx context.Context, mapName string) (*Identity, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize announcement: %w", err)
 	}
-	_, err = id.MaintainStatus([]*hub.Lane{}, new(int), true)
+	_, err = id.MaintainStatus([]*hub.Lane{}, new(int), nil, true)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize status: %w", err)
 	}
@@ -134,7 +134,7 @@ func (id *Identity) MaintainAnnouncement(selfcheck bool) (changed bool, err erro
 }
 
 // MaintainStatus maintains the Hub's Status and returns whether there was a change that should be communicated to other Hubs.
-func (id *Identity) MaintainStatus(lanes []*hub.Lane, load *int, selfcheck bool) (changed bool, err error) {
+func (id *Identity) MaintainStatus(lanes []*hub.Lane, load *int, flags []string, selfcheck bool) (changed bool, err error) {
 	id.Lock()
 	defer id.Unlock()
 
@@ -173,6 +173,12 @@ func (id *Identity) MaintainStatus(lanes []*hub.Lane, load *int, selfcheck bool)
 	// Update load.
 	if load != nil && newStatus.Load != *load {
 		newStatus.Load = *load
+		changed = true
+	}
+
+	// Update flags.
+	if !hub.FlagsEqual(newStatus.Flags, flags) {
+		newStatus.Flags = flags
 		changed = true
 	}
 

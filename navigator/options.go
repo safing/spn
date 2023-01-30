@@ -123,6 +123,7 @@ func (o *Options) Matcher(hubType HubType, hubIntel *hub.Intel) PinMatcher {
 			// Transit Hubs get no additional states.
 		case DestinationHub:
 			disregard = disregard.Add(StateUsageAsDestinationDiscouraged)
+			disregard = disregard.Add(StateConnectivityIssues)
 		}
 	}
 

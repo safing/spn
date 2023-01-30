@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/safing/portbase/database"
@@ -15,6 +16,7 @@ import (
 	"github.com/safing/spn/docks"
 	"github.com/safing/spn/hub"
 	"github.com/safing/spn/navigator"
+	"github.com/safing/spn/patrol"
 )
 
 const (
@@ -108,6 +110,13 @@ func prepPublicIdentityMgmt() error {
 	)
 }
 
+// TriggerHubStatusMaintenance queues the Hub status update task to be executed.
+func TriggerHubStatusMaintenance() {
+	if statusUpdateTask != nil {
+		statusUpdateTask.Queue()
+	}
+}
+
 func maintainPublicIdentity(ctx context.Context, task *modules.Task) error {
 	changed, err := publicIdentity.MaintainAnnouncement(false)
 	if err != nil {
@@ -183,8 +192,16 @@ func maintainPublicStatus(ctx context.Context, task *modules.Task) error {
 		log.Warningf("spn/captain: publishing 15m system load average of %.2f as %d", loadAvg, load)
 	}
 
+	// Set flags.
+	var flags []string
+	if !patrol.HTTPSConnectivityConfirmed() {
+		flags = append(flags, hub.FlagNetError)
+	}
+	// Sort Lanes for comparing.
+	sort.Strings(flags)
+
 	// Run maintenance with the new data.
-	changed, err := publicIdentity.MaintainStatus(lanes, &load, false)
+	changed, err := publicIdentity.MaintainStatus(lanes, &load, flags, false)
 	if err != nil {
 		return fmt.Errorf("failed to maintain status: %w", err)
 	}

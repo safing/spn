@@ -32,7 +32,7 @@ func NewMsg(data []byte) *Msg {
 	}
 
 	// Debug unit leaks.
-	// msg.Debug()
+	msg.Debug()
 
 	return msg
 }
@@ -48,7 +48,7 @@ func NewEmptyMsg() *Msg {
 	}
 
 	// Debug unit leaks.
-	// msg.Debug()
+	msg.Debug()
 
 	return msg
 }
@@ -95,7 +95,7 @@ func (msg *Msg) Finish() {
 // Additional calls on the same unit update the unit source.
 // StartDebugLog() must be called before calling DebugUnit().
 func (msg *Msg) Debug() {
-	if msg == nil {
+	if !debugUnitScheduling || msg == nil {
 		return
 	}
 	_, file, line, ok := runtime.Caller(1)

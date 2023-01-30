@@ -70,6 +70,11 @@ const (
 	// all cases.
 	StateIsHomeHub // 0x1000
 
+	// StateConnectivityIssues signifies that the Hub reports connectivity issues.
+	// This might impact all connectivity or just some.
+	// This does not invalidate the Hub for all operations and not in all cases.
+	StateConnectivityIssues // 0x2000
+
 	// State Summaries.
 
 	// StateSummaryRegard summarizes all states that must always be set in order to take a Hub into consideration for any task.
@@ -98,6 +103,7 @@ var allStates = []PinState{
 	StateUsageAsHomeDiscouraged,
 	StateUsageAsDestinationDiscouraged,
 	StateIsHomeHub,
+	StateConnectivityIssues,
 }
 
 // Add returns a new PinState with the given states added.
@@ -354,6 +360,8 @@ func (pinState PinState) Name() string {
 		return "UsageAsDestinationDiscouraged"
 	case StateIsHomeHub:
 		return "IsHomeHub"
+	case StateConnectivityIssues:
+		return "ConnectivityIssues"
 	case StateSummaryRegard, StateSummaryDisregard:
 		// Satisfy exhaustive linter.
 		fallthrough

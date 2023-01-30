@@ -1,6 +1,7 @@
 package captain
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net"
@@ -16,6 +17,7 @@ import (
 	"github.com/safing/portmaster/network/netutils"
 	"github.com/safing/spn/conf"
 	"github.com/safing/spn/crew"
+	"github.com/safing/spn/patrol"
 	"github.com/safing/spn/ships"
 	_ "github.com/safing/spn/sluice"
 )
@@ -24,11 +26,12 @@ const controlledFailureExitCode = 24
 
 var module *modules.Module
 
-const onSPNConnectEvent = "spn connect"
+// SPNConnectedEvent is the name of the event that is fired when the SPN has connected and is ready.
+const SPNConnectedEvent = "spn connect"
 
 func init() {
-	module = modules.Register("captain", prep, start, stop, "base", "terminal", "cabin", "docks", "crew", "navigator", "sluice", "netenv")
-	module.RegisterEvent(onSPNConnectEvent, false)
+	module = modules.Register("captain", prep, start, stop, "base", "terminal", "cabin", "docks", "crew", "navigator", "sluice", "patrol", "netenv")
+	module.RegisterEvent(SPNConnectedEvent, false)
 	subsystems.Register(
 		"spn",
 		"SPN",
@@ -68,6 +71,18 @@ func prep() error {
 	if conf.PublicHub() {
 		// Register API authenticator.
 		if err := api.SetAuthenticator(apiAuthenticator); err != nil {
+			return err
+		}
+
+		if err := module.RegisterEventHook(
+			"patrol",
+			patrol.ChangeSignalEventName,
+			"trigger hub status maintenance",
+			func(_ context.Context, _ any) error {
+				TriggerHubStatusMaintenance()
+				return nil
+			},
+		); err != nil {
 			return err
 		}
 	}

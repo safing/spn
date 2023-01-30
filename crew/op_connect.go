@@ -28,16 +28,22 @@ var activeConnectOps = new(int64)
 type ConnectOp struct {
 	terminal.OperationBase
 
+	// Flow Control
 	dfq *terminal.DuplexFlowQueue
 
+	// Context and shutdown handling
 	// ctx is the context of the Terminal.
 	ctx context.Context
 	// cancelCtx cancels ctx.
 	cancelCtx context.CancelFunc
+	// doneWriting signals that the writer has finished writing.
+	doneWriting chan struct{}
 
+	// Metrics
 	incomingTraffic *uint64
 	outgoingTraffic *uint64
 
+	// Connection
 	t       terminal.Terminal
 	conn    net.Conn
 	request *ConnectRequest
@@ -103,11 +109,12 @@ func NewConnectOp(tunnel *Tunnel) (*ConnectOp, *terminal.Error) {
 
 	// Create new op.
 	op := &ConnectOp{
-		t:       tunnel.dstTerminal,
-		conn:    tunnel.conn,
-		request: request,
-		entry:   true,
-		tunnel:  tunnel,
+		doneWriting: make(chan struct{}),
+		t:           tunnel.dstTerminal,
+		conn:        tunnel.conn,
+		request:     request,
+		entry:       true,
+		tunnel:      tunnel,
 	}
 	op.ctx, op.cancelCtx = context.WithCancel(module.Ctx)
 	op.dfq = terminal.NewDuplexFlowQueue(op.Ctx(), request.QueueSize, op.submitUpstream)
@@ -185,9 +192,10 @@ func startConnectOp(t terminal.Terminal, opID uint32, data *container.Container)
 
 	// Create and initialize operation.
 	op := &ConnectOp{
-		t:       t,
-		conn:    conn,
-		request: request,
+		doneWriting: make(chan struct{}),
+		t:           t,
+		conn:        conn,
+		request:     request,
 	}
 	op.InitOperationBase(t, opID)
 	op.ctx, op.cancelCtx = context.WithCancel(t.Ctx())
@@ -313,11 +321,17 @@ writing:
 
 		select {
 		case msg = <-op.dfq.Receive():
+		case <-op.ctx.Done():
+			op.Stop(op, terminal.ErrCanceled)
+			return nil
 		default:
 			// Handle all data before also listening for the context cancel.
 			// This ensures all data is written properly before stopping.
 			select {
 			case msg = <-op.dfq.Receive():
+			case op.doneWriting <- struct{}{}:
+				op.Stop(op, terminal.ErrStopping)
+				return nil
 			case <-op.ctx.Done():
 				op.Stop(op, terminal.ErrCanceled)
 				return nil
@@ -386,8 +400,17 @@ func (op *ConnectOp) HandleStop(err *terminal.Error) (errorToSend *terminal.Erro
 		reportConnectError(err)
 	}
 
-	// Send all data before closing.
-	op.dfq.Flush()
+	// If the op was ended locally, send all data before closing.
+	// If the op was ended remotely, don't bother sending remaining data.
+	if !err.IsExternal() {
+		op.dfq.Flush()
+	}
+
+	// If the op was ended remotely, write all remaining received data.
+	// If the op was ended locally, don't bother writing remaining data.
+	if err.IsExternal() {
+		<-op.doneWriting
+	}
 
 	// Cancel workers.
 	op.cancelCtx()

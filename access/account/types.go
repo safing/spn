@@ -17,10 +17,9 @@ const (
 	UserStateSuspended = "suspended"
 	UserStateLoggedOut = "loggedout" // Portmaster only.
 
-	SubscriptionStatePending   = "pending"
-	SubscriptionStateActive    = "active"
-	SubscriptionStateCancelled = "cancelled"
-	SubscriptionStateExpired   = "expired"
+	SubscriptionStateManual    = "manual"    // Manual renewal.
+	SubscriptionStateActive    = "active"    // Automatic renewal.
+	SubscriptionStateCancelled = "cancelled" // Automatic, but canceled.
 
 	ChargeStatePending   = "pending"
 	ChargeStateCompleted = "completed"
@@ -36,9 +35,9 @@ const (
 	// an active subscription or the subscription does not include the required
 	// feature for the request.
 	StatusNoAccess = 403
-	// StatusInvalidDevice [404 Not Found] is returned when the device trying to
+	// StatusInvalidDevice [410 Gone] is returned when the device trying to
 	// log into does not exist.
-	StatusInvalidDevice = 404
+	StatusInvalidDevice = 410
 	// StatusReachedDeviceLimit [409 Conflict] is returned when the device limit is reached.
 	StatusReachedDeviceLimit = 409
 	// StatusDeviceInactive [423 Locked] is returned when the device is locked.
@@ -114,8 +113,10 @@ type Device struct {
 
 // Subscription describes an SPN subscription.
 type Subscription struct {
-	EndsAt *time.Time `json:"ends_at"`
-	State  string     `json:"state"`
+	EndsAt          *time.Time `json:"ends_at"`
+	State           string     `json:"state"`
+	NextBillingDate *time.Time `json:"next_billing_date"`
+	PaymentProvider string     `json:"payment_provider"`
 }
 
 // Plan describes an SPN subscription plan.
