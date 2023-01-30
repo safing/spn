@@ -13,6 +13,8 @@ import (
 )
 
 func TestUnit(t *testing.T) { //nolint:paralleltest
+	rand.Seed(time.Now().UnixNano())
+
 	size := 1000000
 	workers := 100
 

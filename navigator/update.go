@@ -238,6 +238,13 @@ func (m *Map) updateHub(h *hub.Hub, lockMap, lockHub bool) {
 		pin.removeStates(StateOffline)
 	}
 
+	// Update from status flags.
+	if pin.Hub.Status.HasFlag(hub.FlagNetError) {
+		pin.addStates(StateConnectivityIssues)
+	} else {
+		pin.removeStates(StateConnectivityIssues)
+	}
+
 	// Update Trust and Advisory Statuses.
 	m.updateIntelStatuses(pin)
 

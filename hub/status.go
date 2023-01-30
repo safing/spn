@@ -9,10 +9,16 @@ import (
 	"github.com/mitchellh/copystructure"
 
 	"github.com/safing/jess"
+	"github.com/safing/portbase/utils"
 )
 
 // VersionOffline is a special version used to signify that the Hub has gone offline.
 const VersionOffline = "offline"
+
+// Status Flags.
+const (
+	FlagNetError = "net-error"
+)
 
 // Status is the message type used to update changing Hub Information. Changes are made automatically.
 type Status struct {
@@ -25,9 +31,12 @@ type Status struct {
 	Keys  map[string]*Key // public keys (with type)
 	Lanes []*Lane         // Connections to other Hubs.
 
+	// Status Information
 	// Load describes max(CPU, Memory) in percent, averaged over at least 15
 	// minutes. Load is published in fixed steps only.
-	Load int
+	Load int `json:",omitempty"`
+	// NetError signifies whether the Hub reports a network connectivity failure or impairment.
+	Flags []string `json:",omitempty"`
 }
 
 // Key represents a semi-ephemeral public key used for 0-RTT connection establishment.
@@ -213,6 +222,11 @@ func (s *Status) validateFormatting() (err error) {
 		}
 	}
 
+	// Flags
+	if err = checkStringSliceFormat("Flags", s.Flags, 255, 255); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -244,4 +258,35 @@ func (l lanes) Less(i, j int) bool { return l[i].ID < l[j].ID }
 // SortLanes sorts a slice of Lanes.
 func SortLanes(l []*Lane) {
 	sort.Sort(lanes(l))
+}
+
+// HasFlag returns whether the Status has the given flag set.
+func (s *Status) HasFlag(flagName string) bool {
+	return utils.StringInSlice(s.Flags, flagName)
+}
+
+// FlagsEqual returns whether the given status flags are equal.
+func FlagsEqual(a, b []string) bool {
+	// Cannot be equal if lengths are different.
+	if len(a) != len(b) {
+		return false
+	}
+
+	// If both are empty, they are equal.
+	if len(a) == 0 {
+		return true
+	}
+
+	// Make sure flags are sorted before comparing values.
+	sort.Strings(a)
+	sort.Strings(b)
+
+	// Compare values.
+	for i, v := range a {
+		if v != b[i] {
+			return false
+		}
+	}
+
+	return true
 }

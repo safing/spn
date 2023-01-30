@@ -58,7 +58,7 @@ func TestIdentity(t *testing.T) {
 	if changed {
 		t.Error("unexpected change of announcement")
 	}
-	changed, err = id.MaintainStatus(nil, nil, false)
+	changed, err = id.MaintainStatus(nil, nil, nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +84,7 @@ func TestIdentity(t *testing.T) {
 			Latency:  6,
 		},
 	}
-	changed, err = id.MaintainStatus(lanes, new(int), false)
+	changed, err = id.MaintainStatus(lanes, new(int), nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,7 +93,7 @@ func TestIdentity(t *testing.T) {
 	}
 
 	// Change nothing.
-	changed, err = id.MaintainStatus(lanes, new(int), false)
+	changed, err = id.MaintainStatus(lanes, new(int), nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}
