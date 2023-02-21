@@ -323,10 +323,30 @@ func (op *CapacityTestOp) Deliver(msg *terminal.Msg) *terminal.Error {
 // The returned error is the error to send to the other side.
 // Should never be called directly. Call Stop() instead.
 func (op *CapacityTestOp) HandleStop(tErr *terminal.Error) (errorToSend *terminal.Error) {
+	// Return result to waiting routine.
 	select {
 	case op.result <- tErr:
 	default:
 	}
+
+	// Drain the recvQueue to finish the message units.
+drain:
+	for {
+		select {
+		case msg := <-op.recvQueue:
+			msg.Finish()
+		default:
+			select {
+			case msg := <-op.recvQueue:
+				msg.Finish()
+			case <-time.After(3 * time.Millisecond):
+				// Give some additional time buffer to drain the queue.
+				break drain
+			}
+		}
+	}
+
+	// Return error as is.
 	return tErr
 }
 

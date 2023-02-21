@@ -194,3 +194,27 @@ func (pin *Pin) NotifyTerminalChange() {
 	pin.pushChanges.Set()
 	pin.pushChange()
 }
+
+// IsFailing returns whether the pin should be treated as failing.
+// The Pin is locked for this.
+func (pin *Pin) IsFailing() bool {
+	pin.Lock()
+	defer pin.Unlock()
+
+	return time.Now().Before(pin.FailingUntil)
+}
+
+// MarkAsFailingFor marks the pin as failing.
+// The Pin is locked for this.
+func (pin *Pin) MarkAsFailingFor(duration time.Duration) {
+	pin.Lock()
+	defer pin.Unlock()
+
+	until := time.Now().Add(duration)
+	// Only ever increase failing until, never reduce.
+	if until.After(pin.FailingUntil) {
+		pin.FailingUntil = until
+	}
+
+	pin.addStates(StateFailing)
+}

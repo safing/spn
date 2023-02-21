@@ -431,7 +431,10 @@ func (crane *Crane) decrypt(shipment *container.Container) (decrypted *container
 	return container.New(decryptedData), nil
 }
 
-func (crane *Crane) unloader(ctx context.Context) error {
+func (crane *Crane) unloader(workerCtx context.Context) error {
+	// Unclean shutdown safeguard.
+	defer crane.Stop(terminal.ErrUnknownError.With("unloader died"))
+
 	for {
 		// Get first couple bytes to get the packet length.
 		// 2 bytes are enough to encode 65535.
@@ -514,28 +517,21 @@ func (crane *Crane) unloadUntilFull(buf []byte) error {
 	}
 }
 
-func (crane *Crane) handler(ctx context.Context) error {
+func (crane *Crane) handler(workerCtx context.Context) error {
 	var partialShipment *container.Container
 	var segmentLength uint32
 
-	// Setup micro task done signal.
-	microTaskDone := func() {}
-	defer microTaskDone()
+	// Unclean shutdown safeguard.
+	defer crane.Stop(terminal.ErrUnknownError.With("handler died"))
 
 handling:
 	for {
-		// Signal that we've finished the micro task.
-		microTaskDone()
-
 		select {
-		case <-ctx.Done():
+		case <-crane.ctx.Done():
 			crane.Stop(nil)
 			return nil
 
 		case shipment := <-crane.unloading:
-			// Get execution priority.
-			microTaskDone = module.SignalHighPriorityMicroTask()
-
 			// log.Debugf("spn/crane %s: before decrypt: %v ... %v", crane.ID, c.CompileData()[:10], c.CompileData()[c.Length()-10:])
 
 			// Decrypt shipment.
@@ -650,10 +646,13 @@ handling:
 	}
 }
 
-func (crane *Crane) loader(ctx context.Context) (err error) {
+func (crane *Crane) loader(workerCtx context.Context) (err error) {
 	shipment := container.New()
 	var partialShipment *container.Container
 	var loadingTimer *time.Timer
+
+	// Unclean shutdown safeguard.
+	defer crane.Stop(terminal.ErrUnknownError.With("loader died"))
 
 	// Return the loading wait channel if waiting.
 	loadNow := func() <-chan time.Time {
@@ -680,7 +679,7 @@ func (crane *Crane) loader(ctx context.Context) (err error) {
 			// Prioritize messages from the controller.
 			select {
 			case msg = <-crane.controllerMsgs:
-			case <-ctx.Done():
+			case <-crane.ctx.Done():
 				crane.Stop(nil)
 				return nil
 
@@ -691,7 +690,7 @@ func (crane *Crane) loader(ctx context.Context) (err error) {
 				case msg = <-crane.terminalMsgs:
 				case <-loadNow():
 					break fillingShipment
-				case <-ctx.Done():
+				case <-crane.ctx.Done():
 					crane.Stop(nil)
 					return nil
 				}
@@ -779,10 +778,6 @@ func (crane *Crane) loader(ctx context.Context) (err error) {
 }
 
 func (crane *Crane) load(c *container.Container) error {
-	// Get execution priority.
-	done := module.SignalHighPriorityMicroTask()
-	defer done()
-
 	// Add Padding if needed.
 	if crane.opts.Padding > 0 {
 		paddingNeeded := int(crane.opts.Padding) -

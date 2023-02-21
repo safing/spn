@@ -219,6 +219,7 @@ type hopCheck struct {
 	route     *navigator.Route
 	expansion *docks.ExpansionTerminal
 	authOp    *access.AuthorizeOp
+	pingOp    *PingOp
 }
 
 func establishRoute(route *navigator.Route) (dstPin *navigator.Pin, dstTerminal terminal.Terminal, err error) {
@@ -256,6 +257,21 @@ func establishRoute(route *navigator.Route) (dstPin *navigator.Pin, dstTerminal 
 		// Check if we already have a connection to the Hub.
 		activeTerminal := hop.Pin().GetActiveTerminal()
 		if activeTerminal != nil {
+			// Ping terminal if not recently checked.
+			if activeTerminal.NeedsReachableCheck(30 * time.Second) {
+				pingOp, tErr := NewPingOp(activeTerminal)
+				if tErr.IsError() {
+					return nil, nil, tErr.Wrap("failed start ping to %s", hop.Pin())
+				}
+				// Add for checking results later.
+				hopChecks = append(hopChecks, &hopCheck{
+					pin:       hop.Pin(),
+					route:     route.CopyUpTo(i + 2),
+					expansion: activeTerminal,
+					pingOp:    pingOp,
+				})
+			}
+
 			previousHop = hop.Pin()
 			previousTerminal = activeTerminal
 			continue
@@ -282,22 +298,67 @@ func establishRoute(route *navigator.Route) (dstPin *navigator.Pin, dstTerminal 
 
 	// Check results.
 	for _, check := range hopChecks {
-		// Wait for authOp result.
-		select {
-		case tErr := <-check.authOp.Result:
-			if !tErr.Is(terminal.ErrExplicitAck) {
-				return nil, nil, tErr.Wrap("failed to authenticate to %s", check.pin.Hub)
-			}
-		case <-time.After(3 * time.Second):
-			return nil, nil, terminal.ErrTimeout.With("waiting for auth to %s", check.pin.Hub)
-		}
+		switch {
+		case check.authOp != nil:
+			// Wait for authOp result.
+			select {
+			case tErr := <-check.authOp.Result:
+				if !tErr.Is(terminal.ErrExplicitAck) {
+					// This should never happen, as all should have the same public keys
+					// and tokens are validated locally before using.
+					// Ignore Hub for a short amount of time.
+					// TODO: How can we better handle this?
+					check.pin.MarkAsFailingFor(3 * time.Minute)
+					log.Warningf("spn/crew: failed to auth to %s: %s", check.pin.Hub, tErr)
 
-		// Add terminal extension to the map.
-		check.pin.SetActiveTerminal(&navigator.PinConnection{
-			Terminal: check.expansion,
-			Route:    check.route,
-		})
-		log.Infof("spn/crew: added conn to %s: %s", check.pin, check.route)
+					return nil, nil, tErr.Wrap("failed to authenticate to %s: %w", check.pin.Hub, tErr)
+				}
+
+			case <-time.After(3 * time.Second):
+				// Mark as failing for just a minute, until server load may be less.
+				check.pin.MarkAsFailingFor(1 * time.Minute)
+				log.Warningf("spn/crew: auth to %s timed out", check.pin.Hub)
+
+				return nil, nil, terminal.ErrTimeout.With("waiting for auth to %s", check.pin.Hub)
+			}
+
+			// Add terminal extension to the map.
+			check.pin.SetActiveTerminal(&navigator.PinConnection{
+				Terminal: check.expansion,
+				Route:    check.route,
+			})
+			check.expansion.MarkReachable()
+			log.Infof("spn/crew: added conn to %s via %s", check.pin, check.route)
+
+		case check.pingOp != nil:
+			// Wait for ping result.
+			select {
+			case tErr := <-check.pingOp.Result:
+				if !tErr.Is(terminal.ErrExplicitAck) &&
+					!tErr.Is(terminal.ErrUnknownOperationType) { // TODO: remove workaround until all servers have this upgrade
+					// Mark as failing long enough to expire connections and session and shutdown connections.
+					// TODO: Should we forcibly disconnect instead?
+					check.pin.MarkAsFailingFor(7 * time.Minute)
+					log.Warningf("spn/crew: failed to check reachability of %s: %s", check.pin.Hub, tErr)
+
+					return nil, nil, tErr.Wrap("failed to check reachability of %s: %w", check.pin.Hub, tErr)
+				}
+
+			case <-time.After(3 * time.Second):
+				// Mark as failing for just a minute, until server load may be less.
+				check.pin.MarkAsFailingFor(1 * time.Minute)
+				log.Warningf("spn/crew: reachability check to %s timed out", check.pin.Hub)
+
+				return nil, nil, terminal.ErrTimeout.With("waiting for ping to %s", check.pin.Hub)
+			}
+
+			check.expansion.MarkReachable()
+			log.Debugf("spn/crew: checked conn to %s via %s", check.pin.Hub, check.route)
+
+		default:
+			log.Errorf("spn/crew: invalid hop check for %s", check.pin.Hub)
+			return nil, nil, terminal.ErrInternalError.With("invalid hop check")
+		}
 	}
 
 	// Return last hop.

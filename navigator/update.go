@@ -393,20 +393,27 @@ func (m *Map) updateHubLane(pin *Pin, lane *hub.Lane, peer *Pin) {
 	}
 }
 
+func (m *Map) updateFailingStates(ctx context.Context, task *modules.Task) error {
+	m.Lock()
+	defer m.Unlock()
+
+	for _, pin := range m.all {
+		if pin.State.Has(StateFailing) && !pin.IsFailing() {
+			pin.removeStates(StateFailing)
+		}
+	}
+
+	return nil
+}
+
 func (m *Map) updateStates(ctx context.Context, task *modules.Task) error {
 	var toDelete []string
-	now := time.Now()
 
 	m.Lock()
 	defer m.Unlock()
 
 pinLoop:
 	for _, pin := range m.all {
-		// Update StateFailing.
-		if pin.State.Has(StateFailing) && now.After(pin.FailingUntil) {
-			pin.removeStates(StateFailing)
-		}
-
 		// Check for discontinued Hubs.
 		if m.intel != nil {
 			hubIntel, ok := m.intel.Hubs[pin.Hub.ID]
