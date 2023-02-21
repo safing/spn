@@ -143,7 +143,7 @@ Type=simple
 Restart=on-failure
 RestartSec=5
 LimitNOFILE=infinity
-Environment=LOGLEVEL=info
+Environment=LOGLEVEL=warning
 Environment=SPN_ARGS=
 EnvironmentFile=-/etc/default/spn
 ExecStart=${INSTALLDIR}/portmaster-start --data ${INSTALLDIR} hub -- --log \$LOGLEVEL \$SPN_ARGS
