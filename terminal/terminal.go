@@ -668,7 +668,7 @@ func (t *TerminalBase) handleOpMsg(data *container.Container) *Error {
 
 	case MsgTypeData, MsgTypePriorityData:
 		op, ok := t.GetActiveOp(opID)
-		if ok {
+		if ok && !op.Stopped() {
 			// Create message from data.
 			msg := NewEmptyMsg()
 			msg.FlowID = opID
