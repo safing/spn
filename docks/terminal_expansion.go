@@ -2,6 +2,7 @@ package docks
 
 import (
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/tevino/abool"
@@ -19,9 +20,12 @@ type ExpansionTerminal struct {
 
 	changeNotifyFuncReady *abool.AtomicBool
 	changeNotifyFunc      func()
+
+	reachableChecked time.Time
+	reachableLock    sync.Mutex
 }
 
-// ExpansionTerminalRelayOp the operation that connects to the relay.
+// ExpansionTerminalRelayOp is the operation that connects to the relay.
 type ExpansionTerminalRelayOp struct {
 	terminal.OperationBase
 
@@ -88,6 +92,24 @@ func (t *ExpansionTerminal) SetChangeNotifyFunc(f func()) {
 	}
 	t.changeNotifyFunc = f
 	t.changeNotifyFuncReady.Set()
+}
+
+// NeedsReachableCheck returns whether the terminal should be checked if it is
+// reachable via the existing network internal relayed connection.
+func (t *ExpansionTerminal) NeedsReachableCheck(maxCheckAge time.Duration) bool {
+	t.reachableLock.Lock()
+	defer t.reachableLock.Unlock()
+
+	return time.Since(t.reachableChecked) > maxCheckAge
+}
+
+// MarkReachable marks the terminal as reachable via the existing network
+// internal relayed connection.
+func (t *ExpansionTerminal) MarkReachable() {
+	t.reachableLock.Lock()
+	defer t.reachableLock.Unlock()
+
+	t.reachableChecked = time.Now()
 }
 
 // HandleDestruction gives the terminal the ability to clean up.

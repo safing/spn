@@ -140,7 +140,7 @@ func createRandomTestMap(seed int64, size int) *Map {
 	// Fake communication error with three Hubs.
 	var i int
 	for _, pin := range m.all {
-		pin.FailingUntil = time.Now().Add(1 * time.Hour)
+		pin.MarkAsFailingFor(1 * time.Hour)
 		pin.addStates(StateFailing)
 
 		if i++; i >= 3 {

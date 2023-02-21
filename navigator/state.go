@@ -25,7 +25,7 @@ const (
 	StateSuperseded // 0x02
 
 	// StateFailing signifies that a recent error was encountered while
-	// communicating with this Hub. Pin.IgnoreUntil specifies when this state is
+	// communicating with this Hub. Pin.FailingUntil specifies when this state is
 	// re-evaluated at earliest.
 	StateFailing // 0x04
 

@@ -73,6 +73,10 @@ geoInitCheck:
 		Repeat(1 * time.Hour).
 		Schedule(time.Now().Add(3 * time.Minute))
 
+	module.NewTask("update failing states", Main.updateFailingStates).
+		Repeat(1 * time.Minute).
+		Schedule(time.Now().Add(3 * time.Minute))
+
 	if conf.PublicHub() {
 		// Only measure Hubs on public Hubs.
 		module.NewTask("measure hubs", Main.measureHubs).
