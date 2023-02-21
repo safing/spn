@@ -32,7 +32,7 @@ func NewMsg(data []byte) *Msg {
 	}
 
 	// Debug unit leaks.
-	msg.Debug()
+	msg.debugWithCaller(2)
 
 	return msg
 }
@@ -48,7 +48,7 @@ func NewEmptyMsg() *Msg {
 	}
 
 	// Debug unit leaks.
-	msg.Debug()
+	msg.debugWithCaller(2)
 
 	return msg
 }
@@ -88,17 +88,18 @@ func (msg *Msg) Finish() {
 	msg.Unit.Finish()
 }
 
-// DebugUnit registers the given unit with the given source for debug output.
-// Additional calls on the same unit update the unit source.
-
 // Debug registers the unit for debug output with the given source.
 // Additional calls on the same unit update the unit source.
 // StartDebugLog() must be called before calling DebugUnit().
 func (msg *Msg) Debug() {
+	msg.debugWithCaller(2)
+}
+
+func (msg *Msg) debugWithCaller(skip int) {
 	if !debugUnitScheduling || msg == nil {
 		return
 	}
-	_, file, line, ok := runtime.Caller(1)
+	_, file, line, ok := runtime.Caller(skip)
 	if ok {
 		scheduler.DebugUnit(msg.Unit, fmt.Sprintf("%s:%d", file, line))
 	}
