@@ -13,16 +13,16 @@ import (
 
 // Measurements Configuration.
 const (
-	NavigatorMeasurementTTLDefault    = 2 * time.Hour
-	NavigatorMeasurementTTLByCostBase = 3 * time.Minute
-	NavigatorMeasurementTTLByCostMin  = 2 * time.Hour
-	NavigatorMeasurementTTLByCostMax  = 30 * time.Hour
+	NavigatorMeasurementTTLDefault    = 4 * time.Hour
+	NavigatorMeasurementTTLByCostBase = 6 * time.Minute
+	NavigatorMeasurementTTLByCostMin  = 4 * time.Hour
+	NavigatorMeasurementTTLByCostMax  = 50 * time.Hour
 
 	// With a base TTL of 3m, this leads to:
-	// 20c     -> 1h -> raised to 2h.
-	// 50c     -> 2h30m
-	// 100c    -> 5h
-	// 1000c   -> 50h -> capped to 30h.
+	// 20c     -> 2h -> raised to 4h.
+	// 50c     -> 5h
+	// 100c    -> 10h
+	// 1000c   -> 100h -> capped to 50h.
 )
 
 func (m *Map) measureHubs(ctx context.Context, _ *modules.Task) error {
