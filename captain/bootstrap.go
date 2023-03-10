@@ -37,7 +37,7 @@ func init() {
 // prepBootstrapHubFlag checks the bootstrap-hub argument if it is valid.
 func prepBootstrapHubFlag() error {
 	if bootstrapHubFlag != "" {
-		_, err := hub.ParseBootstrapHub(bootstrapHubFlag, conf.MainMapName)
+		_, _, _, err := hub.ParseBootstrapHub(bootstrapHubFlag)
 		return err
 	}
 	return nil

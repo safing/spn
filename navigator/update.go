@@ -2,7 +2,6 @@ package navigator
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"path"
 	"time"
@@ -14,6 +13,7 @@ import (
 	"github.com/safing/portbase/database/record"
 	"github.com/safing/portbase/log"
 	"github.com/safing/portbase/modules"
+	"github.com/safing/portbase/utils"
 	"github.com/safing/portmaster/intel/geoip"
 	"github.com/safing/portmaster/netenv"
 	"github.com/safing/spn/hub"
@@ -481,22 +481,51 @@ func (m *Map) addBootstrapHubs(bootstrapTransports []string) error {
 
 func (m *Map) addBootstrapHub(bootstrapTransport string) error {
 	// Parse bootstrap hub.
-	bootstrapHub, err := hub.ParseBootstrapHub(bootstrapTransport, m.Name)
+	transport, hubID, hubIP, err := hub.ParseBootstrapHub(bootstrapTransport)
 	if err != nil {
 		return fmt.Errorf("invalid bootstrap hub: %w", err)
 	}
 
 	// Check if hub already exists.
-	_, err = hub.GetHub(bootstrapHub.Map, bootstrapHub.ID)
-	if err == nil {
-		return nil
-	}
-	if !errors.Is(err, database.ErrNotFound) {
-		return err
+	var h *hub.Hub
+	pin, ok := m.all[hubID]
+	if ok {
+		h = pin.Hub
+	} else {
+		h = &hub.Hub{
+			ID:  hubID,
+			Map: m.Name,
+			Info: &hub.Announcement{
+				ID: hubID,
+			},
+			Status:    &hub.Status{},
+			FirstSeen: time.Now(), // Do not garbage collect bootstrap hubs.
+		}
 	}
 
-	// Add to map for bootstrapping.
-	m.updateHub(bootstrapHub, false, false)
-	log.Infof("spn/navigator: added bootstrap %s to map %s", bootstrapHub, m.Name)
+	// Add IP if it does not yet exist.
+	if hubIP4 := hubIP.To4(); hubIP4 != nil {
+		if h.Info.IPv4 == nil {
+			h.Info.IPv4 = hubIP4
+		} else if !h.Info.IPv4.Equal(hubIP4) {
+			return fmt.Errorf("additional bootstrap entry with same ID but mismatching IP address: %s", hubIP)
+		}
+	} else {
+		if h.Info.IPv6 == nil {
+			h.Info.IPv6 = hubIP
+		} else if !h.Info.IPv6.Equal(hubIP) {
+			return fmt.Errorf("additional bootstrap entry with same ID but mismatching IP address: %s", hubIP)
+		}
+	}
+
+	// Add transport if it does not yet exist.
+	t := transport.String()
+	if !utils.StringInSlice(h.Info.Transports, t) {
+		h.Info.Transports = append(h.Info.Transports, t)
+	}
+
+	// Add/update to map for bootstrapping.
+	m.updateHub(h, false, false)
+	log.Infof("spn/navigator: added/updated bootstrap %s to map %s", h, m.Name)
 	return nil
 }
