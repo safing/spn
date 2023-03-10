@@ -456,7 +456,11 @@ func (crane *Crane) unloader(workerCtx context.Context) error {
 			crane.Stop(terminal.ErrMalformedData.With("failed to get container length: %w", err))
 			return nil
 		}
-		if containerLen > maxUnloadSize {
+		switch {
+		case containerLen <= 0:
+			crane.Stop(terminal.ErrMalformedData.With("received empty container with length %d", containerLen))
+			return nil
+		case containerLen > maxUnloadSize:
 			crane.Stop(terminal.ErrMalformedData.With("received oversized container with length %d", containerLen))
 			return nil
 		}
