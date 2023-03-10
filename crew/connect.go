@@ -338,6 +338,7 @@ func establishRoute(route *navigator.Route) (dstPin *navigator.Pin, dstTerminal 
 					!tErr.Is(terminal.ErrUnknownOperationType) { // TODO: remove workaround until all servers have this upgrade
 					// Mark as failing long enough to expire connections and session and shutdown connections.
 					// TODO: Should we forcibly disconnect instead?
+					// TODO: This might also be triggered if a relay fails and ends the operation.
 					check.pin.MarkAsFailingFor(7 * time.Minute)
 					log.Warningf("spn/crew: failed to check reachability of %s: %s", check.pin.Hub, tErr)
 

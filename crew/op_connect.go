@@ -403,7 +403,8 @@ func (op *ConnectOp) HandleStop(err *terminal.Error) (errorToSend *terminal.Erro
 	// If the op was ended locally, send all data before closing.
 	// If the op was ended remotely, don't bother sending remaining data.
 	if !err.IsExternal() {
-		op.dfq.Flush()
+		// Flushing could mean sending a full buffer of 50000 packets.
+		op.dfq.Flush(5 * time.Minute)
 	}
 
 	// If the op was ended remotely, write all remaining received data.

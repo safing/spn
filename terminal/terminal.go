@@ -538,7 +538,8 @@ func (t *TerminalBase) Flush() {
 
 	// Flush flow control, if configured.
 	if t.flowControl != nil {
-		t.flowControl.Flush()
+		// Flushing could mean sending a full buffer of 50000 packets.
+		t.flowControl.Flush(5 * time.Minute)
 	}
 }
 

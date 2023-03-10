@@ -17,7 +17,7 @@ type FlowControl interface {
 	Receive() <-chan *Msg
 	Send(msg *Msg, timeout time.Duration) *Error
 	ReadyToSend() <-chan struct{}
-	Flush()
+	Flush(timeout time.Duration)
 	StartWorkers(m *modules.Module, terminalName string)
 	RecvQueueLen() int
 	SendQueueLen() int
@@ -317,7 +317,7 @@ sending:
 }
 
 // Flush waits for all waiting data to be sent.
-func (dfq *DuplexFlowQueue) Flush() {
+func (dfq *DuplexFlowQueue) Flush(timeout time.Duration) {
 	// Create channel and function for notifying.
 	wait := make(chan struct{})
 	finished := func() {
@@ -328,11 +328,15 @@ func (dfq *DuplexFlowQueue) Flush() {
 	case dfq.flush <- finished:
 	case <-dfq.ctx.Done():
 		return
+	case <-TimedOut(timeout):
+		return
 	}
 	// Wait for flush to finish and return when stopping.
 	select {
 	case <-wait:
 	case <-dfq.ctx.Done():
+	case <-TimedOut(timeout):
+		return
 	}
 }
 
