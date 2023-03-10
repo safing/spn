@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"strings"
 	"sync"
 	"time"
 
@@ -122,27 +123,16 @@ func (t *Tunnel) establish(ctx context.Context) (err error) {
 	case sticksTo.Avoid:
 		log.Tracer(ctx).Tracef("spn/crew: avoiding %s", sticksTo.Pin.Hub)
 
-		// Build avoid policy.
-		avoidPolicy := make([]endpoints.Endpoint, 0, 2)
-		// Exclude countries of the hub to be avoided.
-		// This helps to select a destination hub that is more different than say,
-		// the other hub in the same datacenter as the one to be avoided.
-		if sticksTo.Pin.LocationV4 != nil &&
-			sticksTo.Pin.LocationV4.Country.ISOCode != "" {
-			avoidPolicy = append(avoidPolicy, &endpoints.EndpointCountry{
-				Country: sticksTo.Pin.LocationV4.Country.ISOCode,
-			})
-			log.Tracer(ctx).Tracef("spn/crew: avoiding country %s via IPv4 location", sticksTo.Pin.LocationV4.Country.ISOCode)
-		}
-		if sticksTo.Pin.LocationV6 != nil &&
-			sticksTo.Pin.LocationV6.Country.ISOCode != "" {
-			avoidPolicy = append(avoidPolicy, &endpoints.EndpointCountry{
-				Country: sticksTo.Pin.LocationV6.Country.ISOCode,
-			})
-			log.Tracer(ctx).Tracef("spn/crew: avoiding country %s via IPv6 location", sticksTo.Pin.LocationV6.Country.ISOCode)
+		// Avoid this Hub.
+		// TODO: Remember more than one hub to avoid.
+		avoidPolicy := []endpoints.Endpoint{
+			&endpoints.EndpointDomain{
+				OriginalValue: sticksTo.Pin.Hub.ID,
+				Domain:        strings.ToLower(sticksTo.Pin.Hub.ID) + ".",
+			},
 		}
 
-		// Append to policies
+		// Append to policies.
 		t.connInfo.TunnelOpts.HubPolicies = append(t.connInfo.TunnelOpts.HubPolicies, avoidPolicy)
 
 	default:
