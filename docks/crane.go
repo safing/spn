@@ -363,8 +363,6 @@ func (crane *Crane) AbandonTerminal(id uint32, err *terminal.Error) {
 }
 
 func (crane *Crane) sendImportantTerminalMsg(msg *terminal.Msg, timeout time.Duration) *terminal.Error {
-	msg.Unit.Pause()
-
 	select {
 	case crane.controllerMsgs <- msg:
 		return nil
@@ -376,8 +374,6 @@ func (crane *Crane) sendImportantTerminalMsg(msg *terminal.Msg, timeout time.Dur
 
 // Send is used by others to send a message through the crane.
 func (crane *Crane) Send(msg *terminal.Msg, timeout time.Duration) *terminal.Error {
-	msg.Unit.Pause()
-
 	select {
 	case crane.terminalMsgs <- msg:
 		return nil

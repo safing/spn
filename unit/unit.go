@@ -9,17 +9,14 @@ import (
 type Unit struct {
 	id           int64
 	scheduler    *Scheduler
-	epoch        int32
 	finished     abool.AtomicBool
 	highPriority abool.AtomicBool
-	paused       abool.AtomicBool
 }
 
 // NewUnit returns a new unit within the scheduler.
 func (s *Scheduler) NewUnit() *Unit {
 	return &Unit{
 		id:        s.currentUnitID.Add(1),
-		epoch:     s.epoch.Load(),
 		scheduler: s,
 	}
 }
@@ -36,9 +33,6 @@ func (u *Unit) ReUse() {
 
 // WaitForSlot blocks until the unit may be processed.
 func (u *Unit) WaitForSlot() {
-	// Unpause.
-	u.unpause()
-
 	// High priority units may always process.
 	if u.highPriority.IsSet() {
 		return
@@ -67,65 +61,21 @@ func (u *Unit) Finish() {
 
 	// Always increase finished, even if the unit is from a previous epoch.
 	if u.finished.SetToIf(false, true) {
-		if u.epoch == u.scheduler.epoch.Load() {
-			// If in same epoch, finish in epoch.
-			u.scheduler.finished.Add(1)
-		} else {
-			// If not in same epoch, just increase the total counter.
-			u.scheduler.finishedTotal.Add(1)
-		}
-	}
-	u.RemovePriority()
-	u.unpause()
-}
-
-// Pause signals the unit scheduler that this unit is paused and not being
-// processed at the moment. May only be called if WaitForUnitSlot() was called
-// at least once.
-func (u *Unit) Pause() {
-	// Only change if within the origin epoch.
-	if u.epoch != u.scheduler.epoch.Load() {
-		return
-	}
-
-	if u.finished.IsNotSet() && u.paused.SetToIf(false, true) {
-		u.scheduler.pausedUnits.Add(1)
-
-		// Increase clearance by one if unit is paused, as now another unit can take its slot.
-		u.scheduler.clearanceUpTo.Add(1)
-	}
-}
-
-// unpause signals the unit scheduler that this unit is not paused anymore and
-// is now waiting for processing.
-func (u *Unit) unpause() {
-	// Only change if within the origin epoch.
-	if u.epoch != u.scheduler.epoch.Load() {
-		return
-	}
-
-	if u.paused.SetToIf(true, false) {
-		if u.scheduler.pausedUnits.Add(-1) < 0 {
-			// If we are within an epoch change, revert change and return.
-			u.scheduler.pausedUnits.Add(1)
-			return
-		}
-
-		// Reduce clearance by one if paused unit is woken up, as the previously paused unit requires a slot.
-		// A paused unit is expected to already have been allowed to process once.
-		u.scheduler.clearanceUpTo.Add(-1)
+		u.scheduler.finished.Add(1)
 	}
 }
 
 // MakeHighPriority marks the unit as high priority.
 func (u *Unit) MakeHighPriority() {
-	// Only change if within the origin epoch.
-	if u.epoch != u.scheduler.epoch.Load() {
-		return
-	}
-
-	if u.finished.IsNotSet() && u.highPriority.SetToIf(false, true) {
-		u.scheduler.highPrioUnits.Add(1)
+	switch {
+	case u.finished.IsSet():
+		// Unit is already finished.
+	case !u.highPriority.SetToIf(false, true):
+		// Unit is already set to high priority.
+		// Else: High Priority set.
+	case u.id > u.scheduler.clearanceUpTo.Load():
+		// Unit is outside current clearance, reduce clearance by one.
+		u.scheduler.clearanceUpTo.Add(-1)
 	}
 }
 
@@ -136,15 +86,5 @@ func (u *Unit) IsHighPriority() bool {
 
 // RemovePriority removes the high priority mark.
 func (u *Unit) RemovePriority() {
-	// Only change if within the origin epoch.
-	if u.epoch != u.scheduler.epoch.Load() {
-		return
-	}
-
-	if u.highPriority.SetToIf(true, false) {
-		if u.scheduler.highPrioUnits.Add(-1) < 0 {
-			// If we are within an epoch change, revert change.
-			u.scheduler.highPrioUnits.Add(1)
-		}
-	}
+	u.highPriority.UnSet()
 }

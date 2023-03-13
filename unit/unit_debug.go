@@ -66,6 +66,14 @@ func (s *Scheduler) debugStep() {
 		}
 	}
 
-	log.Debugf("scheduler state: %+v", s.State())
-	log.Debugf("scheduler unit sources: %+v", sources)
+	// Print current state.
+	log.Debugf(
+		`scheduler: state: slotPace=%d avgPace=%d maxPace=%d currentUnitID=%d clearanceUpTo=%d`,
+		s.slotPace.Load(),
+		s.avgPaceSum.Load()/s.avgPaceCnt.Load(),
+		s.maxLeveledPace.Load(),
+		s.currentUnitID.Load(),
+		s.clearanceUpTo.Load(),
+	)
+	log.Debugf("scheduler: unit sources: %+v", sources)
 }

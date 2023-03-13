@@ -86,17 +86,11 @@ func (t *ExpansionRelayTerminal) Ctx() context.Context {
 
 // Deliver delivers a message to the relay operation.
 func (op *ExpandOp) Deliver(msg *terminal.Msg) *terminal.Error {
-	// Pause unit before handing away.
-	msg.Unit.Pause()
-
 	return op.deliverProxy(msg)
 }
 
 // Deliver delivers a message to the relay terminal.
 func (t *ExpansionRelayTerminal) Deliver(msg *terminal.Msg) *terminal.Error {
-	// Pause unit before handing away.
-	msg.Unit.Pause()
-
 	return t.deliverProxy(msg)
 }
 
@@ -290,7 +284,6 @@ func (op *ExpandOp) forwardHandler(_ context.Context) error {
 			atomic.AddUint64(op.dataRelayed, uint64(msg.Data.Length()))
 
 			// Receive data from the origin and forward it to the relay.
-			msg.Unit.Pause()
 			op.relayTerminal.sendProxy(msg, 1*time.Minute)
 
 		case <-op.ctx.Done():
@@ -313,7 +306,6 @@ func (op *ExpandOp) backwardHandler(_ context.Context) error {
 			atomic.AddUint64(op.dataRelayed, uint64(msg.Data.Length()))
 
 			// Receive data from the relay and forward it to the origin.
-			msg.Unit.Pause()
 			op.sendProxy(msg, 1*time.Minute)
 
 		case <-op.ctx.Done():

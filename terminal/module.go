@@ -59,12 +59,19 @@ func StopScheduler() {
 }
 
 func schedulerConfig() *unit.SchedulerConfig {
+	// Client Scheduler Config.
 	if conf.Client() {
 		return &unit.SchedulerConfig{
-			MinSlotPace:             10, // 1000pps - Choose a small starting pace for low end devices.
-			AdjustFractionPerStreak: 10, // 10% - Adapt quicker, as clients will often be at min pace.
+			MinSlotPace:             10,  // 1000pps - Choose a small starting pace for low end devices.
+			WorkSlotPercentage:      0.9, // 90%
+			SlotChangeRatePerStreak: 0.1, // 10%
 		}
 	}
 
-	return nil
+	// Server Scheduler Config.
+	return &unit.SchedulerConfig{
+		MinSlotPace:             100,
+		WorkSlotPercentage:      0.7,  // 70%
+		SlotChangeRatePerStreak: 0.02, // 2%
+	}
 }

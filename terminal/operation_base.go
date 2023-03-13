@@ -76,9 +76,6 @@ func (op *OperationBase) Send(msg *Msg, timeout time.Duration) *Error {
 	// Wait for processing slot.
 	msg.Unit.WaitForSlot()
 
-	// Pause unit before handing away.
-	msg.Unit.Pause()
-
 	// Send message.
 	tErr := op.terminal.Send(msg, timeout)
 	if tErr != nil {
