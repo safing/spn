@@ -210,7 +210,6 @@ func (t *TerminalBase) Send(msg *Msg, timeout time.Duration) *Error {
 	// Check if the send queue has available space.
 	select {
 	case t.sendQueue <- msg:
-		msg.Unit.Pause()
 		return nil
 	default:
 	}
@@ -218,7 +217,6 @@ func (t *TerminalBase) Send(msg *Msg, timeout time.Duration) *Error {
 	// Submit message to buffer, if space is available.
 	select {
 	case t.sendQueue <- msg:
-		msg.Unit.Pause()
 		return nil
 	case <-TimedOut(timeout):
 		msg.Finish()

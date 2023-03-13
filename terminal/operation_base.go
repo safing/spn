@@ -46,7 +46,7 @@ func (op *OperationBase) NewMsg(data []byte) *Msg {
 	msg.Type = MsgTypeData
 
 	// Debug unit leaks.
-	msg.Debug()
+	msg.debugWithCaller(2)
 
 	return msg
 }
@@ -59,7 +59,7 @@ func (op *OperationBase) NewEmptyMsg() *Msg {
 	msg.Type = MsgTypeData
 
 	// Debug unit leaks.
-	msg.Debug()
+	msg.debugWithCaller(2)
 
 	return msg
 }
@@ -75,9 +75,6 @@ func (op *OperationBase) Send(msg *Msg, timeout time.Duration) *Error {
 
 	// Wait for processing slot.
 	msg.Unit.WaitForSlot()
-
-	// Pause unit before handing away.
-	msg.Unit.Pause()
 
 	// Send message.
 	tErr := op.terminal.Send(msg, timeout)

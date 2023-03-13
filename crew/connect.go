@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"strings"
 	"sync"
 	"time"
 
@@ -122,27 +123,16 @@ func (t *Tunnel) establish(ctx context.Context) (err error) {
 	case sticksTo.Avoid:
 		log.Tracer(ctx).Tracef("spn/crew: avoiding %s", sticksTo.Pin.Hub)
 
-		// Build avoid policy.
-		avoidPolicy := make([]endpoints.Endpoint, 0, 2)
-		// Exclude countries of the hub to be avoided.
-		// This helps to select a destination hub that is more different than say,
-		// the other hub in the same datacenter as the one to be avoided.
-		if sticksTo.Pin.LocationV4 != nil &&
-			sticksTo.Pin.LocationV4.Country.ISOCode != "" {
-			avoidPolicy = append(avoidPolicy, &endpoints.EndpointCountry{
-				Country: sticksTo.Pin.LocationV4.Country.ISOCode,
-			})
-			log.Tracer(ctx).Tracef("spn/crew: avoiding country %s via IPv4 location", sticksTo.Pin.LocationV4.Country.ISOCode)
-		}
-		if sticksTo.Pin.LocationV6 != nil &&
-			sticksTo.Pin.LocationV6.Country.ISOCode != "" {
-			avoidPolicy = append(avoidPolicy, &endpoints.EndpointCountry{
-				Country: sticksTo.Pin.LocationV6.Country.ISOCode,
-			})
-			log.Tracer(ctx).Tracef("spn/crew: avoiding country %s via IPv6 location", sticksTo.Pin.LocationV6.Country.ISOCode)
+		// Avoid this Hub.
+		// TODO: Remember more than one hub to avoid.
+		avoidPolicy := []endpoints.Endpoint{
+			&endpoints.EndpointDomain{
+				OriginalValue: sticksTo.Pin.Hub.ID,
+				Domain:        strings.ToLower(sticksTo.Pin.Hub.ID) + ".",
+			},
 		}
 
-		// Append to policies
+		// Append to policies.
 		t.connInfo.TunnelOpts.HubPolicies = append(t.connInfo.TunnelOpts.HubPolicies, avoidPolicy)
 
 	default:
@@ -314,7 +304,7 @@ func establishRoute(route *navigator.Route) (dstPin *navigator.Pin, dstTerminal 
 					return nil, nil, tErr.Wrap("failed to authenticate to %s: %w", check.pin.Hub, tErr)
 				}
 
-			case <-time.After(3 * time.Second):
+			case <-time.After(10 * time.Second):
 				// Mark as failing for just a minute, until server load may be less.
 				check.pin.MarkAsFailingFor(1 * time.Minute)
 				log.Warningf("spn/crew: auth to %s timed out", check.pin.Hub)
@@ -338,13 +328,14 @@ func establishRoute(route *navigator.Route) (dstPin *navigator.Pin, dstTerminal 
 					!tErr.Is(terminal.ErrUnknownOperationType) { // TODO: remove workaround until all servers have this upgrade
 					// Mark as failing long enough to expire connections and session and shutdown connections.
 					// TODO: Should we forcibly disconnect instead?
+					// TODO: This might also be triggered if a relay fails and ends the operation.
 					check.pin.MarkAsFailingFor(7 * time.Minute)
 					log.Warningf("spn/crew: failed to check reachability of %s: %s", check.pin.Hub, tErr)
 
 					return nil, nil, tErr.Wrap("failed to check reachability of %s: %w", check.pin.Hub, tErr)
 				}
 
-			case <-time.After(3 * time.Second):
+			case <-time.After(10 * time.Second):
 				// Mark as failing for just a minute, until server load may be less.
 				check.pin.MarkAsFailingFor(1 * time.Minute)
 				log.Warningf("spn/crew: reachability check to %s timed out", check.pin.Hub)

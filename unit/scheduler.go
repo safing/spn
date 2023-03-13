@@ -12,17 +12,16 @@ import (
 )
 
 const (
-	defaultSlotDuration  = 10 * time.Millisecond
-	defaultMinSlotPace   = 100 // 10 000 pps
-	defaultEpochDuration = 1 * time.Minute
+	defaultSlotDuration = 10 * time.Millisecond // 100 slots per second
+	defaultMinSlotPace  = 100                   // 10 000 pps
 
-	defaultAdjustFractionPerStreak        = 100 // 1%
-	defaultHighPriorityMaxReserveFraction = 4   //  25%
+	defaultWorkSlotPercentage      = 0.7  // 70%
+	defaultSlotChangeRatePerStreak = 0.02 // 2%
 )
 
 // Scheduler creates and schedules units.
 // Must be created using NewScheduler().
-type Scheduler struct {
+type Scheduler struct { //nolint:maligned
 	// Configuration.
 	config SchedulerConfig
 
@@ -30,32 +29,24 @@ type Scheduler struct {
 
 	// currentUnitID holds the last assigned Unit ID.
 	currentUnitID atomic.Int64
+	// clearanceUpTo holds the current threshold up to which Unit ID Units may be processed.
+	clearanceUpTo atomic.Int64
 	// slotPace holds the current pace. This is the base value for clearance
 	// calcuation, not the value of the current cleared Units itself.
 	slotPace atomic.Int64
-	// clearanceUpTo holds the current threshold up to which Unit ID Units may be processed.
-	clearanceUpTo atomic.Int64
-	// finishedTotal holds the amount of units that were finished across all epochs.
-	finishedTotal atomic.Int64
-
-	// Epoch amounts.
-
-	// epoch is the slot epoch counter for resetting special values.
-	epoch atomic.Int32
-	// finished holds the amount of units that were finished within the current epoch.
-	// Not necessarily all Unit IDs below this value are actually finished.
+	// finished holds the amount of units that were finished within the current slot.
 	finished atomic.Int64
-	// pausedUnits holds the amount of unfinished Units which are currently marked as "paused".
-	// These Units are waiting for an external condition.
-	pausedUnits atomic.Int64
-	// highPrioUnits holds the amount of unfinished Units which were marked as high priority.
-	highPrioUnits atomic.Int64
 
 	// Slot management.
 	slotSignalA      chan struct{}
 	slotSignalB      chan struct{}
 	slotSignalSwitch bool
 	slotSignalsLock  sync.RWMutex
+
+	// Stats.
+	maxLeveledPace atomic.Int64
+	avgPaceSum     atomic.Int64
+	avgPaceCnt     atomic.Int64
 
 	stopping abool.AtomicBool
 
@@ -71,15 +62,17 @@ type SchedulerConfig struct {
 	// The slot pace will never fall below this value.
 	MinSlotPace int64
 
-	// EpochDuration defines the duration of one epoch.
-	// Set to 0 to disable epochs.
-	EpochDuration time.Duration
+	// WorkSlotPercentage defines the how much of a slot should be scheduled with work.
+	// The remainder is for catching up and breathing room for other tasks.
+	// Must be between 55% (0.55) and 95% (0.95).
+	// The default value is 0.7 (70%).
+	WorkSlotPercentage float64
 
-	// AdjustFractionPerStreak defines the fraction of the pace the pace itself changes in either direction to match the current use and load.
-	AdjustFractionPerStreak int64
-
-	// HighPriorityMaxReserveFraction defines the fraction of the pace that may - at maximum - be reserved for high priority units.
-	HighPriorityMaxReserveFraction int64
+	// SlotChangeRatePerStreak defines how many percent (0-1) the slot pace
+	// should change per streak.
+	// Is enforced to be able to change the minimum slot pace by at least 1.
+	// The default value is 0.02 (2%).
+	SlotChangeRatePerStreak float64
 }
 
 // NewScheduler returns a new scheduler.
@@ -103,27 +96,36 @@ func NewScheduler(config *SchedulerConfig) *Scheduler {
 	if s.config.MinSlotPace == 0 {
 		s.config.MinSlotPace = defaultMinSlotPace
 	}
-	if s.config.EpochDuration == 0 {
-		s.config.EpochDuration = defaultEpochDuration
+	if s.config.WorkSlotPercentage == 0 {
+		s.config.WorkSlotPercentage = defaultWorkSlotPercentage
 	}
-	if s.config.AdjustFractionPerStreak == 0 {
-		s.config.AdjustFractionPerStreak = defaultAdjustFractionPerStreak
-	}
-	if s.config.HighPriorityMaxReserveFraction == 0 {
-		s.config.HighPriorityMaxReserveFraction = defaultHighPriorityMaxReserveFraction
+	if s.config.SlotChangeRatePerStreak == 0 {
+		s.config.SlotChangeRatePerStreak = defaultSlotChangeRatePerStreak
 	}
 
-	// The adjust fraction may not be bigger than the min slot pace.
-	if s.config.AdjustFractionPerStreak > s.config.MinSlotPace {
-		s.config.AdjustFractionPerStreak = s.config.MinSlotPace
+	// Check boundaries of WorkSlotPercentage.
+	switch {
+	case s.config.WorkSlotPercentage < 0.55:
+		s.config.WorkSlotPercentage = 0.55
+	case s.config.WorkSlotPercentage > 0.95:
+		s.config.WorkSlotPercentage = 0.95
+	}
+
+	// The slot change rate must be able to change the slot pace by at least 1.
+	if s.config.SlotChangeRatePerStreak < (1 / float64(s.config.MinSlotPace)) {
+		s.config.SlotChangeRatePerStreak = (1 / float64(s.config.MinSlotPace))
 
 		// Debug logging:
-		// fmt.Printf("--- reduced AdjustFractionPerStreak to %d\n", s.config.AdjustFractionPerStreak)
+		// fmt.Printf("--- increased SlotChangeRatePerStreak to %f\n", s.config.SlotChangeRatePerStreak)
 	}
 
 	// Initialize scheduler fields.
 	s.clearanceUpTo.Store(s.config.MinSlotPace)
 	s.slotPace.Store(s.config.MinSlotPace)
+
+	// Initialize stats fields.
+	s.avgPaceSum.Store(s.config.MinSlotPace)
+	s.avgPaceCnt.Store(1)
 
 	return s
 }
@@ -159,96 +161,107 @@ func (s *Scheduler) announceNextSlot() {
 // Must only be started once.
 func (s *Scheduler) SlotScheduler(ctx context.Context) error {
 	// Start slot ticker.
-	ticker := time.NewTicker(s.config.SlotDuration)
+	ticker := time.NewTicker(s.config.SlotDuration / 2)
 	defer ticker.Stop()
-
-	// Calculate how many slots per epoch
-	var slotCnt int64
-	slotsPerEpoch := s.config.EpochDuration / s.config.SlotDuration
 
 	// Give clearance to all when stopping.
 	defer s.clearanceUpTo.Store(math.MaxInt64 - math.MaxInt32)
 
 	var (
-		lastClearanceAmount int64
-		finishedAtStart     int64
-		increaseStreak      int64
-		decreaseStreak      int64
-		epochBase           int64
+		halfSlotID     uint64
+		increaseStreak float64
+		decreaseStreak float64
+		oneStreaks     int
 	)
 	for range ticker.C {
-		// Calculate how many units were finished in slot.
-		// Only load "finished" once, so we don't miss anything.
-		finishedAtEnd := s.finished.Load()
-		finishedInSlot := finishedAtEnd - finishedAtStart
-		s.finishedTotal.Add(finishedInSlot)
+		switch {
+		case halfSlotID%2 == 0:
 
-		// Adapt pace.
-		if finishedInSlot >= lastClearanceAmount {
-			// Adjust based on streak.
-			increaseStreak++
-			decreaseStreak = 0
-			s.slotPace.Add((s.slotPace.Load() / s.config.AdjustFractionPerStreak) * increaseStreak)
+			// First Half-Slot: Work Slot
 
-			// Debug logging:
-			// fmt.Printf("+++ slot pace: %d (finished in slot: %d, last clearance: %d, increaseStreak: %d, high: %d)\n", s.slotPace.Load(), finishedInSlot, lastClearanceAmount, increaseStreak, s.highPrioUnits.Load())
-		} else {
-			// Adjust based on streak.
-			decreaseStreak++
-			increaseStreak = 0
-			s.slotPace.Add(-((s.slotPace.Load() / s.config.AdjustFractionPerStreak) * decreaseStreak))
+			// Reset slot counters.
+			s.finished.Store(0)
 
-			// Enforce minimum.
-			if s.slotPace.Load() < s.config.MinSlotPace {
-				s.slotPace.Store(s.config.MinSlotPace)
+			// Raise clearance according
+			s.clearanceUpTo.Store(
+				s.currentUnitID.Load() +
+					int64(
+						float64(s.slotPace.Load())*s.config.WorkSlotPercentage,
+					),
+			)
+
+			// Announce start of new slot.
+			s.announceNextSlot()
+
+		default:
+
+			// Second Half-Slot: Catch-Up Slot
+
+			// Calculate slot pace with performance of first half-slot.
+			// Get current slot pace as float64.
+			currentSlotPace := float64(s.slotPace.Load())
+			// Calculate current raw slot pace.
+			newRawSlotPace := float64(s.finished.Load() * 2)
+
+			// Move slot pace in the trending direction.
+			if newRawSlotPace >= currentSlotPace {
+				// Adjust based on streak.
+				increaseStreak++
 				decreaseStreak = 0
+				s.slotPace.Add(int64(
+					currentSlotPace * s.config.SlotChangeRatePerStreak * increaseStreak,
+				))
+
+				// Count one-streaks.
+				if increaseStreak == 1 {
+					oneStreaks++
+				} else {
+					oneStreaks = 0
+				}
+
+				// Debug logging:
+				// fmt.Printf("+++ slot pace: %.0f (current raw pace: %.0f, increaseStreak: %.0f, clearanceUpTo: %d)\n", currentSlotPace, newRawSlotPace, increaseStreak, s.clearanceUpTo.Load())
+			} else {
+				// Adjust based on streak.
+				decreaseStreak++
+				increaseStreak = 0
+				s.slotPace.Add(int64(
+					-currentSlotPace * s.config.SlotChangeRatePerStreak * decreaseStreak,
+				))
+
+				// Enforce minimum.
+				if s.slotPace.Load() < s.config.MinSlotPace {
+					s.slotPace.Store(s.config.MinSlotPace)
+					decreaseStreak = 0
+				}
+
+				// Count one-streaks.
+				if decreaseStreak == 1 {
+					oneStreaks++
+				} else {
+					oneStreaks = 0
+				}
+
+				// Debug logging:
+				// fmt.Printf("--- slot pace: %.0f (current raw pace: %.0f, decreaseStreak: %.0f, clearanceUpTo: %d)\n", currentSlotPace, newRawSlotPace, decreaseStreak, s.clearanceUpTo.Load())
 			}
 
-			// Debug logging:
-			// fmt.Printf("--- slot pace: %d (finished in slot: %d, last clearance: %d, decreaseStreak: %d, high: %d)\n", s.slotPace.Load(), finishedInSlot, lastClearanceAmount, decreaseStreak, s.highPrioUnits.Load())
+			// Record Stats
+			// Add current pace to avg calculation.
+			s.avgPaceCnt.Add(1)
+			if s.avgPaceSum.Add(s.slotPace.Load()) < 0 {
+				// Reset if we wrap.
+				s.avgPaceCnt.Store(1)
+				s.avgPaceSum.Store(s.slotPace.Load())
+			}
+			// Check if current pace is new leveled max
+			if oneStreaks >= 3 && s.slotPace.Load() > s.maxLeveledPace.Load() {
+				s.maxLeveledPace.Store(s.slotPace.Load())
+			}
+
 		}
-
-		// Advance epoch if needed.
-		slotCnt++
-		if slotCnt%int64(slotsPerEpoch) == 0 {
-			slotCnt = 0
-
-			// Switch to new epoch.
-			s.epoch.Add(1)
-
-			// Only reduce by amount we have seen, for correct metrics.
-			s.finished.Add(-finishedAtEnd)
-			finishedAtEnd = 0
-
-			// Raise the epoch base to the current unit ID.
-			epochBase = s.currentUnitID.Load()
-
-			// Reset counters.
-			s.highPrioUnits.Store(0)
-			s.pausedUnits.Store(0)
-
-			// Debug logging:
-			// fmt.Printf("--- new epoch\n")
-		}
-
-		// Set new slot clearance.
-		// First, add current pace and paused units.
-		newClearance := s.slotPace.Load() + s.pausedUnits.Load()
-		// Second, subtract a fraction of the clearance for high priority units.
-		highPrio := s.highPrioUnits.Load()
-		if highPrio > newClearance/s.config.HighPriorityMaxReserveFraction {
-			newClearance -= newClearance / s.config.HighPriorityMaxReserveFraction
-		} else {
-			newClearance -= highPrio
-		}
-		// Third, add finished to set new clearance limit.
-		s.clearanceUpTo.Store(epochBase + finishedAtEnd + newClearance)
-		// Lastly, save new clearance for comparison for next slot.
-		lastClearanceAmount = newClearance
-
-		// Go to next slot.
-		finishedAtStart = finishedAtEnd
-		s.announceNextSlot()
+		// Switch to other slot-half.
+		halfSlotID++
 
 		// Check if we are stopping.
 		select {

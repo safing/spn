@@ -1,6 +1,9 @@
 package terminal
 
 import (
+	"sync"
+	"time"
+
 	"github.com/tevino/abool"
 
 	"github.com/safing/portbase/api"
@@ -16,11 +19,11 @@ func registerMetrics() (err error) {
 	}
 
 	_, err = metrics.NewGauge(
-		"spn/scheduling/unit/currentunitid",
+		"spn/scheduling/unit/slotpace/max",
 		nil,
-		floatify(scheduler.GetCurrentUnitID),
+		getMaxLeveledSlotPace,
 		&metrics.Options{
-			Name:       "SPN Scheduling Current Unit ID",
+			Name:       "SPN Scheduling Max Leveled Slot Pace",
 			Permission: api.PermitUser,
 		},
 	)
@@ -29,37 +32,11 @@ func registerMetrics() (err error) {
 	}
 
 	_, err = metrics.NewGauge(
-		"spn/scheduling/unit/slotpace",
+		"spn/scheduling/unit/slotpace/avg",
 		nil,
-		floatify(scheduler.GetSlotPace),
+		getAvgSlotPace,
 		&metrics.Options{
-			Name:       "SPN Scheduling Current Slot Pace",
-			Permission: api.PermitUser,
-		},
-	)
-	if err != nil {
-		return err
-	}
-
-	_, err = metrics.NewGauge(
-		"spn/scheduling/unit/clearanceupto",
-		nil,
-		floatify(scheduler.GetClearanceUpTo),
-		&metrics.Options{
-			Name:       "SPN Scheduling Clearance Up to Unit ID",
-			Permission: api.PermitUser,
-		},
-	)
-	if err != nil {
-		return err
-	}
-
-	_, err = metrics.NewGauge(
-		"spn/scheduling/unit/finished",
-		nil,
-		floatify(scheduler.GetFinished),
-		&metrics.Options{
-			Name:       "SPN Scheduling Finished Units",
+			Name:       "SPN Scheduling Avg Slot Pace",
 			Permission: api.PermitUser,
 		},
 	)
@@ -70,8 +47,38 @@ func registerMetrics() (err error) {
 	return nil
 }
 
-func floatify(fn func() int64) func() float64 {
-	return func() float64 {
-		return float64(fn())
+var (
+	nextMaxLeveledPaceReset     time.Time
+	nextMaxLeveledPaceResetLock sync.Mutex
+
+	nextAvgSlotPaceReset     time.Time
+	nextAvgSlotPaceResetLock sync.Mutex
+)
+
+func getMaxLeveledSlotPace() float64 {
+	value := float64(scheduler.GetMaxLeveledSlotPace())
+
+	nextMaxLeveledPaceResetLock.Lock()
+	defer nextMaxLeveledPaceResetLock.Unlock()
+
+	if time.Now().After(nextMaxLeveledPaceReset) {
+		nextMaxLeveledPaceReset = time.Now().Add(50 * time.Second)
+		scheduler.ResetMaxLeveledSlotPace()
 	}
+
+	return value
+}
+
+func getAvgSlotPace() float64 {
+	value := float64(scheduler.GetAvgSlotPace())
+
+	nextAvgSlotPaceResetLock.Lock()
+	defer nextAvgSlotPaceResetLock.Unlock()
+
+	if time.Now().After(nextAvgSlotPaceReset) {
+		nextAvgSlotPaceReset = time.Now().Add(50 * time.Second)
+		scheduler.ResetAvgSlotPace()
+	}
+
+	return value
 }

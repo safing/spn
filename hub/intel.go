@@ -163,23 +163,23 @@ func (i *Intel) ParseAdvisories() (err error) {
 }
 
 // ParseBootstrapHub parses a bootstrap hub.
-func ParseBootstrapHub(bootstrapTransport string, mapName string) (*Hub, error) {
+func ParseBootstrapHub(bootstrapTransport string) (t *Transport, hubID string, hubIP net.IP, err error) {
 	// Parse transport and check Hub ID.
-	t, err := ParseTransport(bootstrapTransport)
+	t, err = ParseTransport(bootstrapTransport)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse transport: %w", err)
+		return nil, "", nil, fmt.Errorf("failed to parse transport: %w", err)
 	}
 	if t.Option == "" {
-		return nil, errors.New("missing hub ID in URL fragment")
+		return nil, "", nil, errors.New("missing hub ID in URL fragment")
 	}
 	if _, err := lhash.FromBase58(t.Option); err != nil {
-		return nil, fmt.Errorf("hub ID is invalid: %w", err)
+		return nil, "", nil, fmt.Errorf("hub ID is invalid: %w", err)
 	}
 
 	// Parse IP address from transport.
 	ip := net.ParseIP(t.Domain)
 	if ip == nil {
-		return nil, errors.New("invalid IP address (domains are not supported for bootstrapping)")
+		return nil, "", nil, errors.New("invalid IP address (domains are not supported for bootstrapping)")
 	}
 
 	// Clean up transport for hub info.
@@ -187,23 +187,5 @@ func ParseBootstrapHub(bootstrapTransport string, mapName string) (*Hub, error) 
 	t.Domain = ""
 	t.Option = ""
 
-	// Create bootstrap hub.
-	bootstrapHub := &Hub{
-		ID:  id,
-		Map: mapName,
-		Info: &Announcement{
-			ID:         id,
-			Transports: []string{t.String()},
-		},
-		Status: &Status{},
-	}
-
-	// Set IP address.
-	if ip4 := ip.To4(); ip4 != nil {
-		bootstrapHub.Info.IPv4 = ip4
-	} else {
-		bootstrapHub.Info.IPv6 = ip
-	}
-
-	return bootstrapHub, nil
+	return t, id, ip, nil
 }

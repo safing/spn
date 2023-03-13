@@ -17,7 +17,7 @@ type FlowControl interface {
 	Receive() <-chan *Msg
 	Send(msg *Msg, timeout time.Duration) *Error
 	ReadyToSend() <-chan struct{}
-	Flush()
+	Flush(timeout time.Duration)
 	StartWorkers(m *modules.Module, terminalName string)
 	RecvQueueLen() int
 	SendQueueLen() int
@@ -270,7 +270,6 @@ sending:
 			msg.Data.Prepend(varint.Pack64(uint64(dfq.reportableRecvSpace())))
 
 			// Submit for sending upstream.
-			msg.Unit.Pause()
 			dfq.submitUpstream(msg, 0)
 			// Decrease the send space and set flag if depleted.
 			if dfq.decrementSendSpace() <= 0 {
@@ -317,7 +316,7 @@ sending:
 }
 
 // Flush waits for all waiting data to be sent.
-func (dfq *DuplexFlowQueue) Flush() {
+func (dfq *DuplexFlowQueue) Flush(timeout time.Duration) {
 	// Create channel and function for notifying.
 	wait := make(chan struct{})
 	finished := func() {
@@ -328,11 +327,15 @@ func (dfq *DuplexFlowQueue) Flush() {
 	case dfq.flush <- finished:
 	case <-dfq.ctx.Done():
 		return
+	case <-TimedOut(timeout):
+		return
 	}
 	// Wait for flush to finish and return when stopping.
 	select {
 	case <-wait:
 	case <-dfq.ctx.Done():
+	case <-TimedOut(timeout):
+		return
 	}
 }
 
@@ -354,7 +357,6 @@ func (dfq *DuplexFlowQueue) ReadyToSend() <-chan struct{} {
 func (dfq *DuplexFlowQueue) Send(msg *Msg, timeout time.Duration) *Error {
 	select {
 	case dfq.sendQueue <- msg:
-		msg.Unit.Pause()
 		if msg.Unit.IsHighPriority() {
 			// Reset prioMsgs to the current queue size, so that all waiting and the
 			// message we just added are all handled as high priority.
@@ -408,7 +410,6 @@ func (dfq *DuplexFlowQueue) Deliver(msg *Msg) *Error {
 		return nil
 	}
 
-	msg.Unit.Pause()
 	select {
 	case dfq.recvQueue <- msg:
 

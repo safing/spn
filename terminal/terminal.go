@@ -215,9 +215,6 @@ func (t *TerminalBase) SetTimeout(d time.Duration) {
 // Deliver on TerminalBase only exists to conform to the interface. It must be
 // overridden by an actual implementation.
 func (t *TerminalBase) Deliver(msg *Msg) *Error {
-	// Pause unit before handing away.
-	msg.Unit.Pause()
-
 	// Deliver via configured proxy.
 	err := t.deliverProxy(msg)
 	if err != nil {
@@ -292,9 +289,6 @@ func (t *TerminalBase) submit(msg *Msg, timeout time.Duration) {
 		return
 	}
 
-	// Pause unit before handing away.
-	msg.Unit.Pause()
-
 	// Hand over to flow control.
 	err := t.flowControl.Send(msg, timeout)
 	if err != nil {
@@ -308,9 +302,6 @@ func (t *TerminalBase) submit(msg *Msg, timeout time.Duration) {
 func (t *TerminalBase) submitToUpstream(msg *Msg, timeout time.Duration) {
 	// Add terminal ID as flow ID.
 	msg.FlowID = t.ID()
-
-	// Pause unit before handing away.
-	msg.Unit.Pause()
 
 	// Debug unit leaks.
 	msg.Debug()
@@ -418,8 +409,6 @@ handling:
 				msgBufferMsg = msg
 				msgBufferMsg.FlowID = t.ID()
 				msgBufferMsg.Type = MsgTypeData
-				// Wait for clearance on initial msg only.
-				msgBufferMsg.Unit.WaitForSlot()
 			}
 			msgBufferLen += msg.Data.Length()
 
@@ -483,6 +472,9 @@ handling:
 					msgBufferMsg.Type = MsgTypePriorityData
 				}
 
+				// Wait for clearance on initial msg only.
+				msgBufferMsg.Unit.WaitForSlot()
+
 				err = t.sendOpMsgs(msgBufferMsg)
 			}
 
@@ -538,7 +530,8 @@ func (t *TerminalBase) Flush() {
 
 	// Flush flow control, if configured.
 	if t.flowControl != nil {
-		t.flowControl.Flush()
+		// Flushing could mean sending a full buffer of 50000 packets.
+		t.flowControl.Flush(5 * time.Minute)
 	}
 }
 
@@ -677,9 +670,6 @@ func (t *TerminalBase) handleOpMsg(data *container.Container) *Error {
 			if msg.Type == MsgTypePriorityData {
 				msg.Unit.MakeHighPriority()
 			}
-
-			// Pause unit before handing away.
-			msg.Unit.Pause()
 
 			// Deliver message to operation.
 			tErr := op.Deliver(msg)

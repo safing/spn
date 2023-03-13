@@ -363,8 +363,6 @@ func (crane *Crane) AbandonTerminal(id uint32, err *terminal.Error) {
 }
 
 func (crane *Crane) sendImportantTerminalMsg(msg *terminal.Msg, timeout time.Duration) *terminal.Error {
-	msg.Unit.Pause()
-
 	select {
 	case crane.controllerMsgs <- msg:
 		return nil
@@ -376,8 +374,6 @@ func (crane *Crane) sendImportantTerminalMsg(msg *terminal.Msg, timeout time.Dur
 
 // Send is used by others to send a message through the crane.
 func (crane *Crane) Send(msg *terminal.Msg, timeout time.Duration) *terminal.Error {
-	msg.Unit.Pause()
-
 	select {
 	case crane.terminalMsgs <- msg:
 		return nil
@@ -456,7 +452,11 @@ func (crane *Crane) unloader(workerCtx context.Context) error {
 			crane.Stop(terminal.ErrMalformedData.With("failed to get container length: %w", err))
 			return nil
 		}
-		if containerLen > maxUnloadSize {
+		switch {
+		case containerLen <= 0:
+			crane.Stop(terminal.ErrMalformedData.With("received empty container with length %d", containerLen))
+			return nil
+		case containerLen > maxUnloadSize:
 			crane.Stop(terminal.ErrMalformedData.With("received oversized container with length %d", containerLen))
 			return nil
 		}

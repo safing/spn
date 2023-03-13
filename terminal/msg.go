@@ -95,7 +95,7 @@ func (msg *Msg) Debug() {
 	msg.debugWithCaller(2)
 }
 
-func (msg *Msg) debugWithCaller(skip int) {
+func (msg *Msg) debugWithCaller(skip int) { //nolint:unparam
 	if !debugUnitScheduling || msg == nil {
 		return
 	}

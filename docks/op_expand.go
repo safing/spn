@@ -86,31 +86,27 @@ func (t *ExpansionRelayTerminal) Ctx() context.Context {
 
 // Deliver delivers a message to the relay operation.
 func (op *ExpandOp) Deliver(msg *terminal.Msg) *terminal.Error {
-	// Pause unit before handing away.
-	msg.Unit.Pause()
-
 	return op.deliverProxy(msg)
 }
 
 // Deliver delivers a message to the relay terminal.
 func (t *ExpansionRelayTerminal) Deliver(msg *terminal.Msg) *terminal.Error {
-	// Pause unit before handing away.
-	msg.Unit.Pause()
-
 	return t.deliverProxy(msg)
 }
 
 // Flush writes all data in the queues.
 func (op *ExpandOp) Flush() {
 	if op.flowControl != nil {
-		op.flowControl.Flush()
+		// Flushing could mean sending a full buffer of 50000 packets.
+		op.flowControl.Flush(5 * time.Minute)
 	}
 }
 
 // Flush writes all data in the queues.
 func (t *ExpansionRelayTerminal) Flush() {
 	if t.flowControl != nil {
-		t.flowControl.Flush()
+		// Flushing could mean sending a full buffer of 50000 packets.
+		t.flowControl.Flush(5 * time.Minute)
 	}
 }
 
@@ -281,14 +277,13 @@ func (op *ExpandOp) forwardHandler(_ context.Context) error {
 			// Debugging:
 			// log.Debugf("spn/testing: forwarding at %s: %s", op.FmtID(), spew.Sdump(c.CompileData()))
 
-			// Count relayed data for metrics.
-			atomic.AddUint64(op.dataRelayed, uint64(msg.Data.Length()))
-
 			// Wait for processing slot.
 			msg.Unit.WaitForSlot()
 
+			// Count relayed data for metrics.
+			atomic.AddUint64(op.dataRelayed, uint64(msg.Data.Length()))
+
 			// Receive data from the origin and forward it to the relay.
-			msg.Unit.Pause()
 			op.relayTerminal.sendProxy(msg, 1*time.Minute)
 
 		case <-op.ctx.Done():
@@ -311,7 +306,6 @@ func (op *ExpandOp) backwardHandler(_ context.Context) error {
 			atomic.AddUint64(op.dataRelayed, uint64(msg.Data.Length()))
 
 			// Receive data from the relay and forward it to the origin.
-			msg.Unit.Pause()
 			op.sendProxy(msg, 1*time.Minute)
 
 		case <-op.ctx.Done():
