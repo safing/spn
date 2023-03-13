@@ -19,30 +19,29 @@ func TestCleanDomains(t *testing.T) { //nolint:paralleltest
 		return
 	}
 
+	// Setup context.
+	ctx := context.Background()
+
 	// Go through all domains and check if they are reachable.
 	goodDomains := make([]string, 0, len(testDomains))
 	for _, domain := range testDomains {
-		if domain == "addtoany.com" {
-			break
-		}
-
 		// Check if domain is reachable.
-		code, err := CheckHTTPSConnection(context.Background(), domain)
+		code, err := domainIsUsable(ctx, domain)
 		if err != nil {
-			t.Logf("FAIL: %s: %s", domain, err)
+			fmt.Printf("FAIL: %s: %s\n", domain, err)
 		} else {
-			t.Logf("OK: %s [%d]", domain, code)
+			fmt.Printf("OK: %s [%d]\n", domain, code)
 			goodDomains = append(goodDomains, domain)
 			continue
 		}
 
 		// If failed, try again with a www. prefix
 		wwwDomain := "www." + domain
-		code, err = CheckHTTPSConnection(context.Background(), wwwDomain)
+		code, err = domainIsUsable(ctx, wwwDomain)
 		if err != nil {
-			t.Logf("FAIL: %s: %s", wwwDomain, err)
+			fmt.Printf("FAIL: %s: %s\n", wwwDomain, err)
 		} else {
-			t.Logf("OK: %s [%d]", wwwDomain, code)
+			fmt.Printf("OK: %s [%d]\n", wwwDomain, code)
 			goodDomains = append(goodDomains, wwwDomain)
 		}
 
@@ -55,4 +54,14 @@ func TestCleanDomains(t *testing.T) { //nolint:paralleltest
 	}
 
 	fmt.Println("IMPORTANT: do not forget to go through list and check if everything looks good")
+}
+
+func domainIsUsable(ctx context.Context, domain string) (statusCode int, err error) {
+	// Try IPv6 first as it is way more likely to fail.
+	statusCode, err = CheckHTTPSConnection(ctx, "tcp6", domain)
+	if err != nil {
+		return
+	}
+
+	return CheckHTTPSConnection(ctx, "tcp4", domain)
 }

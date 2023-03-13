@@ -24,8 +24,8 @@ func prep() error {
 
 func start() error {
 	if conf.PublicHub() {
-		module.NewTask("https connectivity test", httpsConnectivityCheck).
-			Repeat(1 * time.Minute)
+		module.NewTask("connectivity test", connectivityCheckTask).
+			Repeat(5 * time.Minute)
 	}
 
 	return nil
