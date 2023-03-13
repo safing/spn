@@ -304,7 +304,7 @@ func establishRoute(route *navigator.Route) (dstPin *navigator.Pin, dstTerminal 
 					return nil, nil, tErr.Wrap("failed to authenticate to %s: %w", check.pin.Hub, tErr)
 				}
 
-			case <-time.After(3 * time.Second):
+			case <-time.After(10 * time.Second):
 				// Mark as failing for just a minute, until server load may be less.
 				check.pin.MarkAsFailingFor(1 * time.Minute)
 				log.Warningf("spn/crew: auth to %s timed out", check.pin.Hub)
@@ -335,7 +335,7 @@ func establishRoute(route *navigator.Route) (dstPin *navigator.Pin, dstTerminal 
 					return nil, nil, tErr.Wrap("failed to check reachability of %s: %w", check.pin.Hub, tErr)
 				}
 
-			case <-time.After(3 * time.Second):
+			case <-time.After(10 * time.Second):
 				// Mark as failing for just a minute, until server load may be less.
 				check.pin.MarkAsFailingFor(1 * time.Minute)
 				log.Warningf("spn/crew: reachability check to %s timed out", check.pin.Hub)
