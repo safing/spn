@@ -123,6 +123,10 @@ func NewScheduler(config *SchedulerConfig) *Scheduler {
 	s.clearanceUpTo.Store(s.config.MinSlotPace)
 	s.slotPace.Store(s.config.MinSlotPace)
 
+	// Initialize stats fields.
+	s.avgPaceSum.Store(s.config.MinSlotPace)
+	s.avgPaceCnt.Store(1)
+
 	return s
 }
 

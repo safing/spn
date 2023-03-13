@@ -18,8 +18,8 @@ func (s *Scheduler) ResetAvgSlotPace() {
 	// latest slot data, while the other has been not.
 	// This is not so much of a problem, as slots are really short and the impact
 	// is very low.
-	s.avgPaceCnt.Store(0)
-	s.avgPaceSum.Store(0)
+	s.avgPaceCnt.Store(1)
+	s.avgPaceSum.Store(s.config.MinSlotPace)
 }
 
 // GetMaxLeveledSlotPace returns the current maximum leveled slot pace.
