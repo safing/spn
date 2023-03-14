@@ -183,15 +183,8 @@ func (m *Map) updateStateSuperseded(pin *Pin) {
 
 			// Check for a matching IPv4 address.
 			if mapPin.Hub.Info.IPv4 != nil && pin.Hub.Info.IPv4.Equal(mapPin.Hub.Info.IPv4) {
-				// If there is a match assign the older Hub the Superseded status.
-				if pin.Hub.FirstSeen.After(mapPin.Hub.FirstSeen) {
-					mapPin.addStates(StateSuperseded)
-					mapPin.pushChanges.Set()
-					// This Pin is newer and superseeds another, keep looking for more.
-				} else {
-					pin.addStates(StateSuperseded)
-					// This Pin is older than an existing one, don't keep looking, as this
-					// results in incorrect data.
+				continueChecking := checkAndHandleSuperseding(pin, mapPin)
+				if !continueChecking {
 					break
 				}
 			}
@@ -208,19 +201,75 @@ func (m *Map) updateStateSuperseded(pin *Pin) {
 
 			// Check for a matching IPv6 address.
 			if mapPin.Hub.Info.IPv6 != nil && pin.Hub.Info.IPv6.Equal(mapPin.Hub.Info.IPv6) {
-				// If there is a match assign the older Hub the Superseded status.
-				if pin.Hub.FirstSeen.After(mapPin.Hub.FirstSeen) {
-					mapPin.addStates(StateSuperseded)
-					mapPin.pushChanges.Set()
-					// This Pin is newer and superseeds another, keep looking for more.
-				} else {
-					pin.addStates(StateSuperseded)
-					// This Pin is older than an existing one, don't keep looking, as this
-					// results in incorrect data.
+				continueChecking := checkAndHandleSuperseding(pin, mapPin)
+				if !continueChecking {
 					break
 				}
 			}
 		}
+	}
+}
+
+func checkAndHandleSuperseding(newPin, existingPin *Pin) (continueChecking bool) {
+	const (
+		supersedeNone = iota
+		supersedeExisting
+		supersedeNew
+	)
+	var action int
+
+	switch {
+	case newPin.Hub.ID == existingPin.Hub.ID:
+		// Cannot supersede same Hub.
+		// Continue checking.
+		action = supersedeNone
+
+	// Step 1: Check if only one is active.
+
+	case newPin.State.Has(StateActive) && existingPin.State.HasNoneOf(StateActive):
+		// If only the new Hub is active, supersede the existing one.
+		action = supersedeExisting
+	case newPin.State.HasNoneOf(StateActive) && existingPin.State.Has(StateActive):
+		// If only the existing Hub is active, supersede the new one.
+		action = supersedeNew
+
+	// Step 2: Check if only one is reachable.
+
+	case newPin.State.Has(StateReachable) && existingPin.State.HasNoneOf(StateReachable):
+		// If only the new Hub is reachable, supersede the existing one.
+		action = supersedeExisting
+	case newPin.State.HasNoneOf(StateReachable) && existingPin.State.Has(StateReachable):
+		// If only the existing Hub is reachable, supersede the new one.
+		action = supersedeNew
+
+	// Step 3: Check which one has been seen first.
+
+	case newPin.Hub.FirstSeen.After(existingPin.Hub.FirstSeen):
+		// If the new Hub has been first seen later, supersede the existing one.
+		action = supersedeExisting
+	default:
+		// If the existing Hub has been first seen later, supersede the new one.
+		action = supersedeNew
+	}
+
+	switch action {
+	case supersedeExisting:
+		existingPin.addStates(StateSuperseded)
+		existingPin.pushChanges.Set()
+		// Continue checking, as there might be other Hubs to be superseded.
+		return true
+
+	case supersedeNew:
+		newPin.addStates(StateSuperseded)
+		newPin.pushChanges.Set()
+		// If the new pin is superseded, do _not_ continue, as this will lead to an incorrect state.
+		return false
+
+	case supersedeNone:
+		fallthrough
+	default:
+		// Do nothing, continue checking.
+		return true
 	}
 }
 

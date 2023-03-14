@@ -249,7 +249,6 @@ func (m *Map) updateHub(h *hub.Hub, lockMap, lockHub bool) {
 	m.updateIntelStatuses(pin)
 
 	// Update Statuses derived from Hub.
-	m.updateStateSuperseded(pin)
 	pin.updateStateHasRequiredInfo()
 	pin.updateStateActive(time.Now().Unix())
 
@@ -301,6 +300,11 @@ func (m *Map) updateHub(h *hub.Hub, lockMap, lockHub bool) {
 			log.Warningf("spn/navigator: failed to recalculate reachable Hubs: %s", err)
 		}
 	}
+
+	// 4. Update states that depend on other information.
+
+	// Check if hub is superseded or if it supersedes another hub.
+	m.updateStateSuperseded(pin)
 
 	// Push updates.
 	m.PushPinChanges()
