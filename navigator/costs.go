@@ -61,12 +61,12 @@ func CalculateHubCost(load int) (cost float32) {
 
 // CalculateDestinationCost calculates the cost of a destination hub to a
 // destination server based on the given proximity.
-// Ranges from 0 to 10000.
+// Ranges from 0 to 2500.
 func CalculateDestinationCost(proximity float32) (cost float32) {
 	// Invert from proximity (0-100) to get a distance value.
 	distance := 100 - proximity
 
 	// Take the distance to the power of three and then divide by hundred in order to
 	// make high distances exponentially more expensive.
-	return (distance * distance * distance) / 100
+	return (distance * distance * distance) / 400
 }
