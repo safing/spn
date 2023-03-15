@@ -159,7 +159,7 @@ func (m *Map) findRoutes(dsts *nearbyPins, opts *Options, maxRoutes int) (*Route
 				if nbPin != nil {
 					// Pin is listed as selected Destination Hub!
 					// Complete route to add destination ("last mile") cost.
-					route.completeRoute(nbPin.DstCost())
+					route.completeRoute(nbPin.cost)
 					routes.add(route)
 
 					// We have found a route and have come to an end here.
