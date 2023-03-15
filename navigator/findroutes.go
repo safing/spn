@@ -8,8 +8,19 @@ import (
 	"github.com/safing/portmaster/intel/geoip"
 )
 
+const (
+	// defaultMaxRouteMatches defines a default value of how many matches a
+	// route find operation in a map should return.
+	defaultMaxRouteMatches = 10
+
+	// defaultRandomizeRoutesTopPercent defines the top percent of a routes
+	// set that should be randomized for balancing purposes.
+	// Range: 0-1.
+	defaultRandomizeRoutesTopPercent = 0.1
+)
+
 // FindRoutes finds possible routes to the given IP, with the given options.
-func (m *Map) FindRoutes(ip net.IP, opts *Options, maxRoutes int) (*Routes, error) {
+func (m *Map) FindRoutes(ip net.IP, opts *Options) (*Routes, error) {
 	m.Lock()
 	defer m.Unlock()
 
@@ -55,16 +66,16 @@ func (m *Map) FindRoutes(ip net.IP, opts *Options, maxRoutes int) (*Routes, erro
 	}
 
 	// Find nearest Pins.
-	nearby, err := m.findNearestPins(locationV4, locationV6, opts.Matcher(DestinationHub, m.intel), maxRoutes)
+	nearby, err := m.findNearestPins(locationV4, locationV6, opts, DestinationHub)
 	if err != nil {
 		return nil, err
 	}
 
-	return m.findRoutes(nearby, opts, maxRoutes)
+	return m.findRoutes(nearby, opts)
 }
 
 // FindRouteToHub finds possible routes to the given Hub, with the given options.
-func (m *Map) FindRouteToHub(hubID string, opts *Options, maxRoutes int) (*Routes, error) {
+func (m *Map) FindRouteToHub(hubID string, opts *Options) (*Routes, error) {
 	m.Lock()
 	defer m.Unlock()
 
@@ -84,10 +95,10 @@ func (m *Map) FindRouteToHub(hubID string, opts *Options, maxRoutes int) (*Route
 	}
 
 	// Find a route to the given Hub.
-	return m.findRoutes(nearby, opts, maxRoutes)
+	return m.findRoutes(nearby, opts)
 }
 
-func (m *Map) findRoutes(dsts *nearbyPins, opts *Options, maxRoutes int) (*Routes, error) {
+func (m *Map) findRoutes(dsts *nearbyPins, opts *Options) (*Routes, error) {
 	if m.home == nil {
 		return nil, ErrHomeHubUnset
 	}
@@ -100,11 +111,15 @@ func (m *Map) findRoutes(dsts *nearbyPins, opts *Options, maxRoutes int) (*Route
 
 	// Create routes collector.
 	routes := &Routes{
-		maxRoutes: maxRoutes,
+		maxRoutes:           defaultMaxRouteMatches,
+		randomizeTopPercent: defaultRandomizeRoutesTopPercent,
 	}
 
-	// TODO: Start from the destination and use HopDistance to prioritize
+	// TODO:
+	// Start from the destination and use HopDistance to prioritize
 	// exploring routes that are in the right direction.
+	// How would we handle selecting the destination node based on route to client?
+	// Should we just try all destinations?
 
 	// Create initial route.
 	route := &Route{
@@ -189,6 +204,17 @@ func (m *Map) findRoutes(dsts *nearbyPins, opts *Options, maxRoutes int) (*Route
 		return nil, errors.New("failed to find any routes")
 	}
 
+	// Randomize top routes for load balancing.
+	routes.randomizeTop()
+
+	// Copy remaining data to routes.
 	routes.makeExportReady(opts.RoutingProfile)
+
+	// Debugging:
+	// log.Debug("spn/navigator: routes:")
+	// for _, route := range routes.All {
+	// 	log.Debugf("spn/navigator: %s", route)
+	// }
+
 	return routes, nil
 }

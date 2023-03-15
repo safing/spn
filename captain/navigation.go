@@ -77,7 +77,7 @@ findCandidates:
 	candidates, err := navigator.Main.FindNearestHubs(
 		locations.BestV4().LocationOrNil(),
 		locations.BestV6().LocationOrNil(),
-		opts, navigator.HomeHub, navigator.DefaultMaxFindMatches,
+		opts, navigator.HomeHub,
 	)
 	if err != nil {
 		if errors.Is(err, navigator.ErrEmptyMap) {

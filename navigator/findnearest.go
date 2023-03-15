@@ -3,6 +3,7 @@ package navigator
 import (
 	"errors"
 	"fmt"
+	mrand "math/rand"
 	"sort"
 	"strings"
 	"time"
@@ -11,17 +12,25 @@ import (
 	"github.com/safing/spn/hub"
 )
 
-// DefaultMaxFindMatches defines a default value of how many matches a find
-// operation in a map should return.
-const DefaultMaxFindMatches = 100
+const (
+	// defaultMaxNearbyMatches defines a default value of how many matches a
+	// nearby pin find operation in a map should return.
+	defaultMaxNearbyMatches = 100
+
+	// defaultRandomizeNearbyPinTopPercent defines the top percent of a nearby
+	// pins set that should be randomized for balancing purposes.
+	// Range: 0-1.
+	defaultRandomizeNearbyPinTopPercent = 0.1
+)
 
 // nearbyPins is a list of nearby Pins to a certain location.
 type nearbyPins struct {
-	pins        []*nearbyPin
-	minPins     int
-	maxPins     int
-	maxCost     float32
-	cutOffLimit float32
+	pins                []*nearbyPin
+	minPins             int
+	maxPins             int
+	maxCost             float32
+	cutOffLimit         float32
+	randomizeTopPercent float32
 }
 
 // nearbyPin represents a Pin and the proximity to a certain location.
@@ -97,8 +106,37 @@ func (nb *nearbyPins) clean() {
 	}
 }
 
+// randomizeTop randomized to the top nearest pins for balancing the network.
+func (nb *nearbyPins) randomizeTop() {
+	switch {
+	case nb.randomizeTopPercent == 0:
+		// Check if randomization is enabled.
+		return
+	case len(nb.pins) < 2:
+		// Check if we have enough pins to work with.
+		return
+	}
+
+	// Find randomization set.
+	randomizeUpTo := len(nb.pins)
+	threshold := nb.pins[0].cost * (1 + nb.randomizeTopPercent)
+	for i, nb := range nb.pins {
+		// Find first value above the threshold to stop.
+		if nb.cost > threshold {
+			randomizeUpTo = i
+			break
+		}
+	}
+
+	// Shuffle top set.
+	if randomizeUpTo >= 2 {
+		r := mrand.New(mrand.NewSource(time.Now().UnixNano()))
+		r.Shuffle(randomizeUpTo, nb.Swap)
+	}
+}
+
 // FindNearestHubs searches for the nearest Hubs to the given IP address. The returned Hubs must not be modified in any way.
-func (m *Map) FindNearestHubs(locationV4, locationV6 *geoip.Location, opts *Options, matchFor HubType, maxMatches int) ([]*hub.Hub, error) {
+func (m *Map) FindNearestHubs(locationV4, locationV6 *geoip.Location, opts *Options, matchFor HubType) ([]*hub.Hub, error) {
 	m.RLock()
 	defer m.RUnlock()
 
@@ -113,7 +151,7 @@ func (m *Map) FindNearestHubs(locationV4, locationV6 *geoip.Location, opts *Opti
 	}
 
 	// Find nearest Pins.
-	nearby, err := m.findNearestPins(locationV4, locationV6, opts, matchFor, maxMatches)
+	nearby, err := m.findNearestPins(locationV4, locationV6, opts, matchFor)
 	if err != nil {
 		return nil, err
 	}
@@ -126,22 +164,24 @@ func (m *Map) FindNearestHubs(locationV4, locationV6 *geoip.Location, opts *Opti
 	return hubs, nil
 }
 
-func (m *Map) findNearestPins(locationV4, locationV6 *geoip.Location, opts *Options, matchFor HubType, maxMatches int) (*nearbyPins, error) {
+func (m *Map) findNearestPins(locationV4, locationV6 *geoip.Location, opts *Options, matchFor HubType) (*nearbyPins, error) {
 	// Fail if no location is provided.
 	if locationV4 == nil && locationV6 == nil {
 		return nil, errors.New("no location provided")
 	}
 
 	// Raise maxMatches to nearestPinsMinimum.
+	maxMatches := defaultMaxNearbyMatches
 	if maxMatches < nearestPinsMinimum {
 		maxMatches = nearestPinsMinimum
 	}
 
 	// Create nearby Pins list.
 	nearby := &nearbyPins{
-		minPins:     nearestPinsMinimum,
-		maxPins:     maxMatches,
-		cutOffLimit: nearestPinsMaxCostDifference,
+		minPins:             nearestPinsMinimum,
+		maxPins:             maxMatches,
+		cutOffLimit:         nearestPinsMaxCostDifference,
+		randomizeTopPercent: defaultRandomizeNearbyPinTopPercent,
 	}
 
 	// Create pin matcher.
@@ -259,6 +299,9 @@ func (m *Map) findNearestPins(locationV4, locationV6 *geoip.Location, opts *Opti
 
 	// Clean one last time and return the list.
 	nearby.clean()
+
+	// Randomize top nearest pins for load balancing.
+	nearby.randomizeTop()
 
 	// Debugging:
 	// if matchFor == HomeHub {
