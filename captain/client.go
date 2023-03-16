@@ -333,12 +333,28 @@ func clientConnectToHomeHub(ctx context.Context) clientComponentResult {
 			notifications.NotifyError(
 				"spn:all-home-hubs-excluded",
 				"All Home Nodes Excluded",
-				"Your current Home Node Rules exclude all available SPN Nodes. Please change your rules to allow for at least one available Home Node.",
+				"Your current Home Node Rules exclude all available and eligible SPN Nodes. Please change your rules to allow for at least one available and eligible Home Node.",
 				notifications.Action{
 					Text: "Configure",
 					Type: notifications.ActionTypeOpenSetting,
 					Payload: &notifications.ActionTypeOpenSettingPayload{
 						Key: CfgOptionHomeHubPolicyKey,
+					},
+				},
+			).AttachToModule(module)
+
+		case errors.Is(err, ErrReInitSPNSuggested):
+			notifications.NotifyError(
+				"spn:cannot-bootstrap",
+				"SPN Cannot Bootstrap",
+				"The local state of the SPN network is likely outdated. Portmaster was not able to identify a server to connect to. Please re-initialize the SPN using the tools menu or the button on the notification.",
+				notifications.Action{
+					ID:   "re-init",
+					Text: "Re-Init SPN",
+					Type: notifications.ActionTypeWebhook,
+					Payload: &notifications.ActionTypeWebhookPayload{
+						URL:          apiPathForSPNReInit,
+						ResultAction: "display",
 					},
 				},
 			).AttachToModule(module)

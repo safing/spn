@@ -20,8 +20,13 @@ import (
 
 const stopCraneAfterBeingUnsuggestedFor = 6 * time.Hour
 
-// ErrAllHomeHubsExcluded is returned when all available home hubs were excluded.
-var ErrAllHomeHubsExcluded = errors.New("all home hubs are excluded")
+var (
+	// ErrAllHomeHubsExcluded is returned when all available home hubs were excluded.
+	ErrAllHomeHubsExcluded = errors.New("all home hubs are excluded")
+
+	// ErrReInitSPNSuggested is returned when no home hub can be found, even without rules.
+	ErrReInitSPNSuggested = errors.New("SPN re-init suggested")
+)
 
 func establishHomeHub(ctx context.Context) error {
 	// Get own IP.
@@ -80,21 +85,24 @@ findCandidates:
 		opts, navigator.HomeHub,
 	)
 	if err != nil {
-		if errors.Is(err, navigator.ErrEmptyMap) {
+		switch {
+		case errors.Is(err, navigator.ErrEmptyMap):
 			// bootstrap to the network!
 			err := bootstrapWithUpdates()
 			if err != nil {
 				return err
 			}
 			goto findCandidates
+
+		case errors.Is(err, navigator.ErrAllPinsDisregarded):
+			if len(homePolicy) > 0 {
+				return ErrAllHomeHubsExcluded
+			}
+			return ErrReInitSPNSuggested
+
+		default:
+			return fmt.Errorf("failed to find nearby hubs: %w", err)
 		}
-
-		return fmt.Errorf("failed to find nearby hubs: %w", err)
-	}
-
-	// Check if any candidates were returned.
-	if len(candidates) == 0 && len(homePolicy) > 0 {
-		return ErrAllHomeHubsExcluded
 	}
 
 	// Try connecting to a hub.

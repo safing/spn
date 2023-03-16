@@ -34,24 +34,6 @@ func (m *Map) FindRoutes(ip net.IP, opts *Options) (*Routes, error) {
 		return nil, ErrHomeHubUnset
 	}
 
-	// Set default options if unset.
-	if opts == nil {
-		opts = m.defaultOptions()
-	}
-
-	// Handle special home routing profile.
-	if opts.RoutingProfile == RoutingProfileHomeID {
-		return &Routes{
-			All: []*Route{{
-				Path: []*Hop{{
-					pin:   m.home,
-					HubID: m.home.Hub.ID,
-				}},
-				Algorithm: RoutingProfileHomeID,
-			}},
-		}, nil
-	}
-
 	// Get the location of the given IP address.
 	var locationV4, locationV6 *geoip.Location
 	var err error
@@ -63,6 +45,38 @@ func (m *Map) FindRoutes(ip net.IP, opts *Options) (*Routes, error) {
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to get IP location: %w", err)
+	}
+
+	// Set default options if unset.
+	if opts == nil {
+		opts = m.defaultOptions()
+	}
+
+	// Handle special home routing profile.
+	if opts.RoutingProfile == RoutingProfileHomeID {
+		switch {
+		case locationV4 != nil && m.home.LocationV4 == nil:
+			// Destination is IPv4, but Hub has no IPv4!
+			// Upgrade routing profile.
+			opts.RoutingProfile = RoutingProfileSingleHopID
+
+		case locationV6 != nil && m.home.LocationV6 == nil:
+			// Destination is IPv6, but Hub has no IPv6!
+			// Upgrade routing profile.
+			opts.RoutingProfile = RoutingProfileSingleHopID
+
+		default:
+			// Return route with only home hub for home hub routing.
+			return &Routes{
+				All: []*Route{{
+					Path: []*Hop{{
+						pin:   m.home,
+						HubID: m.home.Hub.ID,
+					}},
+					Algorithm: RoutingProfileHomeID,
+				}},
+			}, nil
+		}
 	}
 
 	// Find nearest Pins.

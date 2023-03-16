@@ -209,6 +209,20 @@ func (m *Map) findNearestPins(locationV4, locationV6 *geoip.Location, opts *Opti
 				// No shared IP stack.
 				continue
 			}
+
+			// If the global routing profile is set to home ("VPN"), check if all local
+			// IP versions are available on the Hub.
+			if cfgOptionRoutingAlgorithm() == RoutingProfileHomeID {
+				switch {
+				case locationV4 != nil && pin.LocationV4 == nil:
+					// Device has IPv4, but Hub does not!
+					continue
+				case locationV6 != nil && pin.LocationV6 == nil:
+					// Device has IPv6, but Hub does not!
+					// Both have IPv6!
+					continue
+				}
+			}
 		}
 
 		// 1. Calculate cost based on distance
@@ -294,7 +308,7 @@ func (m *Map) findNearestPins(locationV4, locationV6 *geoip.Location, opts *Opti
 
 	// Check if we found any nearby pins
 	if nearby.Len() == 0 {
-		return nil, errors.New("no pins found near destination")
+		return nil, ErrAllPinsDisregarded
 	}
 
 	// Clean one last time and return the list.
