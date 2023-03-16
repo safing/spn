@@ -238,15 +238,12 @@ const (
 
 func (op *ConnectOp) connReader(_ context.Context) error {
 	// Metrics setup and submitting.
-	if !op.entry {
-		atomic.AddInt64(activeConnectOps, 1)
-		defer func() {
-			atomic.AddInt64(activeConnectOps, -1)
-			connectOpDurationHistogram.UpdateDuration(op.started)
-			connectOpIncomingDataHistogram.Update(float64(atomic.LoadUint64(op.incomingTraffic)))
-			connectOpOutgoingDataHistogram.Update(float64(atomic.LoadUint64(op.outgoingTraffic)))
-		}()
-	}
+	atomic.AddInt64(activeConnectOps, 1)
+	defer func() {
+		atomic.AddInt64(activeConnectOps, -1)
+		connectOpDurationHistogram.UpdateDuration(op.started)
+		connectOpIncomingDataHistogram.Update(float64(atomic.LoadUint64(op.incomingTraffic)))
+	}()
 
 	rateLimiter := terminal.NewRateLimiter(rateLimitMaxMbit)
 
@@ -306,6 +303,11 @@ func (op *ConnectOp) Deliver(msg *terminal.Msg) *terminal.Error {
 }
 
 func (op *ConnectOp) connWriter(_ context.Context) error {
+	// Metrics submitting.
+	defer func() {
+		connectOpOutgoingDataHistogram.Update(float64(atomic.LoadUint64(op.outgoingTraffic)))
+	}()
+
 	defer func() {
 		// Close connection.
 		_ = op.conn.Close()
