@@ -42,6 +42,7 @@ type ConnectOp struct {
 	// Metrics
 	incomingTraffic *uint64
 	outgoingTraffic *uint64
+	started         time.Time
 
 	// Connection
 	t       terminal.Terminal
@@ -134,6 +135,7 @@ func NewConnectOp(tunnel *Tunnel) (*ConnectOp, *terminal.Error) {
 	// Setup metrics.
 	op.incomingTraffic = new(uint64)
 	op.outgoingTraffic = new(uint64)
+	op.started = time.Now()
 
 	module.StartWorker("connect op conn reader", op.connReader)
 	module.StartWorker("connect op conn writer", op.connWriter)
@@ -238,10 +240,9 @@ func (op *ConnectOp) connReader(_ context.Context) error {
 	// Metrics setup and submitting.
 	if !op.entry {
 		atomic.AddInt64(activeConnectOps, 1)
-		started := time.Now()
 		defer func() {
 			atomic.AddInt64(activeConnectOps, -1)
-			connectOpDurationHistogram.UpdateDuration(started)
+			connectOpDurationHistogram.UpdateDuration(op.started)
 			connectOpIncomingDataHistogram.Update(float64(atomic.LoadUint64(op.incomingTraffic)))
 			connectOpOutgoingDataHistogram.Update(float64(atomic.LoadUint64(op.outgoingTraffic)))
 		}()
@@ -353,11 +354,16 @@ writing:
 			rateLimiter.Limit(uint64(len(data)))
 		}
 
-		// If on client and the first data was received, sticky the destination to the Hub.
-		if op.entry && // On clients only.
-			out == uint64(len(data)) && // Only on first packet received.
-			!op.tunnel.stickied {
-			op.tunnel.stickDestinationToHub()
+		// Special handling after first data was received on client.
+		if op.entry &&
+			out == uint64(len(data)) {
+			// Report time taken to receive first byte.
+			connectOpTTFBDurationHistogram.UpdateDuration(op.started)
+
+			// If not stickied yet, stick destination to Hub.
+			if !op.tunnel.stickied {
+				op.tunnel.stickDestinationToHub()
+			}
 		}
 
 		// Send all given data.

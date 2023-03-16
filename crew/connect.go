@@ -57,6 +57,9 @@ func (t *Tunnel) connectWorker(ctx context.Context) (err error) {
 	ctx, tracer := log.AddTracer(ctx)
 	defer tracer.Submit()
 
+	// Save start time.
+	started := time.Now()
+
 	// Check the status of the Home Hub.
 	home, homeTerminal := navigator.Main.GetHome()
 	if home == nil || homeTerminal == nil || homeTerminal.IsBeingAbandoned() {
@@ -101,6 +104,9 @@ func (t *Tunnel) connectWorker(ctx context.Context) (err error) {
 		tracer.Warningf("spn/crew: failed to initialize tunnel for %s: %s", t.connInfo, err)
 		return tErr
 	}
+
+	// Report time taken to find, build and check route and send connect request.
+	connectOpTTCRDurationHistogram.UpdateDuration(started)
 
 	t.connInfo.Lock()
 	defer t.connInfo.Unlock()
