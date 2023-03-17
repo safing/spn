@@ -8,8 +8,19 @@ import (
 	"github.com/safing/portmaster/intel/geoip"
 )
 
+const (
+	// defaultMaxRouteMatches defines a default value of how many matches a
+	// route find operation in a map should return.
+	defaultMaxRouteMatches = 10
+
+	// defaultRandomizeRoutesTopPercent defines the top percent of a routes
+	// set that should be randomized for balancing purposes.
+	// Range: 0-1.
+	defaultRandomizeRoutesTopPercent = 0.1
+)
+
 // FindRoutes finds possible routes to the given IP, with the given options.
-func (m *Map) FindRoutes(ip net.IP, opts *Options, maxRoutes int) (*Routes, error) {
+func (m *Map) FindRoutes(ip net.IP, opts *Options) (*Routes, error) {
 	m.Lock()
 	defer m.Unlock()
 
@@ -21,24 +32,6 @@ func (m *Map) FindRoutes(ip net.IP, opts *Options, maxRoutes int) (*Routes, erro
 	// Check if home hub is set.
 	if m.home == nil {
 		return nil, ErrHomeHubUnset
-	}
-
-	// Set default options if unset.
-	if opts == nil {
-		opts = m.defaultOptions()
-	}
-
-	// Handle special home routing profile.
-	if opts.RoutingProfile == RoutingProfileHomeID {
-		return &Routes{
-			All: []*Route{{
-				Path: []*Hop{{
-					pin:   m.home,
-					HubID: m.home.Hub.ID,
-				}},
-				Algorithm: RoutingProfileHomeID,
-			}},
-		}, nil
 	}
 
 	// Get the location of the given IP address.
@@ -54,17 +47,49 @@ func (m *Map) FindRoutes(ip net.IP, opts *Options, maxRoutes int) (*Routes, erro
 		return nil, fmt.Errorf("failed to get IP location: %w", err)
 	}
 
+	// Set default options if unset.
+	if opts == nil {
+		opts = m.defaultOptions()
+	}
+
+	// Handle special home routing profile.
+	if opts.RoutingProfile == RoutingProfileHomeID {
+		switch {
+		case locationV4 != nil && m.home.LocationV4 == nil:
+			// Destination is IPv4, but Hub has no IPv4!
+			// Upgrade routing profile.
+			opts.RoutingProfile = RoutingProfileSingleHopID
+
+		case locationV6 != nil && m.home.LocationV6 == nil:
+			// Destination is IPv6, but Hub has no IPv6!
+			// Upgrade routing profile.
+			opts.RoutingProfile = RoutingProfileSingleHopID
+
+		default:
+			// Return route with only home hub for home hub routing.
+			return &Routes{
+				All: []*Route{{
+					Path: []*Hop{{
+						pin:   m.home,
+						HubID: m.home.Hub.ID,
+					}},
+					Algorithm: RoutingProfileHomeID,
+				}},
+			}, nil
+		}
+	}
+
 	// Find nearest Pins.
-	nearby, err := m.findNearestPins(locationV4, locationV6, opts.Matcher(DestinationHub, m.intel), maxRoutes)
+	nearby, err := m.findNearestPins(locationV4, locationV6, opts, DestinationHub)
 	if err != nil {
 		return nil, err
 	}
 
-	return m.findRoutes(nearby, opts, maxRoutes)
+	return m.findRoutes(nearby, opts)
 }
 
 // FindRouteToHub finds possible routes to the given Hub, with the given options.
-func (m *Map) FindRouteToHub(hubID string, opts *Options, maxRoutes int) (*Routes, error) {
+func (m *Map) FindRouteToHub(hubID string, opts *Options) (*Routes, error) {
 	m.Lock()
 	defer m.Unlock()
 
@@ -84,10 +109,10 @@ func (m *Map) FindRouteToHub(hubID string, opts *Options, maxRoutes int) (*Route
 	}
 
 	// Find a route to the given Hub.
-	return m.findRoutes(nearby, opts, maxRoutes)
+	return m.findRoutes(nearby, opts)
 }
 
-func (m *Map) findRoutes(dsts *nearbyPins, opts *Options, maxRoutes int) (*Routes, error) {
+func (m *Map) findRoutes(dsts *nearbyPins, opts *Options) (*Routes, error) {
 	if m.home == nil {
 		return nil, ErrHomeHubUnset
 	}
@@ -100,11 +125,15 @@ func (m *Map) findRoutes(dsts *nearbyPins, opts *Options, maxRoutes int) (*Route
 
 	// Create routes collector.
 	routes := &Routes{
-		maxRoutes: maxRoutes,
+		maxRoutes:           defaultMaxRouteMatches,
+		randomizeTopPercent: defaultRandomizeRoutesTopPercent,
 	}
 
-	// TODO: Start from the destination and use HopDistance to prioritize
+	// TODO:
+	// Start from the destination and use HopDistance to prioritize
 	// exploring routes that are in the right direction.
+	// How would we handle selecting the destination node based on route to client?
+	// Should we just try all destinations?
 
 	// Create initial route.
 	route := &Route{
@@ -159,7 +188,7 @@ func (m *Map) findRoutes(dsts *nearbyPins, opts *Options, maxRoutes int) (*Route
 				if nbPin != nil {
 					// Pin is listed as selected Destination Hub!
 					// Complete route to add destination ("last mile") cost.
-					route.completeRoute(nbPin.DstCost())
+					route.completeRoute(nbPin.cost)
 					routes.add(route)
 
 					// We have found a route and have come to an end here.
@@ -189,6 +218,17 @@ func (m *Map) findRoutes(dsts *nearbyPins, opts *Options, maxRoutes int) (*Route
 		return nil, errors.New("failed to find any routes")
 	}
 
+	// Randomize top routes for load balancing.
+	routes.randomizeTop()
+
+	// Copy remaining data to routes.
 	routes.makeExportReady(opts.RoutingProfile)
+
+	// Debugging:
+	// log.Debug("spn/navigator: routes:")
+	// for _, route := range routes.All {
+	// 	log.Debugf("spn/navigator: %s", route)
+	// }
+
 	return routes, nil
 }

@@ -17,7 +17,7 @@ func TestFindRoutes(t *testing.T) {
 		// Create a random destination address
 		dstIP, _ := createGoodIP(i%2 == 0)
 
-		routes, err := m.FindRoutes(dstIP, m.DefaultOptions(), 10)
+		routes, err := m.FindRoutes(dstIP, m.DefaultOptions())
 		switch {
 		case err != nil:
 			t.Error(err)
@@ -44,7 +44,7 @@ func BenchmarkFindRoutes(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		routes, err := m.FindRoutes(preGenIPs[i%len(preGenIPs)], m.DefaultOptions(), 10)
+		routes, err := m.FindRoutes(preGenIPs[i%len(preGenIPs)], m.DefaultOptions())
 		if err != nil {
 			b.Error(err)
 		} else {

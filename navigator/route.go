@@ -2,15 +2,18 @@ package navigator
 
 import (
 	"fmt"
+	mrand "math/rand"
 	"sort"
 	"strings"
+	"time"
 )
 
 // Routes holds a collection of Routes.
 type Routes struct {
-	All       []*Route
-	maxCost   float32 // automatic
-	maxRoutes int     // manual setting
+	All                 []*Route
+	randomizeTopPercent float32
+	maxCost             float32 // automatic
+	maxRoutes           int     // manual setting
 }
 
 // Len is the number of elements in the collection.
@@ -57,6 +60,35 @@ func (r *Routes) clean() {
 	// Set new maximum total cost.
 	if len(r.All) >= r.maxRoutes {
 		r.maxCost = r.All[len(r.All)-1].TotalCost
+	}
+}
+
+// randomizeTop randomized to the top nearest pins for balancing the network.
+func (r *Routes) randomizeTop() {
+	switch {
+	case r.randomizeTopPercent == 0:
+		// Check if randomization is enabled.
+		return
+	case len(r.All) < 2:
+		// Check if we have enough pins to work with.
+		return
+	}
+
+	// Find randomization set.
+	randomizeUpTo := len(r.All)
+	threshold := r.All[0].TotalCost * (1 + r.randomizeTopPercent)
+	for i, r := range r.All {
+		// Find first value above the threshold to stop.
+		if r.TotalCost > threshold {
+			randomizeUpTo = i
+			break
+		}
+	}
+
+	// Shuffle top set.
+	if randomizeUpTo >= 2 {
+		mr := mrand.New(mrand.NewSource(time.Now().UnixNano()))
+		mr.Shuffle(randomizeUpTo, r.Swap)
 	}
 }
 
@@ -119,8 +151,8 @@ func (r *Route) recalculateTotalCost() {
 	r.TotalCost = r.DstCost
 	for _, hop := range r.Path {
 		if hop.pin.HasActiveTerminal() {
-			// If we have an active connection, only take 90% of the cost.
-			r.TotalCost += hop.Cost * 0.9
+			// If we have an active connection, only take 80% of the cost.
+			r.TotalCost += hop.Cost * 0.8
 		} else {
 			r.TotalCost += hop.Cost
 		}
@@ -139,6 +171,7 @@ func (r *Route) CopyUpTo(n int) *Route {
 
 	newRoute := &Route{
 		Path:      make([]*Hop, n),
+		DstCost:   r.DstCost,
 		TotalCost: r.TotalCost,
 	}
 	copy(newRoute.Path, r.Path)
@@ -174,10 +207,15 @@ func (hop *Hop) Pin() *Pin {
 }
 
 func (r *Route) String() string {
-	s := make([]string, 0, len(r.Path)+1)
-	for _, hop := range r.Path {
-		s = append(s, fmt.Sprintf("=> %.2f$ %s", hop.Cost, hop.pin))
+	s := make([]string, 0, len(r.Path)+2)
+	s = append(s, fmt.Sprintf("route with %.2fc:", r.TotalCost))
+	for i, hop := range r.Path {
+		if i == 0 {
+			s = append(s, hop.pin.String())
+		} else {
+			s = append(s, fmt.Sprintf("--> %.2fc %s", hop.Cost, hop.pin))
+		}
 	}
-	s = append(s, fmt.Sprintf("=> %.2f$", r.DstCost))
+	s = append(s, fmt.Sprintf("--> %.2fc", r.DstCost))
 	return strings.Join(s, " ")
 }

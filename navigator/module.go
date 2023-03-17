@@ -10,6 +10,11 @@ import (
 	"github.com/safing/spn/conf"
 )
 
+const (
+	// cfgOptionRoutingAlgorithmKey is copied from profile/config.go to avoid import loop.
+	cfgOptionRoutingAlgorithmKey = "spn/routingAlgorithm"
+)
+
 var (
 	// ErrHomeHubUnset is returned when the Home Hub is required and not set.
 	ErrHomeHubUnset = errors.New("map has no Home Hub set")
@@ -19,6 +24,9 @@ var (
 
 	// ErrHubNotFound is returned when the Hub was not found on the Map.
 	ErrHubNotFound = errors.New("hub not found")
+
+	// ErrAllPinsDisregarded is returned when all pins have been disregarded.
+	ErrAllPinsDisregarded = errors.New("all pins have been disregarded")
 )
 
 var (
@@ -27,7 +35,8 @@ var (
 	// Main is the primary map used.
 	Main *Map
 
-	devMode config.BoolOption
+	devMode                   config.BoolOption
+	cfgOptionRoutingAlgorithm config.StringOption
 )
 
 func init() {
@@ -41,6 +50,7 @@ func prep() error {
 func start() error {
 	Main = NewMap(conf.MainMapName, true)
 	devMode = config.Concurrent.GetAsBool(config.CfgDevModeKey, false)
+	cfgOptionRoutingAlgorithm = config.Concurrent.GetAsString(cfgOptionRoutingAlgorithmKey, DefaultRoutingProfileID)
 
 	err := registerMapDatabase()
 	if err != nil {

@@ -14,6 +14,8 @@ var (
 	connectOpIncomingBytes *metrics.Counter
 	connectOpOutgoingBytes *metrics.Counter
 
+	connectOpTTCRDurationHistogram *metrics.Histogram
+	connectOpTTFBDurationHistogram *metrics.Histogram
 	connectOpDurationHistogram     *metrics.Histogram
 	connectOpIncomingDataHistogram *metrics.Histogram
 	connectOpOutgoingDataHistogram *metrics.Histogram
@@ -71,6 +73,30 @@ func registerMetrics() (err error) {
 		nil,
 		&metrics.Options{
 			Name:       "SPN Connect Operation Outgoing Bytes",
+			Permission: api.PermitUser,
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	connectOpTTCRDurationHistogram, err = metrics.NewHistogram(
+		"spn/op/connect/histogram/ttcr/seconds",
+		nil,
+		&metrics.Options{
+			Name:       "SPN Connect Operation time-to-connect-request Histogram",
+			Permission: api.PermitUser,
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	connectOpTTFBDurationHistogram, err = metrics.NewHistogram(
+		"spn/op/connect/histogram/ttfb/seconds",
+		nil,
+		&metrics.Options{
+			Name:       "SPN Connect Operation time-to-first-byte (from TTCR) Histogram",
 			Permission: api.PermitUser,
 		},
 	)

@@ -10,9 +10,13 @@ import (
 	"github.com/safing/portbase/modules"
 )
 
+const (
+	apiPathForSPNReInit = "spn/reinit"
+)
+
 func registerAPIEndpoints() error {
 	if err := api.RegisterEndpoint(api.Endpoint{
-		Path:  `spn/reinit`,
+		Path:  apiPathForSPNReInit,
 		Write: api.PermitAdmin,
 		// BelongsTo:   module, // Do not attach to module, as this must run outside of the module.
 		ActionFunc:  handleReInit,
