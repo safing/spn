@@ -32,7 +32,7 @@ var (
 	accountClient     = &http.Client{}
 	clientRequestLock sync.Mutex
 
-	// Auto connect after login in.
+	// Auto connect after login.
 	ConnectAfterLogin = true
 )
 
