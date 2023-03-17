@@ -17,6 +17,7 @@ import (
 	"github.com/safing/spn/crew"
 	"github.com/safing/spn/docks"
 	"github.com/safing/spn/navigator"
+	"github.com/safing/spn/terminal"
 )
 
 var (
@@ -332,12 +333,28 @@ func clientConnectToHomeHub(ctx context.Context) clientComponentResult {
 			notifications.NotifyError(
 				"spn:all-home-hubs-excluded",
 				"All Home Nodes Excluded",
-				"Your current Home Node Rules exclude all available SPN Nodes. Please change your rules to allow for at least one available Home Node.",
+				"Your current Home Node Rules exclude all available and eligible SPN Nodes. Please change your rules to allow for at least one available and eligible Home Node.",
 				notifications.Action{
 					Text: "Configure",
 					Type: notifications.ActionTypeOpenSetting,
 					Payload: &notifications.ActionTypeOpenSettingPayload{
 						Key: CfgOptionHomeHubPolicyKey,
+					},
+				},
+			).AttachToModule(module)
+
+		case errors.Is(err, ErrReInitSPNSuggested):
+			notifications.NotifyError(
+				"spn:cannot-bootstrap",
+				"SPN Cannot Bootstrap",
+				"The local state of the SPN network is likely outdated. Portmaster was not able to identify a server to connect to. Please re-initialize the SPN using the tools menu or the button on the notification.",
+				notifications.Action{
+					ID:   "re-init",
+					Text: "Re-Init SPN",
+					Type: notifications.ActionTypeWebhook,
+					Payload: &notifications.ActionTypeWebhookPayload{
+						URL:          apiPathForSPNReInit,
+						ResultAction: "display",
 					},
 				},
 			).AttachToModule(module)
@@ -415,12 +432,38 @@ func clientCheckHomeHubConnection(ctx context.Context) clientComponentResult {
 	}
 
 	// Ping home hub.
-	duration, tErr := docks.Ping(ctx, crane.Controller, clientHealthCheckTimeout)
+	latency, tErr := pingHome(ctx, crane.Controller, clientHealthCheckTimeout)
 	if tErr != nil {
 		log.Warningf("spn/captain: failed to ping home hub: %s", tErr)
 		return clientResultReconnect
 	}
 
-	log.Debugf("spn/captain: pinged home hub in %s", duration)
+	log.Debugf("spn/captain: pinged home hub in %s", latency)
 	return clientResultOk
+}
+
+func pingHome(ctx context.Context, t terminal.Terminal, timeout time.Duration) (latency time.Duration, err *terminal.Error) {
+	started := time.Now()
+
+	// Start ping operation.
+	pingOp, tErr := crew.NewPingOp(t)
+	if tErr != nil {
+		return 0, tErr
+	}
+
+	// Wait for response.
+	select {
+	case <-ctx.Done():
+		return 0, terminal.ErrCanceled
+	case <-time.After(timeout):
+		return 0, terminal.ErrTimeout
+	case result := <-pingOp.Result:
+		if result.Is(terminal.ErrExplicitAck) {
+			return time.Since(started), nil
+		}
+		if result.IsOK() {
+			return 0, result.Wrap("unexpected response")
+		}
+		return 0, result
+	}
 }

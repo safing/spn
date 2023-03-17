@@ -57,6 +57,9 @@ func (t *Tunnel) connectWorker(ctx context.Context) (err error) {
 	ctx, tracer := log.AddTracer(ctx)
 	defer tracer.Submit()
 
+	// Save start time.
+	started := time.Now()
+
 	// Check the status of the Home Hub.
 	home, homeTerminal := navigator.Main.GetHome()
 	if home == nil || homeTerminal == nil || homeTerminal.IsBeingAbandoned() {
@@ -101,6 +104,9 @@ func (t *Tunnel) connectWorker(ctx context.Context) (err error) {
 		tracer.Warningf("spn/crew: failed to initialize tunnel for %s: %s", t.connInfo, err)
 		return tErr
 	}
+
+	// Report time taken to find, build and check route and send connect request.
+	connectOpTTCRDurationHistogram.UpdateDuration(started)
 
 	t.connInfo.Lock()
 	defer t.connInfo.Unlock()
@@ -152,7 +158,6 @@ func (t *Tunnel) establish(ctx context.Context) (err error) {
 		routes, err = navigator.Main.FindRouteToHub(
 			sticksTo.Pin.Hub.ID,
 			t.connInfo.TunnelOpts,
-			navigator.DefaultMaxFindMatches,
 		)
 		if err != nil {
 			log.Tracer(ctx).Tracef("spn/crew: failed to find route to stickied %s: %s", sticksTo.Pin.Hub, err)
@@ -168,7 +173,6 @@ func (t *Tunnel) establish(ctx context.Context) (err error) {
 		routes, err = navigator.Main.FindRoutes(
 			t.connInfo.Entity.IP,
 			t.connInfo.TunnelOpts,
-			navigator.DefaultMaxFindMatches,
 		)
 		if err != nil {
 			return fmt.Errorf("failed to find routes to %s: %w", t.connInfo.Entity.IP, err)
@@ -248,7 +252,7 @@ func establishRoute(route *navigator.Route) (dstPin *navigator.Pin, dstTerminal 
 		activeTerminal := hop.Pin().GetActiveTerminal()
 		if activeTerminal != nil {
 			// Ping terminal if not recently checked.
-			if activeTerminal.NeedsReachableCheck(30 * time.Second) {
+			if activeTerminal.NeedsReachableCheck(1 * time.Minute) {
 				pingOp, tErr := NewPingOp(activeTerminal)
 				if tErr.IsError() {
 					return nil, nil, tErr.Wrap("failed start ping to %s", hop.Pin())
@@ -304,7 +308,7 @@ func establishRoute(route *navigator.Route) (dstPin *navigator.Pin, dstTerminal 
 					return nil, nil, tErr.Wrap("failed to authenticate to %s: %w", check.pin.Hub, tErr)
 				}
 
-			case <-time.After(10 * time.Second):
+			case <-time.After(15 * time.Second):
 				// Mark as failing for just a minute, until server load may be less.
 				check.pin.MarkAsFailingFor(1 * time.Minute)
 				log.Warningf("spn/crew: auth to %s timed out", check.pin.Hub)
@@ -324,8 +328,7 @@ func establishRoute(route *navigator.Route) (dstPin *navigator.Pin, dstTerminal 
 			// Wait for ping result.
 			select {
 			case tErr := <-check.pingOp.Result:
-				if !tErr.Is(terminal.ErrExplicitAck) &&
-					!tErr.Is(terminal.ErrUnknownOperationType) { // TODO: remove workaround until all servers have this upgrade
+				if !tErr.Is(terminal.ErrExplicitAck) {
 					// Mark as failing long enough to expire connections and session and shutdown connections.
 					// TODO: Should we forcibly disconnect instead?
 					// TODO: This might also be triggered if a relay fails and ends the operation.
@@ -335,7 +338,7 @@ func establishRoute(route *navigator.Route) (dstPin *navigator.Pin, dstTerminal 
 					return nil, nil, tErr.Wrap("failed to check reachability of %s: %w", check.pin.Hub, tErr)
 				}
 
-			case <-time.After(10 * time.Second):
+			case <-time.After(15 * time.Second):
 				// Mark as failing for just a minute, until server load may be less.
 				check.pin.MarkAsFailingFor(1 * time.Minute)
 				log.Warningf("spn/crew: reachability check to %s timed out", check.pin.Hub)

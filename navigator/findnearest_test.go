@@ -16,7 +16,7 @@ func TestFindNearest(t *testing.T) {
 		// Create a random destination address
 		ip4, loc4 := createGoodIP(true)
 
-		nbPins, err := m.findNearestPins(loc4, nil, m.DefaultOptions().Matcher(DestinationHub, m.intel), DefaultMaxFindMatches)
+		nbPins, err := m.findNearestPins(loc4, nil, m.DefaultOptions(), DestinationHub)
 		if err != nil {
 			t.Error(err)
 		} else {
@@ -28,7 +28,7 @@ func TestFindNearest(t *testing.T) {
 		// Create a random destination address
 		ip6, loc6 := createGoodIP(true)
 
-		nbPins, err := m.findNearestPins(nil, loc6, m.DefaultOptions().Matcher(DestinationHub, m.intel), DefaultMaxFindMatches)
+		nbPins, err := m.findNearestPins(nil, loc6, m.DefaultOptions(), DestinationHub)
 		if err != nil {
 			t.Error(err)
 		} else {
@@ -56,8 +56,7 @@ func BenchmarkFindNearest(b *testing.B) {
 			dstIP = net.ParseIP(gofakeit.IPv6Address())
 		}
 
-		_, err := m.findNearestPins(dstIP, m.DefaultOptions().Matcher(DestinationHub), defaultMaxFindMatches)
-		if err != nil {
+		_, err := m.findNearestPins(dstIP, m.DefaultOptions(),DestinationHub		if err != nil {
 			b.Error(err)
 		}
 	}
@@ -69,7 +68,7 @@ func findFakeHomeHub(m *Map) {
 	_, loc4 := createGoodIP(true)
 	_, loc6 := createGoodIP(false)
 
-	nbPins, err := m.findNearestPins(loc4, loc6, m.defaultOptions().Matcher(HomeHub, m.intel), DefaultMaxFindMatches)
+	nbPins, err := m.findNearestPins(loc4, loc6, m.defaultOptions(), HomeHub)
 	if err != nil {
 		panic(err)
 	}
@@ -89,25 +88,25 @@ func findFakeHomeHub(m *Map) {
 func TestNearbyPinsCleaning(t *testing.T) {
 	t.Parallel()
 
-	testCleaning(t, []float32{10, 20, 30, 40, 50, 60, 70, 80, 90, 100}, 5)
-	testCleaning(t, []float32{10, 11, 12, 13, 14, 15, 70, 80, 90, 100}, 4)
-	testCleaning(t, []float32{10, 11, 12, 13, 14, 15, 16, 80, 90, 100}, 3)
-	testCleaning(t, []float32{10, 11, 12, 13, 14, 15, 16, 17, 90, 100}, 3)
+	testCleaning(t, []float32{10, 20, 30, 40, 50, 60, 70, 80, 90, 100}, 3)
+	testCleaning(t, []float32{10, 11, 12, 13, 50, 60, 70, 80, 90, 100}, 4)
+	testCleaning(t, []float32{10, 11, 12, 40, 50, 60, 70, 80, 90, 100}, 3)
+	testCleaning(t, []float32{10, 11, 30, 40, 50, 60, 70, 80, 90, 100}, 3)
 }
 
-func testCleaning(t *testing.T, proximities []float32, expectedLeftOver int) {
+func testCleaning(t *testing.T, costs []float32, expectedLeftOver int) {
 	t.Helper()
 
 	nb := &nearbyPins{
 		minPins:     3,
 		maxPins:     5,
-		cutOffLimit: 50,
+		cutOffLimit: 10,
 	}
 
 	// Simulate usage.
-	for _, prox := range proximities {
+	for _, cost := range costs {
 		// Add to list.
-		nb.add(nil, prox)
+		nb.add(nil, cost)
 
 		// Clean once in a while.
 		if len(nb.pins) > nb.maxPins {
@@ -120,6 +119,6 @@ func testCleaning(t *testing.T, proximities []float32, expectedLeftOver int) {
 	// Check results.
 	t.Logf("result: %+v", nb.pins)
 	if len(nb.pins) != expectedLeftOver {
-		t.Fatalf("unexpected amount of left over pins: %+v", nb.pins)
+		t.Errorf("unexpected amount of left over pins: %+v", nb.pins)
 	}
 }

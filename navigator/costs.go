@@ -3,12 +3,13 @@ package navigator
 import "time"
 
 const (
-	nearestPinsMaxProximityDifference = 50
-	nearestPinsMinimum                = 3
+	nearestPinsMaxCostDifference = 5000
+	nearestPinsMinimum           = 10
 )
 
 // CalculateLaneCost calculates the cost of using a Lane based on the given
 // Lane latency and capacity.
+// Ranges from 0 to 10000.
 func CalculateLaneCost(latency time.Duration, capacity int) (cost float32) {
 	// - One point for every ms in latency (linear)
 	if latency != 0 {
@@ -44,6 +45,7 @@ func CalculateLaneCost(latency time.Duration, capacity int) (cost float32) {
 }
 
 // CalculateHubCost calculates the cost of using a Hub based on the given Hub load.
+// Ranges from 100 to 10000.
 func CalculateHubCost(load int) (cost float32) {
 	switch {
 	case load >= 100:
@@ -59,11 +61,12 @@ func CalculateHubCost(load int) (cost float32) {
 
 // CalculateDestinationCost calculates the cost of a destination hub to a
 // destination server based on the given proximity.
+// Ranges from 0 to 2500.
 func CalculateDestinationCost(proximity float32) (cost float32) {
 	// Invert from proximity (0-100) to get a distance value.
 	distance := 100 - proximity
 
-	// Take the distance to the power of two and then divide by ten in order to
+	// Take the distance to the power of three and then divide by hundred in order to
 	// make high distances exponentially more expensive.
-	return (distance * distance) / 10
+	return (distance * distance * distance) / 400
 }
