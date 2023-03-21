@@ -17,6 +17,8 @@ const (
 
 	defaultWorkSlotPercentage      = 0.7  // 70%
 	defaultSlotChangeRatePerStreak = 0.02 // 2%
+
+	defaultStatCycleDuration = 1 * time.Minute
 )
 
 // Scheduler creates and schedules units.
@@ -43,14 +45,35 @@ type Scheduler struct { //nolint:maligned
 	slotSignalSwitch bool
 	slotSignalsLock  sync.RWMutex
 
-	// Stats.
-	maxLeveledPace atomic.Int64
-	avgPaceSum     atomic.Int64
-	avgPaceCnt     atomic.Int64
-
-	stopping abool.AtomicBool
-
+	stopping     abool.AtomicBool
 	unitDebugger *UnitDebugger
+
+	// Stats.
+	stats struct {
+		// Working Values.
+		progress struct {
+			maxPace           atomic.Int64
+			maxLeveledPace    atomic.Int64
+			avgPaceSum        atomic.Int64
+			avgPaceCnt        atomic.Int64
+			avgUnitLifeSum    atomic.Int64
+			avgUnitLifeCnt    atomic.Int64
+			avgWorkSlotSum    atomic.Int64
+			avgWorkSlotCnt    atomic.Int64
+			avgCatchUpSlotSum atomic.Int64
+			avgCatchUpSlotCnt atomic.Int64
+		}
+
+		// Calculated Values.
+		current struct {
+			maxPace        atomic.Int64
+			maxLeveledPace atomic.Int64
+			avgPace        atomic.Int64
+			avgUnitLife    atomic.Int64
+			avgWorkSlot    atomic.Int64
+			avgCatchUpSlot atomic.Int64
+		}
+	}
 }
 
 // SchedulerConfig holds scheduler configuration.
@@ -73,6 +96,10 @@ type SchedulerConfig struct {
 	// Is enforced to be able to change the minimum slot pace by at least 1.
 	// The default value is 0.02 (2%).
 	SlotChangeRatePerStreak float64
+
+	// StatCycleDuration defines how often stats are calculated.
+	// The default value is 1 minute.
+	StatCycleDuration time.Duration
 }
 
 // NewScheduler returns a new scheduler.
@@ -102,6 +129,9 @@ func NewScheduler(config *SchedulerConfig) *Scheduler {
 	if s.config.SlotChangeRatePerStreak == 0 {
 		s.config.SlotChangeRatePerStreak = defaultSlotChangeRatePerStreak
 	}
+	if s.config.StatCycleDuration == 0 {
+		s.config.StatCycleDuration = defaultStatCycleDuration
+	}
 
 	// Check boundaries of WorkSlotPercentage.
 	switch {
@@ -122,10 +152,6 @@ func NewScheduler(config *SchedulerConfig) *Scheduler {
 	// Initialize scheduler fields.
 	s.clearanceUpTo.Store(s.config.MinSlotPace)
 	s.slotPace.Store(s.config.MinSlotPace)
-
-	// Initialize stats fields.
-	s.avgPaceSum.Store(s.config.MinSlotPace)
-	s.avgPaceCnt.Store(1)
 
 	return s
 }
@@ -168,16 +194,36 @@ func (s *Scheduler) SlotScheduler(ctx context.Context) error {
 	defer s.clearanceUpTo.Store(math.MaxInt64 - math.MaxInt32)
 
 	var (
-		halfSlotID     uint64
+		halfSlotID        uint64
+		halfSlotStartedAt = time.Now()
+		halfSlotEndedAt   time.Time
+		halfSlotDuration  = float64(s.config.SlotDuration / 2)
+
 		increaseStreak float64
 		decreaseStreak float64
 		oneStreaks     int
+
+		cycleStatsAt = uint64(s.config.StatCycleDuration / (s.config.SlotDuration / 2))
 	)
+
 	for range ticker.C {
+		halfSlotEndedAt = time.Now()
+
 		switch {
 		case halfSlotID%2 == 0:
 
 			// First Half-Slot: Work Slot
+
+			// Calculate time taken in previous slot.
+			catchUpSlotDuration := halfSlotEndedAt.Sub(halfSlotStartedAt).Nanoseconds()
+
+			// Add current slot duration to avg calculation.
+			s.stats.progress.avgCatchUpSlotCnt.Add(1)
+			if s.stats.progress.avgCatchUpSlotSum.Add(catchUpSlotDuration) < 0 {
+				// Reset if we wrap.
+				s.stats.progress.avgCatchUpSlotCnt.Store(1)
+				s.stats.progress.avgCatchUpSlotSum.Store(catchUpSlotDuration)
+			}
 
 			// Reset slot counters.
 			s.finished.Store(0)
@@ -197,11 +243,26 @@ func (s *Scheduler) SlotScheduler(ctx context.Context) error {
 
 			// Second Half-Slot: Catch-Up Slot
 
+			// Calculate time taken in previous slot.
+			workSlotDuration := halfSlotEndedAt.Sub(halfSlotStartedAt).Nanoseconds()
+
+			// Add current slot duration to avg calculation.
+			s.stats.progress.avgWorkSlotCnt.Add(1)
+			if s.stats.progress.avgWorkSlotSum.Add(workSlotDuration) < 0 {
+				// Reset if we wrap.
+				s.stats.progress.avgWorkSlotCnt.Store(1)
+				s.stats.progress.avgWorkSlotSum.Store(workSlotDuration)
+			}
+
+			// Calculate slot duration skew correction, as slots will not run in the
+			// exact specified duration.
+			slotDurationSkewCorrection := halfSlotDuration / float64(workSlotDuration)
+
 			// Calculate slot pace with performance of first half-slot.
 			// Get current slot pace as float64.
 			currentSlotPace := float64(s.slotPace.Load())
 			// Calculate current raw slot pace.
-			newRawSlotPace := float64(s.finished.Load() * 2)
+			newRawSlotPace := float64(s.finished.Load()*2) * slotDurationSkewCorrection
 
 			// Move slot pace in the trending direction.
 			if newRawSlotPace >= currentSlotPace {
@@ -247,21 +308,33 @@ func (s *Scheduler) SlotScheduler(ctx context.Context) error {
 			}
 
 			// Record Stats
+
 			// Add current pace to avg calculation.
-			s.avgPaceCnt.Add(1)
-			if s.avgPaceSum.Add(s.slotPace.Load()) < 0 {
+			s.stats.progress.avgPaceCnt.Add(1)
+			if s.stats.progress.avgPaceSum.Add(s.slotPace.Load()) < 0 {
 				// Reset if we wrap.
-				s.avgPaceCnt.Store(1)
-				s.avgPaceSum.Store(s.slotPace.Load())
-			}
-			// Check if current pace is new leveled max
-			if oneStreaks >= 3 && s.slotPace.Load() > s.maxLeveledPace.Load() {
-				s.maxLeveledPace.Store(s.slotPace.Load())
+				s.stats.progress.avgPaceCnt.Store(1)
+				s.stats.progress.avgPaceSum.Store(s.slotPace.Load())
 			}
 
+			// Check if current pace is new max.
+			if s.slotPace.Load() > s.stats.progress.maxPace.Load() {
+				s.stats.progress.maxPace.Store(s.slotPace.Load())
+			}
+
+			// Check if current pace is new leveled max
+			if oneStreaks >= 3 && s.slotPace.Load() > s.stats.progress.maxLeveledPace.Load() {
+				s.stats.progress.maxLeveledPace.Store(s.slotPace.Load())
+			}
 		}
 		// Switch to other slot-half.
 		halfSlotID++
+		halfSlotStartedAt = halfSlotEndedAt
+
+		// Cycle stats after defined time period.
+		if halfSlotID%cycleStatsAt == 0 {
+			s.cycleStats()
+		}
 
 		// Check if we are stopping.
 		select {

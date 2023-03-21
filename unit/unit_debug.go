@@ -43,6 +43,9 @@ func (s *Scheduler) StartDebugLog() {
 		units: make(map[int64]*UnitDebugData),
 	}
 
+	// Force StatCycleDuration to match the debug log output.
+	s.config.StatCycleDuration = time.Second
+
 	go func() {
 		for {
 			s.debugStep()
@@ -68,12 +71,16 @@ func (s *Scheduler) debugStep() {
 
 	// Print current state.
 	log.Debugf(
-		`scheduler: state: slotPace=%d avgPace=%d maxPace=%d currentUnitID=%d clearanceUpTo=%d`,
+		`scheduler: state: slotPace=%d avgPace=%d maxPace=%d maxLeveledPace=%d currentUnitID=%d clearanceUpTo=%d unitLife=%s slotDurations=%s/%s`,
 		s.slotPace.Load(),
-		s.avgPaceSum.Load()/s.avgPaceCnt.Load(),
-		s.maxLeveledPace.Load(),
+		s.GetAvgSlotPace(),
+		s.GetMaxSlotPace(),
+		s.GetMaxLeveledSlotPace(),
 		s.currentUnitID.Load(),
 		s.clearanceUpTo.Load(),
+		time.Duration(s.GetAvgUnitLife()).Round(10*time.Microsecond),
+		time.Duration(s.GetAvgWorkSlotDuration()).Round(10*time.Microsecond),
+		time.Duration(s.GetAvgCatchUpSlotDuration()).Round(10*time.Microsecond),
 	)
 	log.Debugf("scheduler: unit sources: %+v", sources)
 }

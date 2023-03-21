@@ -20,6 +20,7 @@ func TestUnit(t *testing.T) { //nolint:paralleltest
 
 	// Create and start scheduler.
 	s := NewScheduler(&SchedulerConfig{})
+	s.StartDebugLog()
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
 		err := s.SlotScheduler(ctx)
@@ -58,20 +59,29 @@ func TestUnit(t *testing.T) { //nolint:paralleltest
 	time.Sleep(s.config.SlotDuration * 2)
 
 	// Print current state.
+	s.cycleStats()
 	fmt.Printf(`scheduler state:
 		currentUnitID = %d
 		slotPace = %d
 		clearanceUpTo = %d
 		finished = %d
-		avgPace = %d
 		maxPace = %d
+		maxLeveledPace = %d
+		avgPace = %d
+		avgUnitLife = %s
+		avgWorkSlot = %s
+		avgCatchUpSlot = %s
 `,
 		s.currentUnitID.Load(),
 		s.slotPace.Load(),
 		s.clearanceUpTo.Load(),
 		s.finished.Load(),
-		s.avgPaceSum.Load()/s.avgPaceCnt.Load(),
-		s.maxLeveledPace.Load(),
+		s.GetMaxSlotPace(),
+		s.GetMaxLeveledSlotPace(),
+		s.GetAvgSlotPace(),
+		time.Duration(s.GetAvgUnitLife()),
+		time.Duration(s.GetAvgWorkSlotDuration()),
+		time.Duration(s.GetAvgCatchUpSlotDuration()),
 	)
 
 	// Check if everything seems good.
