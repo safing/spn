@@ -198,30 +198,28 @@ func (m *Map) findNearestPins(locationV4, locationV6 *geoip.Location, opts *Opti
 			continue
 		}
 
-		// If finding a home hub, check if there is a common IP version.
-		if matchFor == HomeHub {
-			switch {
-			case locationV4 != nil && pin.LocationV4 != nil:
-				// Both have IPv4!
-			case locationV6 != nil && pin.LocationV6 != nil:
-				// Both have IPv6!
-			default:
-				// No shared IP stack.
-				continue
-			}
+		// Check if the Hub supports at least one IP version we are looking for.
+		switch {
+		case locationV4 != nil && pin.LocationV4 != nil:
+			// Both have IPv4!
+		case locationV6 != nil && pin.LocationV6 != nil:
+			// Both have IPv6!
+		default:
+			// Hub does not support any IP version we need.
+			continue
+		}
 
-			// If the global routing profile is set to home ("VPN"), check if all local
-			// IP versions are available on the Hub.
-			if cfgOptionRoutingAlgorithm() == RoutingProfileHomeID {
-				switch {
-				case locationV4 != nil && pin.LocationV4 == nil:
-					// Device has IPv4, but Hub does not!
-					continue
-				case locationV6 != nil && pin.LocationV6 == nil:
-					// Device has IPv6, but Hub does not!
-					// Both have IPv6!
-					continue
-				}
+		// If finding a home hub and the global routing profile is set to home ("VPN"),
+		// check if all local IP versions are available on the Hub.
+		if matchFor == HomeHub && cfgOptionRoutingAlgorithm() == RoutingProfileHomeID {
+			switch {
+			case locationV4 != nil && pin.LocationV4 == nil:
+				// Device has IPv4, but Hub does not!
+				continue
+			case locationV6 != nil && pin.LocationV6 == nil:
+				// Device has IPv6, but Hub does not!
+				// Both have IPv6!
+				continue
 			}
 		}
 
