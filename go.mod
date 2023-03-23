@@ -11,7 +11,7 @@ require (
 	github.com/rot256/pblind v0.0.0-20211117203330-22455f90b565
 	github.com/safing/jess v0.3.1
 	github.com/safing/portbase v0.16.4
-	github.com/safing/portmaster v1.0.7
+	github.com/safing/portmaster v1.0.9
 	github.com/spf13/cobra v1.6.1
 	github.com/stretchr/testify v1.8.1
 	github.com/tevino/abool v1.2.0
@@ -25,10 +25,12 @@ require (
 	github.com/armon/go-radix v1.0.0 // indirect
 	github.com/bluele/gcache v0.0.2 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
+	github.com/fxamacker/cbor v1.5.1 // indirect
 	github.com/fxamacker/cbor/v2 v2.4.0 // indirect
 	github.com/go-ole/go-ole v1.2.6 // indirect
 	github.com/godbus/dbus/v5 v5.1.0 // indirect
 	github.com/gofrs/uuid v4.4.0+incompatible // indirect
+	github.com/google/btree v1.1.2 // indirect
 	github.com/google/gopacket v1.1.19 // indirect
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510 // indirect
 	github.com/gorilla/mux v1.8.0 // indirect
@@ -41,6 +43,7 @@ require (
 	github.com/mitchellh/reflectwalk v1.0.2 // indirect
 	github.com/oschwald/maxminddb-golang v1.10.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
+	github.com/safing/portmaster-android/go v0.0.0-20230322143234-900a683ded76 // indirect
 	github.com/satori/go.uuid v1.2.0 // indirect
 	github.com/seehuhn/fortuna v1.0.1 // indirect
 	github.com/seehuhn/sha256d v1.0.0 // indirect
@@ -66,7 +69,9 @@ require (
 	golang.org/x/mod v0.9.0 // indirect
 	golang.org/x/sync v0.1.0 // indirect
 	golang.org/x/sys v0.6.0 // indirect
+	golang.org/x/time v0.3.0 // indirect
 	golang.org/x/tools v0.7.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
+	gvisor.dev/gvisor v0.0.0-20230323070900-fa7aa5b4e2e5 // indirect
 )
