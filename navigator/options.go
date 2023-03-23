@@ -31,7 +31,7 @@ type Options struct { //nolint:maligned
 	// set, a basic set of undesirable states is added automatically.
 	Disregard PinState
 
-	// HubPolicies is a collecion of endpoint lists that Hubs must pass in order
+	// HubPolicies is a collection of endpoint lists that Hubs must pass in order
 	// to be taken into account for the operation.
 	HubPolicies []endpoints.Endpoints
 
@@ -118,11 +118,16 @@ func (o *Options) Matcher(hubType HubType, hubIntel *hub.Intel) PinMatcher {
 			// Home Hubs don't need to be reachable and don't need keys ready to be used.
 			regard = regard.Remove(StateReachable)
 			regard = regard.Remove(StateActive)
+			// Follow advisory.
 			disregard = disregard.Add(StateUsageAsHomeDiscouraged)
+			// Home Hub may be the current Home Hub.
+			disregard = disregard.Remove(StateIsHomeHub)
 		case TransitHub:
 			// Transit Hubs get no additional states.
 		case DestinationHub:
+			// Follow advisory.
 			disregard = disregard.Add(StateUsageAsDestinationDiscouraged)
+			// Do not use if Hub reports network issues.
 			disregard = disregard.Add(StateConnectivityIssues)
 		}
 	}
