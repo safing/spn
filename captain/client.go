@@ -435,6 +435,14 @@ func clientCheckHomeHubConnection(ctx context.Context) clientComponentResult {
 	latency, tErr := pingHome(ctx, crane.Controller, clientHealthCheckTimeout)
 	if tErr != nil {
 		log.Warningf("spn/captain: failed to ping home hub: %s", tErr)
+
+		// Prepare to reconnect to the network.
+
+		// Reset all failing states, as these might have been caused by the failing home hub.
+		navigator.Main.ResetFailingStates(ctx)
+		// Mark the home hub itself as failing, as we want to try to connect to somewhere else.
+		home.MarkAsFailingFor(5 * time.Minute)
+
 		return clientResultReconnect
 	}
 
