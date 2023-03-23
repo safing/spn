@@ -31,6 +31,20 @@ type nearbyPins struct {
 	maxCost             float32
 	cutOffLimit         float32
 	randomizeTopPercent float32
+
+	debug *nearbyPinsDebug
+}
+
+// nearbyPinsDebug holds additional debugging for nearbyPins.
+type nearbyPinsDebug struct {
+	tooExpensive []*nearbyPin
+	disregarded  []*nearbyDisregardedPin
+}
+
+// nearbyDisregardedPin represents a disregarded pin.
+type nearbyDisregardedPin struct {
+	pin    *Pin
+	reason string
 }
 
 // nearbyPin represents a Pin and the proximity to a certain location.
@@ -58,6 +72,16 @@ func (nb *nearbyPins) Swap(i, j int) {
 // add potentially adds a Pin to the list of nearby Pins.
 func (nb *nearbyPins) add(pin *Pin, cost float32) {
 	if len(nb.pins) > nb.minPins && nb.maxCost > 0 && cost > nb.maxCost {
+		// Add debug data if enabled.
+		if nb.debug != nil {
+			nb.debug.tooExpensive = append(nb.debug.tooExpensive,
+				&nearbyPin{
+					pin:  pin,
+					cost: cost,
+				},
+			)
+		}
+
 		return
 	}
 
@@ -90,6 +114,11 @@ func (nb *nearbyPins) clean() {
 
 	// Remove superfluous Pins from the list.
 	if len(nb.pins) > nb.maxPins {
+		// Add debug data if enabled.
+		if nb.debug != nil {
+			nb.debug.tooExpensive = append(nb.debug.tooExpensive, nb.pins[nb.maxPins:]...)
+		}
+
 		nb.pins = nb.pins[:nb.maxPins]
 	}
 	// Remove Pins that are too costly.
@@ -101,6 +130,12 @@ func (nb *nearbyPins) clean() {
 				break
 			}
 		}
+
+		// Add debug data if enabled.
+		if nb.debug != nil {
+			nb.debug.tooExpensive = append(nb.debug.tooExpensive, nb.pins[okUntil:]...)
+		}
+
 		// Cut off the list at that point.
 		nb.pins = nb.pins[:okUntil]
 	}
@@ -151,7 +186,7 @@ func (m *Map) FindNearestHubs(locationV4, locationV6 *geoip.Location, opts *Opti
 	}
 
 	// Find nearest Pins.
-	nearby, err := m.findNearestPins(locationV4, locationV6, opts, matchFor)
+	nearby, err := m.findNearestPins(locationV4, locationV6, opts, matchFor, false)
 	if err != nil {
 		return nil, err
 	}
@@ -164,7 +199,7 @@ func (m *Map) FindNearestHubs(locationV4, locationV6 *geoip.Location, opts *Opti
 	return hubs, nil
 }
 
-func (m *Map) findNearestPins(locationV4, locationV6 *geoip.Location, opts *Options, matchFor HubType) (*nearbyPins, error) {
+func (m *Map) findNearestPins(locationV4, locationV6 *geoip.Location, opts *Options, matchFor HubType, debug bool) (*nearbyPins, error) {
 	// Fail if no location is provided.
 	if locationV4 == nil && locationV6 == nil {
 		return nil, errors.New("no location provided")
@@ -183,6 +218,9 @@ func (m *Map) findNearestPins(locationV4, locationV6 *geoip.Location, opts *Opti
 		cutOffLimit:         nearestPinsMaxCostDifference,
 		randomizeTopPercent: defaultRandomizeNearbyPinTopPercent,
 	}
+	if debug {
+		nearby.debug = &nearbyPinsDebug{}
+	}
 
 	// Create pin matcher.
 	matcher := opts.Matcher(matchFor, m.intel)
@@ -193,6 +231,16 @@ func (m *Map) findNearestPins(locationV4, locationV6 *geoip.Location, opts *Opti
 
 		// Check if the Pin matches the criteria.
 		if !matcher(pin) {
+			// Add debug data if enabled.
+			if nearby.debug != nil && pin.State.Has(StateActive|StateReachable) {
+				nearby.debug.disregarded = append(nearby.debug.disregarded,
+					&nearbyDisregardedPin{
+						pin:    pin,
+						reason: "does not match general criteria",
+					},
+				)
+			}
+
 			// Debugging:
 			// log.Tracef("spn/navigator: skipping %s with states %s for finding nearest", pin, pin.State)
 			continue
@@ -206,6 +254,17 @@ func (m *Map) findNearestPins(locationV4, locationV6 *geoip.Location, opts *Opti
 			// Both have IPv6!
 		default:
 			// Hub does not support any IP version we need.
+
+			// Add debug data if enabled.
+			if nearby.debug != nil {
+				nearby.debug.disregarded = append(nearby.debug.disregarded,
+					&nearbyDisregardedPin{
+						pin:    pin,
+						reason: "does not support the required IP version",
+					},
+				)
+			}
+
 			continue
 		}
 
@@ -215,10 +274,20 @@ func (m *Map) findNearestPins(locationV4, locationV6 *geoip.Location, opts *Opti
 			switch {
 			case locationV4 != nil && pin.LocationV4 == nil:
 				// Device has IPv4, but Hub does not!
-				continue
+				fallthrough
 			case locationV6 != nil && pin.LocationV6 == nil:
 				// Device has IPv6, but Hub does not!
-				// Both have IPv6!
+
+				// Add debug data if enabled.
+				if nearby.debug != nil {
+					nearby.debug.disregarded = append(nearby.debug.disregarded,
+						&nearbyDisregardedPin{
+							pin:    pin,
+							reason: "home hub needs all IP versions of client (when Home/VPN routing)",
+						},
+					)
+				}
+
 				continue
 			}
 		}
