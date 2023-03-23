@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/safing/portbase/config"
+	"github.com/safing/portbase/log"
 	"github.com/safing/portbase/modules"
 	"github.com/safing/portmaster/intel/geoip"
 	"github.com/safing/spn/conf"
@@ -71,7 +72,16 @@ geoInitCheck:
 		}
 	}
 
-	Main.InitializeFromDatabase()
+	err = Main.InitializeFromDatabase()
+	if err != nil {
+		// Wait for three seconds, then try again.
+		time.Sleep(3 * time.Second)
+		err = Main.InitializeFromDatabase()
+		if err != nil {
+			// Even if the init fails, we can try to start without it and get data along the way.
+			log.Warningf("spn/navigator: %s", err)
+		}
+	}
 	err = Main.RegisterHubUpdateHook()
 	if err != nil {
 		return err

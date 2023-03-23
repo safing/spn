@@ -25,15 +25,14 @@ var db = database.NewInterface(&database.Options{
 })
 
 // InitializeFromDatabase loads all Hubs from the given database prefix and adds them to the Map.
-func (m *Map) InitializeFromDatabase() {
+func (m *Map) InitializeFromDatabase() error {
 	m.Lock()
 	defer m.Unlock()
 
 	// start query for Hubs
 	iter, err := db.Query(query.New(hub.MakeHubDBKey(m.Name, "")))
 	if err != nil {
-		log.Warningf("spn/navigator: failed to start query for initialization feed of %s map: %s", m.Name, err)
-		return
+		return fmt.Errorf("failed to start query for initialization feed of %s map: %w", m.Name, err)
 	}
 
 	// update navigator
@@ -51,12 +50,13 @@ func (m *Map) InitializeFromDatabase() {
 	}
 	switch {
 	case iter.Err() != nil:
-		log.Warningf("spn/navigator: failed to (fully) initialize %s map: %s", m.Name, iter.Err())
+		return fmt.Errorf("failed to (fully) initialize %s map: %w", m.Name, iter.Err())
 	case hubCount == 0:
 		log.Warningf("spn/navigator: no hubs available for %s map - this is normal on first start", m.Name)
 	default:
 		log.Infof("spn/navigator: added %d hubs from database to %s map", hubCount, m.Name)
 	}
+	return nil
 }
 
 // UpdateHook updates the a map from database changes.
