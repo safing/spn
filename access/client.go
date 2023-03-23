@@ -32,8 +32,8 @@ var (
 	accountClient     = &http.Client{}
 	clientRequestLock sync.Mutex
 
-	// Auto connect after login.
-	ConnectAfterLogin = true
+	// Automatically enable SPN subsystem/module after login.
+	EnableAfterLogin = true
 )
 
 type clientRequestOptions struct {
@@ -279,7 +279,7 @@ func Login(username, password string) (user *UserRecord, code int, err error) {
 	}
 
 	// Enable the SPN right after login.
-	if user.MayUseSPN() && ConnectAfterLogin {
+	if user.MayUseSPN() && EnableAfterLogin {
 		enableSPN()
 	}
 
