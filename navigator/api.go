@@ -141,6 +141,11 @@ func registerAPIEndpoints() error {
 		return err
 	}
 
+	// Register API endpoints from other files.
+	if err := registerRouteAPIEndpoints(); err != nil {
+		return err
+	}
+
 	return nil
 }
 

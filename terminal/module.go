@@ -28,15 +28,14 @@ func init() {
 func start() error {
 	rngFeeder = rng.NewFeeder()
 
-	scheduler = unit.NewScheduler(schedulerConfig())
+	scheduler = unit.NewScheduler(getSchedulerConfig())
+	if debugUnitScheduling {
+		// Debug unit leaks.
+		scheduler.StartDebugLog()
+	}
 	module.StartServiceWorker("msg unit scheduler", 0, scheduler.SlotScheduler)
 
 	lockOpRegistry()
-
-	// Debug unit leaks.
-	if debugUnitScheduling {
-		scheduler.StartDebugLog()
-	}
 
 	return registerMetrics()
 }
@@ -58,20 +57,24 @@ func StopScheduler() {
 	}
 }
 
-func schedulerConfig() *unit.SchedulerConfig {
+func getSchedulerConfig() *unit.SchedulerConfig {
 	// Client Scheduler Config.
 	if conf.Client() {
 		return &unit.SchedulerConfig{
-			MinSlotPace:             10,  // 1000pps - Choose a small starting pace for low end devices.
-			WorkSlotPercentage:      0.9, // 90%
-			SlotChangeRatePerStreak: 0.1, // 10%
+			SlotDuration:            10 * time.Millisecond, // 100 slots per second
+			MinSlotPace:             10,                    // 1000pps - Small starting pace for low end devices.
+			WorkSlotPercentage:      0.9,                   // 90%
+			SlotChangeRatePerStreak: 0.1,                   // 10% - Increase/Decrease quickly.
+			StatCycleDuration:       1 * time.Minute,       // Match metrics report cycle.
 		}
 	}
 
 	// Server Scheduler Config.
 	return &unit.SchedulerConfig{
-		MinSlotPace:             100,
-		WorkSlotPercentage:      0.7,  // 70%
-		SlotChangeRatePerStreak: 0.02, // 2%
+		SlotDuration:            10 * time.Millisecond, // 100 slots per second
+		MinSlotPace:             100,                   // 10000pps - Every server should be able to handle this.
+		WorkSlotPercentage:      0.7,                   // 70%
+		SlotChangeRatePerStreak: 0.05,                  // 5%
+		StatCycleDuration:       1 * time.Minute,       // Match metrics report cycle.
 	}
 }

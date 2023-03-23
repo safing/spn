@@ -1,6 +1,8 @@
 package unit
 
 import (
+	"time"
+
 	"github.com/tevino/abool"
 )
 
@@ -9,6 +11,7 @@ import (
 type Unit struct {
 	id           int64
 	scheduler    *Scheduler
+	created      time.Time
 	finished     abool.AtomicBool
 	highPriority abool.AtomicBool
 }
@@ -18,6 +21,7 @@ func (s *Scheduler) NewUnit() *Unit {
 	return &Unit{
 		id:        s.currentUnitID.Add(1),
 		scheduler: s,
+		created:   time.Now(),
 	}
 }
 
@@ -62,6 +66,15 @@ func (u *Unit) Finish() {
 	// Always increase finished, even if the unit is from a previous epoch.
 	if u.finished.SetToIf(false, true) {
 		u.scheduler.finished.Add(1)
+
+		// Record the time this unit took from creation to finish.
+		timeTaken := time.Since(u.created).Nanoseconds()
+		u.scheduler.stats.progress.avgUnitLifeCnt.Add(1)
+		if u.scheduler.stats.progress.avgUnitLifeSum.Add(timeTaken) < 0 {
+			// Reset if we wrap.
+			u.scheduler.stats.progress.avgUnitLifeCnt.Store(1)
+			u.scheduler.stats.progress.avgUnitLifeSum.Store(timeTaken)
+		}
 	}
 }
 

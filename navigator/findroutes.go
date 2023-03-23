@@ -80,7 +80,7 @@ func (m *Map) FindRoutes(ip net.IP, opts *Options) (*Routes, error) {
 	}
 
 	// Find nearest Pins.
-	nearby, err := m.findNearestPins(locationV4, locationV6, opts, DestinationHub)
+	nearby, err := m.findNearestPins(locationV4, locationV6, opts, DestinationHub, false)
 	if err != nil {
 		return nil, err
 	}

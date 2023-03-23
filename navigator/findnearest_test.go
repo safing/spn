@@ -16,7 +16,7 @@ func TestFindNearest(t *testing.T) {
 		// Create a random destination address
 		ip4, loc4 := createGoodIP(true)
 
-		nbPins, err := m.findNearestPins(loc4, nil, m.DefaultOptions(), DestinationHub)
+		nbPins, err := m.findNearestPins(loc4, nil, m.DefaultOptions(), DestinationHub, false)
 		if err != nil {
 			t.Error(err)
 		} else {
@@ -28,7 +28,7 @@ func TestFindNearest(t *testing.T) {
 		// Create a random destination address
 		ip6, loc6 := createGoodIP(true)
 
-		nbPins, err := m.findNearestPins(nil, loc6, m.DefaultOptions(), DestinationHub)
+		nbPins, err := m.findNearestPins(nil, loc6, m.DefaultOptions(), DestinationHub, false)
 		if err != nil {
 			t.Error(err)
 		} else {
@@ -68,7 +68,7 @@ func findFakeHomeHub(m *Map) {
 	_, loc4 := createGoodIP(true)
 	_, loc6 := createGoodIP(false)
 
-	nbPins, err := m.findNearestPins(loc4, loc6, m.defaultOptions(), HomeHub)
+	nbPins, err := m.findNearestPins(loc4, loc6, m.defaultOptions(), HomeHub, false)
 	if err != nil {
 		panic(err)
 	}

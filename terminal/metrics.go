@@ -1,7 +1,6 @@
 package terminal
 
 import (
-	"sync"
 	"time"
 
 	"github.com/tevino/abool"
@@ -18,12 +17,31 @@ func registerMetrics() (err error) {
 		return nil
 	}
 
+	// Get scheduler config and calculat scaling.
+	schedulerConfig := getSchedulerConfig()
+	scaleSlotToSecondsFactor := float64(time.Second / schedulerConfig.SlotDuration)
+
+	// Register metrics from scheduler stats.
+
 	_, err = metrics.NewGauge(
 		"spn/scheduling/unit/slotpace/max",
 		nil,
-		getMaxLeveledSlotPace,
+		metricFromInt(scheduler.GetMaxSlotPace, scaleSlotToSecondsFactor),
 		&metrics.Options{
-			Name:       "SPN Scheduling Max Leveled Slot Pace",
+			Name:       "SPN Scheduling Max Slot Pace (scaled to per second)",
+			Permission: api.PermitUser,
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	_, err = metrics.NewGauge(
+		"spn/scheduling/unit/slotpace/leveled/max",
+		nil,
+		metricFromInt(scheduler.GetMaxLeveledSlotPace, scaleSlotToSecondsFactor),
+		&metrics.Options{
+			Name:       "SPN Scheduling Max Leveled Slot Pace (scaled to per second)",
 			Permission: api.PermitUser,
 		},
 	)
@@ -34,9 +52,48 @@ func registerMetrics() (err error) {
 	_, err = metrics.NewGauge(
 		"spn/scheduling/unit/slotpace/avg",
 		nil,
-		getAvgSlotPace,
+		metricFromInt(scheduler.GetAvgSlotPace, scaleSlotToSecondsFactor),
 		&metrics.Options{
-			Name:       "SPN Scheduling Avg Slot Pace",
+			Name:       "SPN Scheduling Avg Slot Pace (scaled to per second)",
+			Permission: api.PermitUser,
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	_, err = metrics.NewGauge(
+		"spn/scheduling/unit/life/avg/seconds",
+		nil,
+		metricFromNanoseconds(scheduler.GetAvgUnitLife),
+		&metrics.Options{
+			Name:       "SPN Scheduling Avg Unit Life",
+			Permission: api.PermitUser,
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	_, err = metrics.NewGauge(
+		"spn/scheduling/unit/workslot/avg/seconds",
+		nil,
+		metricFromNanoseconds(scheduler.GetAvgWorkSlotDuration),
+		&metrics.Options{
+			Name:       "SPN Scheduling Avg Work Slot Duration",
+			Permission: api.PermitUser,
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	_, err = metrics.NewGauge(
+		"spn/scheduling/unit/catchupslot/avg/seconds",
+		nil,
+		metricFromNanoseconds(scheduler.GetAvgCatchUpSlotDuration),
+		&metrics.Options{
+			Name:       "SPN Scheduling Avg Catch-Up Slot Duration",
 			Permission: api.PermitUser,
 		},
 	)
@@ -47,38 +104,14 @@ func registerMetrics() (err error) {
 	return nil
 }
 
-var (
-	nextMaxLeveledPaceReset     time.Time
-	nextMaxLeveledPaceResetLock sync.Mutex
-
-	nextAvgSlotPaceReset     time.Time
-	nextAvgSlotPaceResetLock sync.Mutex
-)
-
-func getMaxLeveledSlotPace() float64 {
-	value := float64(scheduler.GetMaxLeveledSlotPace())
-
-	nextMaxLeveledPaceResetLock.Lock()
-	defer nextMaxLeveledPaceResetLock.Unlock()
-
-	if time.Now().After(nextMaxLeveledPaceReset) {
-		nextMaxLeveledPaceReset = time.Now().Add(50 * time.Second)
-		scheduler.ResetMaxLeveledSlotPace()
+func metricFromInt(fn func() int64, scaleFactor float64) func() float64 {
+	return func() float64 {
+		return float64(fn()) * scaleFactor
 	}
-
-	return value
 }
 
-func getAvgSlotPace() float64 {
-	value := float64(scheduler.GetAvgSlotPace())
-
-	nextAvgSlotPaceResetLock.Lock()
-	defer nextAvgSlotPaceResetLock.Unlock()
-
-	if time.Now().After(nextAvgSlotPaceReset) {
-		nextAvgSlotPaceReset = time.Now().Add(50 * time.Second)
-		scheduler.ResetAvgSlotPace()
+func metricFromNanoseconds(fn func() int64) func() float64 {
+	return func() float64 {
+		return float64(fn()) / float64(time.Second)
 	}
-
-	return value
 }

@@ -304,7 +304,7 @@ func (t *TerminalBase) submitToUpstream(msg *Msg, timeout time.Duration) {
 	msg.FlowID = t.ID()
 
 	// Debug unit leaks.
-	msg.Debug()
+	msg.debugWithCaller(2)
 
 	// Submit to upstream.
 	err := t.upstream.Send(msg, timeout)

@@ -109,6 +109,14 @@ func (pin *Pin) String() string {
 	return "<Pin " + pin.Hub.Name() + ">"
 }
 
+// GetState returns the state of the pin.
+func (pin *Pin) GetState() PinState {
+	pin.Lock()
+	defer pin.Unlock()
+
+	return pin.State
+}
+
 // updateLocationData fetches the necessary location data in order to correctly map out the Pin.
 func (pin *Pin) updateLocationData() {
 	// TODO: We are currently assigning the Hub ID to the entity domain to
@@ -158,7 +166,7 @@ func (pin *Pin) SetActiveTerminal(pc *PinConnection) {
 	defer pin.Unlock()
 
 	pin.Connection = pc
-	if pin.Connection.Terminal != nil {
+	if pin.Connection != nil && pin.Connection.Terminal != nil {
 		pin.Connection.Terminal.SetChangeNotifyFunc(pin.NotifyTerminalChange)
 	}
 
@@ -206,6 +214,7 @@ func (pin *Pin) IsFailing() bool {
 
 // MarkAsFailingFor marks the pin as failing.
 // The Pin is locked for this.
+// Changes are pushed.
 func (pin *Pin) MarkAsFailingFor(duration time.Duration) {
 	pin.Lock()
 	defer pin.Unlock()
@@ -217,4 +226,24 @@ func (pin *Pin) MarkAsFailingFor(duration time.Duration) {
 	}
 
 	pin.addStates(StateFailing)
+
+	pin.pushChanges.Set()
+	pin.pushChange()
+}
+
+// ResetFailingState resets the failing state.
+// The Pin is locked for this.
+// Changes are not pushed, but Pins are marked.
+func (pin *Pin) ResetFailingState() {
+	pin.Lock()
+	defer pin.Unlock()
+
+	if time.Now().Before(pin.FailingUntil) {
+		pin.FailingUntil = time.Now()
+		pin.pushChanges.Set()
+	}
+	if pin.State.Has(StateFailing) {
+		pin.removeStates(StateFailing)
+		pin.pushChanges.Set()
+	}
 }

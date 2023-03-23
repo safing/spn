@@ -225,6 +225,13 @@ func establishRoute(route *navigator.Route) (dstPin *navigator.Pin, dstTerminal 
 		return nil, nil, errors.New("path too short")
 	}
 
+	// Check for failing hubs in path.
+	for _, hop := range route.Path[1:] {
+		if hop.Pin().GetState().Has(navigator.StateFailing) {
+			return nil, nil, fmt.Errorf("failing hub in path: %s", hop.Pin().Hub.Name())
+		}
+	}
+
 	// Get home hub.
 	previousHop, homeTerminal := navigator.Main.GetHome()
 	if previousHop == nil || homeTerminal == nil {
@@ -308,7 +315,7 @@ func establishRoute(route *navigator.Route) (dstPin *navigator.Pin, dstTerminal 
 					return nil, nil, tErr.Wrap("failed to authenticate to %s: %w", check.pin.Hub, tErr)
 				}
 
-			case <-time.After(15 * time.Second):
+			case <-time.After(5 * time.Second):
 				// Mark as failing for just a minute, until server load may be less.
 				check.pin.MarkAsFailingFor(1 * time.Minute)
 				log.Warningf("spn/crew: auth to %s timed out", check.pin.Hub)
@@ -333,14 +340,18 @@ func establishRoute(route *navigator.Route) (dstPin *navigator.Pin, dstTerminal 
 					// TODO: Should we forcibly disconnect instead?
 					// TODO: This might also be triggered if a relay fails and ends the operation.
 					check.pin.MarkAsFailingFor(7 * time.Minute)
+					// Forget about existing active terminal, re-create if needed.
+					check.pin.SetActiveTerminal(nil)
 					log.Warningf("spn/crew: failed to check reachability of %s: %s", check.pin.Hub, tErr)
 
 					return nil, nil, tErr.Wrap("failed to check reachability of %s: %w", check.pin.Hub, tErr)
 				}
 
-			case <-time.After(15 * time.Second):
+			case <-time.After(5 * time.Second):
 				// Mark as failing for just a minute, until server load may be less.
 				check.pin.MarkAsFailingFor(1 * time.Minute)
+				// Forget about existing active terminal, re-create if needed.
+				check.pin.SetActiveTerminal(nil)
 				log.Warningf("spn/crew: reachability check to %s timed out", check.pin.Hub)
 
 				return nil, nil, terminal.ErrTimeout.With("waiting for ping to %s", check.pin.Hub)
