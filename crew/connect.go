@@ -225,6 +225,13 @@ func establishRoute(route *navigator.Route) (dstPin *navigator.Pin, dstTerminal 
 		return nil, nil, errors.New("path too short")
 	}
 
+	// Check for failing hubs in path.
+	for _, hop := range route.Path[1:] {
+		if hop.Pin().GetState().Has(navigator.StateFailing) {
+			return nil, nil, fmt.Errorf("failing hub in path: %s", hop.Pin().Hub.Name())
+		}
+	}
+
 	// Get home hub.
 	previousHop, homeTerminal := navigator.Main.GetHome()
 	if previousHop == nil || homeTerminal == nil {
