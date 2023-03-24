@@ -73,5 +73,5 @@ require (
 	golang.org/x/tools v0.7.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-	gvisor.dev/gvisor v0.0.0-20230323070900-fa7aa5b4e2e5 // indirect
+	gvisor.dev/gvisor v0.0.0-20220817001344-846276b3dbc5 // indirect
 )
