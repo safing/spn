@@ -122,7 +122,7 @@ func (op *LatencyTestClientOp) handler(ctx context.Context) error {
 				returnErr = tErr.Wrap("failed to send ping request")
 				return nil
 			}
-			op.Flush()
+			op.Flush(1 * time.Second)
 
 			nextTest = nil
 
@@ -288,7 +288,7 @@ func (op *LatencyTestOp) Deliver(msg *terminal.Msg) *terminal.Error {
 		if tErr != nil {
 			return tErr.Wrap("failed to send ping response")
 		}
-		op.Flush()
+		op.Flush(1 * time.Second)
 
 		return nil
 

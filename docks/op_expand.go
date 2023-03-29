@@ -95,18 +95,16 @@ func (t *ExpansionRelayTerminal) Deliver(msg *terminal.Msg) *terminal.Error {
 }
 
 // Flush writes all data in the queues.
-func (op *ExpandOp) Flush() {
+func (op *ExpandOp) Flush(timeout time.Duration) {
 	if op.flowControl != nil {
-		// Flushing could mean sending a full buffer of 50000 packets.
-		op.flowControl.Flush(5 * time.Minute)
+		op.flowControl.Flush(timeout)
 	}
 }
 
 // Flush writes all data in the queues.
-func (t *ExpansionRelayTerminal) Flush() {
+func (t *ExpansionRelayTerminal) Flush(timeout time.Duration) {
 	if t.flowControl != nil {
-		// Flushing could mean sending a full buffer of 50000 packets.
-		t.flowControl.Flush(5 * time.Minute)
+		t.flowControl.Flush(timeout)
 	}
 }
 
@@ -319,8 +317,8 @@ func (op *ExpandOp) backwardHandler(_ context.Context) error {
 // Should never be called directly. Call Stop() instead.
 func (op *ExpandOp) HandleStop(err *terminal.Error) (errorToSend *terminal.Error) {
 	// Flush all messages before stopping.
-	op.Flush()
-	op.relayTerminal.Flush()
+	op.Flush(1 * time.Minute)
+	op.relayTerminal.Flush(1 * time.Minute)
 
 	// Stop connected workers.
 	op.cancelCtx()
@@ -369,7 +367,7 @@ func (t *ExpansionRelayTerminal) handleAbandonProcedure(err *terminal.Error) {
 	err = t.HandleAbandon(err)
 
 	// Flush all messages before stopping.
-	t.Flush()
+	t.Flush(1 * time.Minute)
 
 	// Send error to the connected Operation, if the error is internal.
 	if !err.IsExternal() {

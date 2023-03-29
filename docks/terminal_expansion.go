@@ -65,6 +65,7 @@ func ExpandTo(from terminal.Terminal, routeTo string, encryptFor *hub.Hub) (*Exp
 	}
 	expansion.TerminalBase = base
 	base.SetTerminalExtension(expansion)
+	base.SetTimeout(defaultTerminalIdleTimeout)
 
 	// Second, start the actual relay operation.
 

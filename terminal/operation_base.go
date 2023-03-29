@@ -87,8 +87,8 @@ func (op *OperationBase) Send(msg *Msg, timeout time.Duration) *Error {
 
 // Flush sends all messages waiting in the terminal.
 // Meant to be overridden by implementations.
-func (op *OperationBase) Flush() {
-	op.terminal.Flush()
+func (op *OperationBase) Flush(timeout time.Duration) {
+	op.terminal.Flush(timeout)
 }
 
 // Stopped returns whether the operation has stopped.
