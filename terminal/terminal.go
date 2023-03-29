@@ -14,9 +14,15 @@ import (
 	"github.com/safing/portbase/modules"
 	"github.com/safing/portbase/rng"
 	"github.com/safing/spn/cabin"
+	"github.com/safing/spn/conf"
 )
 
-const timeoutTicks = 5
+const (
+	timeoutTicks = 5
+
+	clientTerminalAbandonTimeout = 15 * time.Second
+	serverTerminalAbandonTimeout = 5 * time.Minute
+)
 
 // Terminal represents a terminal.
 type Terminal interface { //nolint:golint // Being explicit is helpful here.
@@ -33,7 +39,7 @@ type Terminal interface { //nolint:golint // Being explicit is helpful here.
 	Send(msg *Msg, timeout time.Duration) *Error
 	// Flush sends all messages waiting in the terminal.
 	// Should not be overridden by implementations.
-	Flush()
+	Flush(timeout time.Duration)
 
 	// StartOperation starts the given operation by assigning it an ID and sending the given operation initialization data.
 	// Should not be overridden by implementations.
@@ -510,7 +516,7 @@ func (t *TerminalBase) WaitForFlush() {
 }
 
 // Flush sends all data waiting to be sent.
-func (t *TerminalBase) Flush() {
+func (t *TerminalBase) Flush(timeout time.Duration) {
 	// Create channel and function for notifying.
 	wait := make(chan struct{})
 	finished := func() {
@@ -521,17 +527,21 @@ func (t *TerminalBase) Flush() {
 	case t.flush <- finished:
 	case <-t.Ctx().Done():
 		return
+	case <-TimedOut(timeout):
+		return
 	}
 	// Wait for flush to finish and return when stopping.
 	select {
 	case <-wait:
 	case <-t.Ctx().Done():
+		return
+	case <-TimedOut(timeout):
+		return
 	}
 
 	// Flush flow control, if configured.
 	if t.flowControl != nil {
-		// Flushing could mean sending a full buffer of 50000 packets.
-		t.flowControl.Flush(5 * time.Minute)
+		t.flowControl.Flush(timeout)
 	}
 }
 
@@ -799,16 +809,30 @@ func (t *TerminalBase) handleAbandonProcedure(err *Error) {
 		t.StopOperation(op, nil)
 	}
 
-	// Wait 20s for all operations to end.
-	// TODO: Use a signal for this instead of polling.
-	for i := 1; i <= 1000 && t.GetActiveOpCount() > 0; i++ {
-		time.Sleep(20 * time.Millisecond)
-		if i == 1000 {
+	// Prepare timeouts for waiting for ops.
+	timeout := clientTerminalAbandonTimeout
+	if conf.PublicHub() {
+		timeout = serverTerminalAbandonTimeout
+	}
+	checkTicker := time.NewTicker(50 * time.Millisecond)
+	defer checkTicker.Stop()
+	abortWaiting := time.After(timeout)
+
+	// Wait for all operations to end.
+waitForOps:
+	for {
+		select {
+		case <-checkTicker.C:
+			if t.GetActiveOpCount() <= 0 {
+				break waitForOps
+			}
+		case <-abortWaiting:
 			log.Warningf(
 				"spn/terminal: terminal %s is continuing shutdown with %d active operations",
 				t.FmtID(),
 				t.GetActiveOpCount(),
 			)
+			break waitForOps
 		}
 	}
 
@@ -829,8 +853,12 @@ func (t *TerminalBase) handleAbandonProcedure(err *Error) {
 		t.submit(msg, 1*time.Second)
 	}
 
-	// Flush all messages before stopping.
-	t.Flush()
+	// If terminal was ended locally, send all data before abandoning.
+	// If terminal was ended remotely, don't bother sending remaining data.
+	if !err.IsExternal() {
+		// Flushing could mean sending a full buffer of 50000 packets.
+		t.Flush(5 * time.Minute)
+	}
 
 	// Stop all other connected workers.
 	t.cancelCtx()

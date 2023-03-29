@@ -41,7 +41,7 @@ type Operation interface {
 
 	// Flush sends all messages waiting in the terminal.
 	// Should not be overridden by implementations.
-	Flush()
+	Flush(timeout time.Duration)
 
 	// Stopped returns whether the operation has stopped.
 	// Should not be overridden by implementations.
@@ -114,7 +114,7 @@ func lockOpRegistry() {
 func (t *TerminalBase) handleOperationStart(opID uint32, initData *container.Container) {
 	// Check if the terminal is being abandoned.
 	if t.Abandoning.IsSet() {
-		t.StopOperation(newUnknownOp(opID, ""), ErrStopping.With("terminal is being abandoned"))
+		t.StopOperation(newUnknownOp(opID, ""), ErrAbandonedTerminal)
 		return
 	}
 

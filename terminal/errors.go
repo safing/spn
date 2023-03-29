@@ -210,6 +210,7 @@ var (
 	ErrTimeout                = registerError(62, errors.New("timed out"))
 	ErrUnsupportedVersion     = registerError(93, errors.New("unsupported version"))
 	ErrHubUnavailable         = registerError(101, errors.New("hub unavailable"))
+	ErrAbandonedTerminal      = registerError(102, errors.New("terminal is being abandoned"))
 	ErrShipSunk               = registerError(108, errors.New("ship sunk"))
 	ErrDestinationUnavailable = registerError(113, errors.New("destination unavailable"))
 	ErrTryAgainLater          = registerError(114, errors.New("try again later"))

@@ -239,7 +239,7 @@ func (op *CounterOp) CounterWorker(ctx context.Context) error {
 
 		// Maybe flush message.
 		if op.opts.Flush {
-			op.terminal.Flush()
+			op.terminal.Flush(1 * time.Second)
 		}
 
 		// Check if we are done with sending.

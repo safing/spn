@@ -9,7 +9,10 @@ import (
 	"github.com/safing/spn/terminal"
 )
 
-const craneIdleTimeout = 5 * time.Minute
+const (
+	defaultTerminalIdleTimeout = 15 * time.Minute
+	remoteTerminalIdleTimeout  = 30 * time.Minute
+)
 
 // EstablishNewTerminal establishes a new terminal with the crane.
 func (crane *Crane) EstablishNewTerminal(
@@ -46,7 +49,7 @@ func (crane *Crane) establishTerminal(id uint32, initData *container.Container) 
 	if err == nil {
 		// Connections via public cranes have a timeout.
 		if crane.Public() {
-			newTerminal.TerminalBase.SetTimeout(craneIdleTimeout)
+			newTerminal.TerminalBase.SetTimeout(remoteTerminalIdleTimeout)
 		}
 		// Register terminal with crane.
 		crane.setTerminal(newTerminal)

@@ -205,7 +205,7 @@ func (t *BareTerminal) Send(msg *Msg, timeout time.Duration) *Error {
 
 // Flush sends all messages waiting in the terminal.
 // Should not be overridden by implementations.
-func (t *BareTerminal) Flush() {}
+func (t *BareTerminal) Flush(timeout time.Duration) {}
 
 // StartOperation starts the given operation by assigning it an ID and sending the given operation initialization data.
 // Should not be overridden by implementations.

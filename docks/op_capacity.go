@@ -228,7 +228,7 @@ func (op *CapacityTestOp) handler(ctx context.Context) error {
 				op.dataReceivedAckWasAckd = true
 
 				// Flush last message.
-				op.Flush()
+				op.Flush(10 * time.Second)
 			}
 
 			// Check if we can complete the test.

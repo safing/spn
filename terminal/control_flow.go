@@ -335,7 +335,6 @@ func (dfq *DuplexFlowQueue) Flush(timeout time.Duration) {
 	case <-wait:
 	case <-dfq.ctx.Done():
 	case <-TimedOut(timeout):
-		return
 	}
 }
 
