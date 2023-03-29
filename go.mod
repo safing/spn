@@ -11,7 +11,7 @@ require (
 	github.com/rot256/pblind v0.0.0-20211117203330-22455f90b565
 	github.com/safing/jess v0.3.1
 	github.com/safing/portbase v0.16.4
-	github.com/safing/portmaster v1.0.9
+	github.com/safing/portmaster v1.0.10
 	github.com/spf13/cobra v1.6.1
 	github.com/stretchr/testify v1.8.1
 	github.com/tevino/abool v1.2.0
@@ -39,7 +39,7 @@ require (
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
 	github.com/hashicorp/go-version v1.6.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
-	github.com/miekg/dns v1.1.52 // indirect
+	github.com/miekg/dns v1.1.53 // indirect
 	github.com/mitchellh/reflectwalk v1.0.2 // indirect
 	github.com/oschwald/maxminddb-golang v1.10.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect

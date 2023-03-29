@@ -106,8 +106,8 @@ github.com/mattn/go-isatty v0.0.8/go.mod h1:Iq45c/XA43vh69/j3iqttzPXn0bhXyGjM0Hd
 github.com/mattn/go-isatty v0.0.16/go.mod h1:kYGgaQfpe5nmfYZH+SKPsOc2e4SrIfOl2e/yFXSvRLM=
 github.com/mgutz/ansi v0.0.0-20170206155736-9520e82c474b/go.mod h1:01TrycV0kFyexm33Z7vhZRXopbI8J3TDReVlkTgMUxE=
 github.com/mgutz/ansi v0.0.0-20200706080929-d51e80ef957d/go.mod h1:01TrycV0kFyexm33Z7vhZRXopbI8J3TDReVlkTgMUxE=
-github.com/miekg/dns v1.1.52 h1:Bmlc/qsNNULOe6bpXcUTsuOajd0DzRHwup6D9k1An0c=
-github.com/miekg/dns v1.1.52/go.mod h1:uInx36IzPl7FYnDcMeVWxj9byh7DutNykX4G9Sj60FY=
+github.com/miekg/dns v1.1.53 h1:ZBkuHr5dxHtB1caEOlZTLPo7D3L3TWckgUUs/RHfDxw=
+github.com/miekg/dns v1.1.53/go.mod h1:uInx36IzPl7FYnDcMeVWxj9byh7DutNykX4G9Sj60FY=
 github.com/mitchellh/copystructure v1.2.0 h1:vpKXTN4ewci03Vljg/q9QvCGUDttBOGBIa15WveJJGw=
 github.com/mitchellh/copystructure v1.2.0/go.mod h1:qLl+cE2AmVv+CoeAwDPye/v+N2HKCj9FbZEVFJRxO9s=
 github.com/mitchellh/go-homedir v1.1.0/go.mod h1:SfyaCUpYCn1Vlf4IUYiD9fPX4A5wJrkLzIz1N1q0pr0=
@@ -135,10 +135,10 @@ github.com/safing/portbase v0.15.2/go.mod h1:5bHi99fz7Hh/wOsZUOI631WF9ePSHk57c4f
 github.com/safing/portbase v0.16.2/go.mod h1:mzNCWqPbO7vIYbbK5PElGbudwd2vx4YPNawymL8Aro8=
 github.com/safing/portbase v0.16.4 h1:3w4Sc0TlSDvUS4Uk5TrsFXf98cwMbCf+BG5Bw6coxNk=
 github.com/safing/portbase v0.16.4/go.mod h1:mzNCWqPbO7vIYbbK5PElGbudwd2vx4YPNawymL8Aro8=
-github.com/safing/portmaster v1.0.9 h1:ZDUyVfnfWc53CEZ7NbnnoHeGs+Hax5+4pugMob2ah2Y=
-github.com/safing/portmaster v1.0.9/go.mod h1:I2Tv9vM9qrvGp1jEt443fxLOv8IzWLFpxIwGh9t+dbo=
-github.com/safing/portmaster-android/go v0.0.0-20230322143234-900a683ded76 h1:qraHfxnfHx1OCu0gTJ1hpZMBX0ZvVvEAfhTQsLxpWJE=
-github.com/safing/portmaster-android/go v0.0.0-20230322143234-900a683ded76/go.mod h1:jph+kuf6+gmKtrrF8M1oBN24X+notuaC6DwflZ1nDWY=
+github.com/safing/portmaster v1.0.10 h1:ivMtUOwIcQzrgPS2uPrAA7ErkwcDxhaGAVp6RnVLhlU=
+github.com/safing/portmaster v1.0.10/go.mod h1:uqCxI6BS+Y8gKHqEOnlzilyB4CWE5oZNI2bSCh5ghGY=
+github.com/safing/portmaster-android/go v0.0.0-20230329101752-28296331340b h1:b+GCsl+dTnR22JY3N2aRDVnac2ocjFqqUhn8rPxywGM=
+github.com/safing/portmaster-android/go v0.0.0-20230329101752-28296331340b/go.mod h1:E3MFiTwsHxsPfzI+CGhpE8BOGQYS/V7tkXttMTFeyuc=
 github.com/satori/go.uuid v1.2.0 h1:0uYX9dsZ2yD7q2RtLRtPSdGDWzjeM3TbMJP9utgA0ww=
 github.com/satori/go.uuid v1.2.0/go.mod h1:dA0hQrYB0VpLJoorglMZABFdXlWrHn1NEOzdhQKdks0=
 github.com/seehuhn/fortuna v1.0.1 h1:lu9+CHsmR0bZnx5Ay646XvCSRJ8PJTi5UYJwDBX68H0=
