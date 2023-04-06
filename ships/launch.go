@@ -6,6 +6,7 @@ import (
 	"net"
 
 	"github.com/safing/portbase/log"
+	"github.com/safing/portmaster/netenv"
 	"github.com/safing/spn/hub"
 )
 
@@ -65,7 +66,7 @@ func Launch(ctx context.Context, h *hub.Hub, transport *hub.Transport, ip net.IP
 			if h.Info.IPv4 != nil {
 				ips = append(ips, h.Info.IPv4)
 			}
-			if h.Info.IPv6 != nil {
+			if h.Info.IPv6 != nil && netenv.IPv6Enabled() {
 				ips = append(ips, h.Info.IPv6)
 			}
 		}
