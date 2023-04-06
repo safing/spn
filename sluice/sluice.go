@@ -149,6 +149,13 @@ func (s *Sluice) handleConnection(conn net.Conn) {
 	}
 	if !local {
 		log.Warningf("spn/sluice: received external request from %s, ignoring", remoteIP)
+
+		// TODO:
+		// Do not allow this to be spammed.
+		// Only allow one trigger per second.
+		// Do not trigger by same "remote IP" in a row.
+		netenv.TriggerNetworkChangeCheck()
+
 		return
 	}
 
