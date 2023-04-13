@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"runtime"
 
@@ -21,6 +22,9 @@ func main() {
 
 	// Configure metrics.
 	_ = metrics.SetNamespace("hub")
+
+	// Configure user agent.
+	updates.UserAgent = fmt.Sprintf("SPN Hub (%s %s)", runtime.GOOS, runtime.GOARCH)
 
 	// Configure SPN mode.
 	conf.EnablePublicHub(true)
