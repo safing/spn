@@ -34,7 +34,7 @@ type Scheduler struct { //nolint:maligned
 	// clearanceUpTo holds the current threshold up to which Unit ID Units may be processed.
 	clearanceUpTo atomic.Int64
 	// slotPace holds the current pace. This is the base value for clearance
-	// calcuation, not the value of the current cleared Units itself.
+	// calculation, not the value of the current cleared Units itself.
 	slotPace atomic.Int64
 	// finished holds the amount of units that were finished within the current slot.
 	finished atomic.Int64
