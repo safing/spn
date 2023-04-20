@@ -175,7 +175,7 @@ reconnect:
 
 			// Wait for signal to run maintenance again.
 			select {
-			case <-healthCheckTicker.Read():
+			case <-healthCheckTicker.Wait():
 			case <-clientHealthCheckTrigger:
 			case <-crew.ConnectErrors():
 			case <-clientNetworkChangedFlag.Signal():
