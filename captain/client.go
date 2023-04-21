@@ -53,12 +53,13 @@ const (
 )
 
 var (
-	clientNetworkChangedFlag           = netenv.GetNetworkChangedFlag()
-	clientIneligibleAccountUpdateDelay = 1 * time.Minute
-	clientRetryConnectBackoffDuration  = 5 * time.Second
-	clientInitialHealthCheckDelay      = 10 * time.Second
-	clientHealthCheckTickDuration      = 1 * time.Minute
-	clientHealthCheckTimeout           = 15 * time.Second
+	clientNetworkChangedFlag               = netenv.GetNetworkChangedFlag()
+	clientIneligibleAccountUpdateDelay     = 1 * time.Minute
+	clientRetryConnectBackoffDuration      = 5 * time.Second
+	clientInitialHealthCheckDelay          = 10 * time.Second
+	clientHealthCheckTickDuration          = 1 * time.Minute
+	clientHealthCheckTickDurationSleepMode = 5 * time.Minute
+	clientHealthCheckTimeout               = 15 * time.Second
 
 	clientHealthCheckTrigger = make(chan struct{}, 1)
 )
@@ -95,6 +96,8 @@ func clientManager(ctx context.Context) error {
 	case <-ctx.Done():
 		return nil
 	}
+
+	healthCheckTicker := module.NewSleepyTicker(clientHealthCheckTickDuration, clientHealthCheckTickDurationSleepMode)
 
 reconnect:
 	for {
@@ -172,7 +175,7 @@ reconnect:
 
 			// Wait for signal to run maintenance again.
 			select {
-			case <-time.After(clientHealthCheckTickDuration):
+			case <-healthCheckTicker.Wait():
 			case <-clientHealthCheckTrigger:
 			case <-crew.ConnectErrors():
 			case <-clientNetworkChangedFlag.Signal():

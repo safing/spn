@@ -25,7 +25,7 @@ func (s *Scheduler) NewUnit() *Unit {
 	}
 }
 
-// ReUse re-initilizes the unit to be able to reuse already allocated structs.
+// ReUse re-initialized the unit to be able to reuse already allocated structs.
 func (u *Unit) ReUse() {
 	// Finish previous unit.
 	u.Finish()
