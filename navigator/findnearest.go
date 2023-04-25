@@ -165,8 +165,8 @@ func (nb *nearbyPins) randomizeTop() {
 
 	// Shuffle top set.
 	if randomizeUpTo >= 2 {
-		r := mrand.New(mrand.NewSource(time.Now().UnixNano()))
-		r.Shuffle(randomizeUpTo, nb.Swap)
+		mr := mrand.New(mrand.NewSource(time.Now().UnixNano())) //nolint:gosec
+		mr.Shuffle(randomizeUpTo, nb.Swap)
 	}
 }
 

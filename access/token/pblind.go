@@ -394,12 +394,12 @@ func (pbh *PBlindHandler) ProcessIssuedTokens(issuedTokens *IssuedPBlindTokens) 
 	// Step 2: Randomize received tokens
 
 	if pbh.opts.RandomizeOrder {
-		rInt, err := rand.Int(rand.Reader, big.NewInt(math.MaxInt64)) //nolint:gosec // False positive - check the imports.
+		rInt, err := rand.Int(rand.Reader, big.NewInt(math.MaxInt64))
 		if err != nil {
 			return fmt.Errorf("failed to get seed for shuffle: %w", err)
 		}
-		mrand.Seed(rInt.Int64())
-		mrand.Shuffle(len(finalizedTokens), func(i, j int) {
+		mr := mrand.New(mrand.NewSource(rInt.Int64())) //nolint:gosec
+		mr.Shuffle(len(finalizedTokens), func(i, j int) {
 			finalizedTokens[i], finalizedTokens[j] = finalizedTokens[j], finalizedTokens[i]
 		})
 	}
@@ -459,7 +459,7 @@ func (pbh *PBlindHandler) Verify(token *Token) error {
 	// Unpack token.
 	t, err := UnpackPBlindToken(token.Data)
 	if err != nil {
-		return fmt.Errorf("%w: %s", ErrTokenMalformed, err)
+		return fmt.Errorf("%w: %w", ErrTokenMalformed, err)
 	}
 
 	// Check if serial is valid.
@@ -475,7 +475,7 @@ func (pbh *PBlindHandler) Verify(token *Token) error {
 	// Build info for checking signature.
 	info, err := pbh.makeInfo(t.Serial)
 	if err != nil {
-		return fmt.Errorf("%w: %s", ErrTokenMalformed, err)
+		return fmt.Errorf("%w: %w", ErrTokenMalformed, err)
 	}
 
 	// Check signature.
@@ -486,7 +486,7 @@ func (pbh *PBlindHandler) Verify(token *Token) error {
 	// Check for double spending.
 	if pbh.opts.DoubleSpendProtection != nil {
 		if err := pbh.opts.DoubleSpendProtection(t.Token); err != nil {
-			return fmt.Errorf("%w: %s", ErrTokenUsed, err)
+			return fmt.Errorf("%w: %w", ErrTokenUsed, err)
 		}
 	}
 

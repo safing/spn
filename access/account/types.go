@@ -31,7 +31,7 @@ const (
 	// StatusInvalidAuth [401 Unauthorized] is returned when the credentials are
 	// invalid or the user was logged out.
 	StatusInvalidAuth = 401
-	// StatusNoAccess [403 Forbidden] is returned when the the user does not have
+	// StatusNoAccess [403 Forbidden] is returned when the user does not have
 	// an active subscription or the subscription does not include the required
 	// feature for the request.
 	StatusNoAccess = 403

@@ -31,7 +31,7 @@ func registerRouteAPIEndpoints() error {
 	return nil
 }
 
-func handleRouteCalculationRequest(ar *api.Request) (msg string, err error) {
+func handleRouteCalculationRequest(ar *api.Request) (msg string, err error) { //nolint:maintidx
 	// Get map.
 	m, ok := getMapForAPI(ar.URLVars["map"])
 	if !ok {
@@ -90,8 +90,8 @@ func handleRouteCalculationRequest(ar *api.Request) (msg string, err error) {
 
 		// Shuffle IPs.
 		if len(ips) >= 2 {
-			r := mrand.New(mrand.NewSource(time.Now().UnixNano()))
-			r.Shuffle(len(ips), func(i, j int) {
+			mr := mrand.New(mrand.NewSource(time.Now().UnixNano())) //nolint:gosec
+			mr.Shuffle(len(ips), func(i, j int) {
 				ips[i], ips[j] = ips[j], ips[i]
 			})
 		}

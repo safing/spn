@@ -87,7 +87,7 @@ func (r *Routes) randomizeTop() {
 
 	// Shuffle top set.
 	if randomizeUpTo >= 2 {
-		mr := mrand.New(mrand.NewSource(time.Now().UnixNano()))
+		mr := mrand.New(mrand.NewSource(time.Now().UnixNano())) //nolint:gosec
 		mr.Shuffle(randomizeUpTo, r.Swap)
 	}
 }

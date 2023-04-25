@@ -166,7 +166,7 @@ func (or *OptimizationResult) addSuggested(reason string, pins ...*Pin) {
 }
 
 func (or *OptimizationResult) markSuggestedReachable(suggested *Pin, hopDistance int) {
-	// Don't update if distance is greater or equal than than current one.
+	// Don't update if distance is greater or equal than current one.
 	if hopDistance >= suggested.analysis.SuggestedHopDistance {
 		return
 	}

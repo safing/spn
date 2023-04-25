@@ -2,7 +2,7 @@ package terminal
 
 import "time"
 
-// Upstream defines the the interface for upstream (parent) components.
+// Upstream defines the interface for upstream (parent) components.
 type Upstream interface {
 	Send(msg *Msg, timeout time.Duration) *Error
 }

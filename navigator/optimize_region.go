@@ -11,7 +11,7 @@ func (or *OptimizationResult) markSuggestedReachableInRegion(suggested *Pin, hop
 		return
 	}
 
-	// Don't update if distance is greater or equal than than current one.
+	// Don't update if distance is greater or equal than current one.
 	if hopDistance >= suggested.analysis.SuggestedHopDistanceInRegion {
 		return
 	}

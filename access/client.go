@@ -32,7 +32,7 @@ var (
 	accountClient     = &http.Client{}
 	clientRequestLock sync.Mutex
 
-	// Automatically enable SPN subsystem/module after login.
+	// EnableAfterLogin automatically enables the SPN subsystem/module after login.
 	EnableAfterLogin = true
 )
 

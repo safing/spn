@@ -51,8 +51,7 @@ func ParseTransport(definition string) (*Transport, error) {
 	// parse port
 	portData := u.Port()
 	if portData == "" {
-		// no port available - it might be in u.Opaque
-		// u.Opaque holds both the port and possibly a path
+		// no port available - it might be in u.Opaque, which holds both the port and possibly a path
 		portData = strings.SplitN(u.Opaque, "/", 2)[0] // get port
 		t.Path = strings.TrimPrefix(t.Path, portData)  // trim port from path
 		// check again for port
