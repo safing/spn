@@ -113,8 +113,10 @@ type Subscription struct {
 	PaymentProvider string     `json:"payment_provider"`
 }
 
+// FeatureID defines a feature that requires a plan/subscription.
 type FeatureID string
 
+// A list of all supported features.
 const (
 	FeatureSPN             = FeatureID("spn")
 	FeaturePrioritySupport = FeatureID("support")
