@@ -3,7 +3,7 @@ package account
 import (
 	"time"
 
-	"github.com/safing/portbase/utils"
+	"golang.org/x/exp/slices"
 )
 
 // User, Subscription and Charge states.
@@ -53,12 +53,6 @@ const (
 	StatusConnectionError = -2
 )
 
-// Feature IDs.
-const (
-	FeatureSPN             = "spn"
-	FeaturePrioritySupport = "support"
-)
-
 // User describes an SPN user account.
 type User struct {
 	Username     string        `json:"username"`
@@ -84,7 +78,7 @@ func (u *User) MayUsePrioritySupport() bool {
 // MayUse returns whether the user may currently use the feature identified by
 // the given feature ID.
 // Leave feature ID empty to check without feature.
-func (u *User) MayUse(featureID string) bool {
+func (u *User) MayUse(featureID FeatureID) bool {
 	switch {
 	case u.State != UserStateApproved:
 		// Only approved users may use the SPN.
@@ -96,7 +90,7 @@ func (u *User) MayUse(featureID string) bool {
 	case u.CurrentPlan == nil:
 		// Need a plan / package.
 	case featureID != "" &&
-		!utils.StringInSlice(u.CurrentPlan.FeatureIDs, featureID):
+		!slices.Contains(u.CurrentPlan.FeatureIDs, featureID):
 		// Required feature ID must be in plan / package feature IDs.
 	default:
 		// All checks passed!
@@ -119,11 +113,21 @@ type Subscription struct {
 	PaymentProvider string     `json:"payment_provider"`
 }
 
+type FeatureID string
+
+const (
+	FeatureSPN             = FeatureID("spn")
+	FeaturePrioritySupport = FeatureID("support")
+	FeatureHistory         = FeatureID("history")
+	FeatureBWVis           = FeatureID("bw-vis")
+	FeatureVPNCompat       = FeatureID("vpn-compat")
+)
+
 // Plan describes an SPN subscription plan.
 type Plan struct {
-	Name       string   `json:"name"`
-	Amount     int      `json:"amount"`
-	Months     int      `json:"months"`
-	Renewable  bool     `json:"renewable"`
-	FeatureIDs []string `json:"feature_ids"`
+	Name       string      `json:"name"`
+	Amount     int         `json:"amount"`
+	Months     int         `json:"months"`
+	Renewable  bool        `json:"renewable"`
+	FeatureIDs []FeatureID `json:"feature_ids"`
 }
