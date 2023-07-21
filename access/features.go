@@ -14,20 +14,25 @@ type Feature struct {
 type Package struct {
 	Name     string
 	HexColor string
+	InfoURL  string
 }
 
 var (
+	infoURL     = "https://safing.io/pricing/"
 	packageFree = &Package{
 		Name:     "Free",
-		HexColor: "ffffff",
+		HexColor: "#ffffff",
+		InfoURL:  infoURL,
 	}
 	packagePlus = &Package{
 		Name:     "Plus",
-		HexColor: "2fcfae",
+		HexColor: "#2fcfae",
+		InfoURL:  infoURL,
 	}
 	packagePro = &Package{
 		Name:     "Pro",
-		HexColor: "029ad0",
+		HexColor: "#029ad0",
+		InfoURL:  infoURL,
 	}
 	features = []Feature{
 		{
@@ -43,7 +48,7 @@ var (
 		},
 		{
 			Name:        "Network History",
-			ConfigKey:   "history/enabled", // FIXME: other settings use present tense - change to "history/enable"?
+			ConfigKey:   "history/enable",
 			ConfigScope: "history/",
 			InPackage:   packagePlus,
 			Comment:     "In Beta",
