@@ -60,6 +60,23 @@ func registerAPIEndpoints() error {
 		return err
 	}
 
+	if err := api.RegisterEndpoint(api.Endpoint{
+		Path:       `account/features`,
+		Read:       api.PermitUser,
+		ReadMethod: http.MethodGet,
+		StructFunc: func(_ *api.Request) (i interface{}, err error) {
+			return struct {
+				Features []Feature
+			}{
+				Features: features,
+			}, nil
+		},
+		Name:        "Get Account Features",
+		Description: "Returns all account features.",
+	}); err != nil {
+		return err
+	}
+
 	return nil
 }
 
