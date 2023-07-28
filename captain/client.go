@@ -8,7 +8,6 @@ import (
 
 	"github.com/tevino/abool"
 
-	"github.com/safing/portbase/database"
 	"github.com/safing/portbase/log"
 	"github.com/safing/portbase/notifications"
 	"github.com/safing/portmaster/netenv"
@@ -206,7 +205,7 @@ func clientCheckNetworkReady(ctx context.Context) clientComponentResult {
 func clientCheckAccountAndTokens(ctx context.Context) clientComponentResult {
 	// Get SPN user.
 	user, err := access.GetUser()
-	if err != nil && !errors.Is(err, database.ErrNotFound) {
+	if err != nil && !errors.Is(err, access.ErrNotLoggedIn) {
 		notifications.NotifyError(
 			"spn:failed-to-get-user",
 			"SPN Internal Error",

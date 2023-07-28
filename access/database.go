@@ -1,6 +1,7 @@
 package access
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"sync"
@@ -87,9 +88,12 @@ func (authToken *AuthTokenRecord) Update(resp *http.Response) error {
 }
 
 var (
-	cachedUser       *UserRecord
-	cachedAuthToken  *AuthTokenRecord
 	accountCacheLock sync.Mutex
+
+	cachedUser    *UserRecord
+	cachedUserSet bool
+
+	cachedAuthToken *AuthTokenRecord
 )
 
 func clearUserCaches() {
@@ -97,21 +101,31 @@ func clearUserCaches() {
 	defer accountCacheLock.Unlock()
 
 	cachedUser = nil
+	cachedUserSet = false
 	cachedAuthToken = nil
 }
 
 // GetUser returns the current user account.
+// Returns nil when no user is logged in.
 func GetUser() (*UserRecord, error) {
 	// Check cache.
 	accountCacheLock.Lock()
 	defer accountCacheLock.Unlock()
-	if cachedUser != nil {
+	if cachedUserSet {
+		if cachedUser == nil {
+			return nil, ErrNotLoggedIn
+		}
 		return cachedUser, nil
 	}
 
 	// Load from disk.
 	r, err := db.Get(userRecordKey)
 	if err != nil {
+		if errors.Is(err, database.ErrNotFound) {
+			cachedUser = nil
+			cachedUserSet = true
+			return nil, ErrNotLoggedIn
+		}
 		return nil, err
 	}
 
@@ -124,6 +138,7 @@ func GetUser() (*UserRecord, error) {
 			return nil, err
 		}
 		cachedUser = newUser
+		cachedUserSet = true
 		return cachedUser, nil
 	}
 
@@ -133,6 +148,7 @@ func GetUser() (*UserRecord, error) {
 		return nil, fmt.Errorf("record not of type *UserRecord, but %T", r)
 	}
 	cachedUser = newUser
+	cachedUserSet = true
 	return cachedUser, nil
 }
 
@@ -142,6 +158,7 @@ func (user *UserRecord) Save() error {
 	accountCacheLock.Lock()
 	defer accountCacheLock.Unlock()
 	cachedUser = user
+	cachedUserSet = true
 
 	// Update view if unset.
 	if user.View == nil {

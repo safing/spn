@@ -178,7 +178,7 @@ func updateUserWithFailedRequest(statusCode int, disableSubscription bool) {
 	// Get user from database.
 	user, err := GetUser()
 	if err != nil {
-		if !errors.Is(err, database.ErrNotFound) {
+		if !errors.Is(err, ErrNotLoggedIn) {
 			log.Warningf("spn/access: failed to get user to update with failed request: %s", err)
 		}
 		return
@@ -216,7 +216,7 @@ func Login(username, password string) (user *UserRecord, code int, err error) {
 	// Get previous user.
 	previousUser, err := GetUser()
 	if err != nil {
-		if !errors.Is(err, database.ErrNotFound) {
+		if !errors.Is(err, ErrNotLoggedIn) {
 			log.Warningf("spn/access: failed to get previous for re-login: %s", err)
 		}
 		previousUser = nil
@@ -325,7 +325,7 @@ func Logout(shallow, purge bool) error {
 	// Else, just update the user.
 	user, err := GetUser()
 	if err != nil {
-		if errors.Is(err, database.ErrNotFound) {
+		if errors.Is(err, ErrNotLoggedIn) {
 			return nil
 		}
 		return fmt.Errorf("failed to load user for logout: %w", err)
