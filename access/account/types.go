@@ -80,6 +80,8 @@ func (u *User) MayUsePrioritySupport() bool {
 // Leave feature ID empty to check without feature.
 func (u *User) MayUse(featureID FeatureID) bool {
 	switch {
+	case u == nil:
+		// We need a user, obviously.
 	case u.State != UserStateApproved:
 		// Only approved users may use the SPN.
 	case u.Subscription == nil:
