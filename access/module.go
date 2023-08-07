@@ -23,6 +23,9 @@ var (
 
 	tokenIssuerIsFailing     = abool.New()
 	tokenIssuerRetryDuration = 10 * time.Minute
+
+	// AccountUpdateEvent is fired when the account has changed in any way.
+	AccountUpdateEvent = "account update"
 )
 
 // Errors.
@@ -40,6 +43,8 @@ func init() {
 }
 
 func prep() error {
+	module.RegisterEvent(AccountUpdateEvent, true)
+
 	// Register API handlers.
 	if conf.Client() {
 		err := registerAPIEndpoints()

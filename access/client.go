@@ -213,6 +213,9 @@ func Login(username, password string) (user *UserRecord, code int, err error) {
 	clientRequestLock.Lock()
 	defer clientRequestLock.Unlock()
 
+	// Trigger account update when done.
+	defer module.TriggerEvent(AccountUpdateEvent, nil)
+
 	// Get previous user.
 	previousUser, err := GetUser()
 	if err != nil {
@@ -296,6 +299,9 @@ func Logout(shallow, purge bool) error {
 	clientRequestLock.Lock()
 	defer clientRequestLock.Unlock()
 
+	// Trigger account update when done.
+	defer module.TriggerEvent(AccountUpdateEvent, nil)
+
 	// Clear caches.
 	clearUserCaches()
 
@@ -374,6 +380,9 @@ func Logout(shallow, purge bool) error {
 func UpdateUser() (user *UserRecord, statusCode int, err error) {
 	clientRequestLock.Lock()
 	defer clientRequestLock.Unlock()
+
+	// Trigger account update when done.
+	defer module.TriggerEvent(AccountUpdateEvent, nil)
 
 	// Create request options.
 	userData := &account.User{}
