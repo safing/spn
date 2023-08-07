@@ -34,6 +34,35 @@ type UserRecord struct {
 	LoggedInAt        *time.Time
 }
 
+// MayUseSPN returns whether the user may currently use the SPN.
+func (user *UserRecord) MayUseSPN() bool {
+	// Shadow this function in order to allow calls on a nil user.
+	if user == nil || user.User == nil {
+		return false
+	}
+	return user.User.MayUseSPN()
+}
+
+// MayUsePrioritySupport returns whether the user may currently use the priority support.
+func (user *UserRecord) MayUsePrioritySupport() bool {
+	// Shadow this function in order to allow calls on a nil user.
+	if user == nil || user.User == nil {
+		return false
+	}
+	return user.User.MayUsePrioritySupport()
+}
+
+// MayUse returns whether the user may currently use the feature identified by
+// the given feature ID.
+// Leave feature ID empty to check without feature.
+func (user *UserRecord) MayUse(featureID account.FeatureID) bool {
+	// Shadow this function in order to allow calls on a nil user.
+	if user == nil || user.User == nil {
+		return false
+	}
+	return user.User.MayUse(featureID)
+}
+
 // AuthTokenRecord holds an authentication token.
 type AuthTokenRecord struct {
 	record.Base

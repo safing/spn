@@ -5,7 +5,7 @@ type Feature struct {
 	Name              string
 	ConfigKey         string
 	ConfigScope       string
-	RequiredFeatureID string // FIXME: can more than one be required?
+	RequiredFeatureID string
 	InPackage         *Package
 	Comment           string
 }
