@@ -4,15 +4,15 @@ import "github.com/safing/spn/access/account"
 
 // Feature describes a notable part of the program.
 type Feature struct {
-	ID                string
 	Name              string
+	ID                string
+	RequiredFeatureID account.FeatureID
 	ConfigKey         string
 	ConfigScope       string
-	RequiredFeatureID account.FeatureID // FIXME: can more than one be required?
 	InPackage         *Package
 	Comment           string
 	Beta              bool
-	CommingSoon       bool
+	ComingSoon        bool
 	icon              string
 }
 
@@ -42,8 +42,8 @@ var (
 	}
 	features = []Feature{
 		{
-			ID:          "secure_dns",
 			Name:        "Secure DNS",
+			ID:          "dns",
 			ConfigScope: "dns/",
 			InPackage:   packageFree,
 			icon: `
@@ -54,8 +54,8 @@ var (
 			`,
 		},
 		{
-			ID:          "privacy_filter",
 			Name:        "Privacy Filter",
+			ID:          "filter",
 			ConfigScope: "filter/",
 			InPackage:   packageFree,
 			icon: `
@@ -65,12 +65,12 @@ var (
 			`,
 		},
 		{
-			ID:                "network_history",
 			Name:              "Network History",
+			ID:                string(account.FeatureHistory),
+			RequiredFeatureID: account.FeatureHistory,
 			ConfigKey:         "history/enable",
 			ConfigScope:       "history/",
 			InPackage:         packagePlus,
-			RequiredFeatureID: account.FeatureHistory,
 			Beta:              true,
 			icon: `
 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
@@ -80,11 +80,11 @@ var (
 			`,
 		},
 		{
-			ID:                "bandwith_vis",
 			Name:              "Bandwidth Visibility",
-			InPackage:         packagePlus,
+			ID:                string(account.FeatureBWVis),
 			RequiredFeatureID: account.FeatureBWVis,
-			CommingSoon:       true,
+			InPackage:         packagePlus,
+			Beta:              true,
 			icon: `
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
       <path stroke-linecap="round" stroke-linejoin="round"
@@ -93,10 +93,10 @@ var (
 			`,
 		},
 		{
-			ID:                "priority_support",
-			Name:              "Priority Support",
+			Name:              "Safing Support",
+			ID:                string(account.FeatureSafingSupport),
+			RequiredFeatureID: account.FeatureSafingSupport,
 			InPackage:         packagePlus,
-			RequiredFeatureID: account.FeaturePrioritySupport,
 			icon: `
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
       <path stroke-linecap="round" stroke-linejoin="round"
@@ -105,8 +105,8 @@ var (
 			`,
 		},
 		{
-			ID:                "spn",
 			Name:              "Safing Privacy Network",
+			ID:                string(account.FeatureSPN),
 			RequiredFeatureID: account.FeatureSPN,
 			ConfigKey:         "spn/enable",
 			ConfigScope:       "spn/",
