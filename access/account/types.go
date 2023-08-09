@@ -72,7 +72,7 @@ func (u *User) MayUseSPN() bool {
 
 // MayUsePrioritySupport returns whether the user may currently use the priority support.
 func (u *User) MayUsePrioritySupport() bool {
-	return u.MayUse(FeaturePrioritySupport)
+	return u.MayUse(FeatureSafingSupport)
 }
 
 // MayUse returns whether the user may currently use the feature identified by
@@ -120,11 +120,11 @@ type FeatureID string
 
 // A list of all supported features.
 const (
-	FeatureSPN             = FeatureID("spn")
-	FeaturePrioritySupport = FeatureID("support")
-	FeatureHistory         = FeatureID("history")
-	FeatureBWVis           = FeatureID("bw-vis")
-	FeatureVPNCompat       = FeatureID("vpn-compat")
+	FeatureSPN           = FeatureID("spn")
+	FeatureSafingSupport = FeatureID("support")
+	FeatureHistory       = FeatureID("history")
+	FeatureBWVis         = FeatureID("bw-vis")
+	FeatureVPNCompat     = FeatureID("vpn-compat")
 )
 
 // Plan describes an SPN subscription plan.

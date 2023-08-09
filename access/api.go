@@ -77,6 +77,30 @@ func registerAPIEndpoints() error {
 		return err
 	}
 
+	if err := api.RegisterEndpoint(api.Endpoint{
+		Path:       `account/features/{id:[A-Za-z0-9_-]+}/icon`,
+		Read:       api.PermitUser,
+		ReadMethod: http.MethodGet,
+		Name:       "Returns the image of the featuare",
+		MimeType:   "image/svg+xml",
+		DataFunc: func(ar *api.Request) (data []byte, err error) {
+			featureID, ok := ar.URLVars["id"]
+			if !ok {
+				return nil, fmt.Errorf("invalid feature id")
+			}
+
+			for _, feature := range features {
+				if feature.ID == featureID {
+					return []byte(feature.icon), nil
+				}
+			}
+
+			return nil, fmt.Errorf("feature id not found")
+		},
+	}); err != nil {
+		return err
+	}
+
 	return nil
 }
 
