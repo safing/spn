@@ -190,16 +190,26 @@ ask_config() {
 write_config_file() {
     cat >${1} <<EOT
 {
-  "core": {
+ "core": {
     "metrics": {
-      "instance": "$HOSTNAME",
-      "comment": "$METRICS_COMMENT",
-      "push": "$PUSHMETRICS"
+    "instance": "$HOSTNAME",
+    "comment": "$METRICS_COMMENT",
+    "push": "$PUSHMETRICS"
     }
-  },
-  "spn": {
+},
+"spn": {
     "publicHub": {
-      "name": "$HOSTNAME"
+    "name": "$NAME",
+    "group": "$GROUP",
+    "contactAddress": "$CONTACTADDRESS",
+    "contactService": "$CONTACTSERVICE",
+    "hosters: "$HOSTERS",
+    "datacenter": "$DATACENTER",
+    "ip4": "$IP4",
+    "ip6": "$IP6",
+    "transports": "$TRANSPORTS",
+    "entry": "$ENTRY",
+    "exit": "$EXIT"
     }
   }
 }
