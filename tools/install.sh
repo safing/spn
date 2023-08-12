@@ -189,7 +189,7 @@ ask_config() {
 }
 
 write_config_file() {
-    local config_file=${1:-${LOCAL_CONFIG_FILE:-/path/to/default/config.json}}
+    local config_file=${1:-${LOCAL_CONFIG_FILE:-default}}
     if [ -z "$LOCAL_CONFIG_FILE" ]
     then
         cat >${1} <<EOT
