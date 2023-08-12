@@ -222,7 +222,7 @@ confirm_config() {
     echo "   Install systemd: ${BOLD}${INSTALLSYSTEMD}${RESET}"
     echo "   Unit path: ${BOLD}${SYSTEMDINSTALLPATH}${RESET}"
     echo "   Start Now: ${BOLD}${ENABLENOW}${RESET}"
-    echo "   Config File: ${BOLD}${LOCAL_CONFIG_FILE:-/path/to/default/config.json}${RESET}"
+    echo "   Config File: ${BOLD}${LOCAL_CONFIG_FILE:-default}${RESET}"
     echo ""
     echo "   Config:"
     tmpfile=$(mktemp)
