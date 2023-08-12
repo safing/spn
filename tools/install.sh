@@ -18,6 +18,7 @@ PMSTART=
 ENABLENOW=
 INSTALLSYSTEMD=
 SYSTEMDINSTALLPATH=
+LOCAL_CONFIG_FILE=
 
 apply_defaults() {
     ARCH=${ARCH:-amd64}
@@ -188,22 +189,28 @@ ask_config() {
 }
 
 write_config_file() {
-    cat >${1} <<EOT
+    local config_file=${1:-${LOCAL_CONFIG_FILE:-/path/to/default/config.json}}
+    if [ -z "$LOCAL_CONFIG_FILE" ]
+    then
+        cat >${1} <<EOT
 {
-  "core": {
+"core": {
     "metrics": {
-      "instance": "$HOSTNAME",
-      "comment": "$METRICS_COMMENT",
-      "push": "$PUSHMETRICS"
+    "instance": "$HOSTNAME",
+    "comment": "$METRICS_COMMENT",
+    "push": "$PUSHMETRICS"
     }
-  },
-  "spn": {
+},
+"spn": {
     "publicHub": {
-      "name": "$HOSTNAME"
+    "name": "$HOSTNAME"
     }
-  }
+}
 }
 EOT
+    else
+    cat "$LOCAL_CONFIG_FILE"
+    fi
 }
 
 confirm_config() {
@@ -211,12 +218,13 @@ confirm_config() {
     echo ""
     echo "   Architecture: ${BOLD}${ARCH}${RESET}"
     echo "   Download-URL: ${BOLD}${PMSTART}${RESET}"
-    echo "     Target Dir: ${BOLD}${INSTALLDIR}${RESET}"
-    echo "Install systemd: ${BOLD}${INSTALLSYSTEMD}${RESET}"
-    echo "      Unit path: ${BOLD}${SYSTEMDINSTALLPATH}${RESET}"
-    echo "      Start Now: ${BOLD}${ENABLENOW}${RESET}"
+    echo "   Target Dir: ${BOLD}${INSTALLDIR}${RESET}"
+    echo "   Install systemd: ${BOLD}${INSTALLSYSTEMD}${RESET}"
+    echo "   Unit path: ${BOLD}${SYSTEMDINSTALLPATH}${RESET}"
+    echo "   Start Now: ${BOLD}${ENABLENOW}${RESET}"
+    echo "   Config File: ${BOLD}${LOCAL_CONFIG_FILE:-/path/to/default/config.json}${RESET}"
     echo ""
-    echo "         Config:"
+    echo "   Config:"
     tmpfile=$(mktemp)
     write_config_file $tmpfile
     cat $tmpfile
@@ -245,11 +253,12 @@ ${BOLD}Options:${RESET}
     ${GREEN}-y, --unattended${RESET}           Don't ask for confirmation.
     ${GREEN}-n, --no-start${RESET}             Do not immediately start SPN hub.
     ${GREEN}-t, --target PATH${RESET}          Configure the installation directory.
-    ${GREEN}-h, --help${RESET}                 Display this help text
+    ${GREEN}-h, --help${RESET}                 Display this help text.
     ${GREEN}-a, --arch${RESET}                 Configure the binary architecture.
     ${GREEN}-u, --url URL${RESET}              Set download URL for portmaster start.
     ${GREEN}-S, --no-systemd${RESET}           Do not install systemd service unit.
     ${GREEN}-s, --service-path PATH${RESET}    Location for the systemd unit file.
+    ${GREEN}-l, --local-config PATH${RESET}    Use a local config JSON file.
 EOT
 }
 
@@ -287,6 +296,10 @@ main() {
                 ;;
             --service-path | -s)
                 SYSTEMDINSTALLPATH=$2
+                shift
+                ;;
+            --local-config | -l)
+                LOCAL_CONFIG_FILE=$2
                 shift
                 ;;
             *)
