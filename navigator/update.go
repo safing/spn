@@ -246,7 +246,7 @@ func (m *Map) updateHub(h *hub.Hub, lockMap, lockHub bool) {
 	}
 
 	// Update Trust and Advisory Statuses.
-	m.updateIntelStatuses(pin)
+	m.updateIntelStatuses(pin, cfgOptionTrustNodeNodes())
 
 	// Update Statuses derived from Hub.
 	pin.updateStateHasRequiredInfo()

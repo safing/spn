@@ -6,6 +6,7 @@ import (
 	"os"
 	"sync"
 
+	"github.com/safing/portbase/config"
 	"github.com/safing/portbase/updater"
 	"github.com/safing/portmaster/updates"
 	"github.com/safing/spn/conf"
@@ -22,12 +23,25 @@ var (
 )
 
 func registerIntelUpdateHook() error {
-	return module.RegisterEventHook(
+	if err := module.RegisterEventHook(
 		updates.ModuleName,
 		updates.ResourceUpdateEvent,
 		"update SPN intel",
 		updateSPNIntel,
-	)
+	); err != nil {
+		return err
+	}
+
+	if err := module.RegisterEventHook(
+		"config",
+		config.ChangeEvent,
+		"update SPN intel",
+		updateSPNIntel,
+	); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func updateSPNIntel(ctx context.Context, _ interface{}) (err error) {
@@ -61,7 +75,7 @@ func updateSPNIntel(ctx context.Context, _ interface{}) (err error) {
 	}
 
 	setVirtualNetworkConfig(intel.VirtualNetworks)
-	return navigator.Main.UpdateIntel(intel)
+	return navigator.Main.UpdateIntel(intel, cfgOptionTrustNodeNodes())
 }
 
 func resetSPNIntel() {

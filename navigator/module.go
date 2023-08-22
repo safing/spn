@@ -14,6 +14,9 @@ import (
 const (
 	// cfgOptionRoutingAlgorithmKey is copied from profile/config.go to avoid import loop.
 	cfgOptionRoutingAlgorithmKey = "spn/routingAlgorithm"
+
+	// cfgOptionRoutingAlgorithmKey is copied from captain/config.go to avoid import loop.
+	cfgOptionTrustNodeNodesKey = "spn/trustNodes"
 )
 
 var (
@@ -38,6 +41,7 @@ var (
 
 	devMode                   config.BoolOption
 	cfgOptionRoutingAlgorithm config.StringOption
+	cfgOptionTrustNodeNodes   config.StringArrayOption
 )
 
 func init() {
@@ -52,6 +56,7 @@ func start() error {
 	Main = NewMap(conf.MainMapName, true)
 	devMode = config.Concurrent.GetAsBool(config.CfgDevModeKey, false)
 	cfgOptionRoutingAlgorithm = config.Concurrent.GetAsString(cfgOptionRoutingAlgorithmKey, DefaultRoutingProfileID)
+	cfgOptionTrustNodeNodes = config.Concurrent.GetAsStringArray(cfgOptionTrustNodeNodesKey, []string{})
 
 	err := registerMapDatabase()
 	if err != nil {

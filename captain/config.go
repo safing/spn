@@ -22,16 +22,21 @@ var (
 	// CfgOptionDNSExitHubPolicyKey is the configuration key for the SPN DNS exit policy.
 	CfgOptionDNSExitHubPolicyKey   = "spn/dnsExitPolicy"
 	cfgOptionDNSExitHubPolicy      config.StringArrayOption
-	cfgOptionDNSExitHubPolicyOrder = 147
+	cfgOptionDNSExitHubPolicyOrder = 148
 
 	// CfgOptionUseCommunityNodesKey is the configuration key for whether to use community nodes.
 	CfgOptionUseCommunityNodesKey   = "spn/useCommunityNodes"
 	cfgOptionUseCommunityNodes      config.BoolOption
-	cfgOptionUseCommunityNodesOrder = 148
+	cfgOptionUseCommunityNodesOrder = 149
 
 	// NonCommunityVerifiedOwners holds a list of verified owners that are not
 	// considered "community".
 	NonCommunityVerifiedOwners = []string{"Safing"}
+
+	// CfgOptionTrustNodeNodesKey is the configuration key for whether additional trusted nodes.
+	CfgOptionTrustNodeNodesKey   = "spn/trustNodes"
+	cfgOptionTrustNodeNodes      config.StringArrayOption
+	cfgOptionTrustNodeNodesOrder = 150
 
 	// Special Access Code.
 	cfgOptionSpecialAccessCodeKey     = "spn/specialAccessCode"
@@ -121,6 +126,25 @@ This setting mainly exists for when you need to simulate your presence in anothe
 		return err
 	}
 	cfgOptionUseCommunityNodes = config.Concurrent.GetAsBool(CfgOptionUseCommunityNodesKey, true)
+
+	err = config.Register(&config.Option{
+		Name:           "Trust Nodes",
+		Key:            CfgOptionTrustNodeNodesKey,
+		Description:    "Specify which community nodes to additionally trust. These nodes may then also be used as a Home Node, as well as an Exit Node for unencrypted connections.",
+		Help:           "You can specify nodes by their ID or their verified operator.",
+		Sensitive:      true,
+		OptType:        config.OptTypeStringArray,
+		ExpertiseLevel: config.ExpertiseLevelExpert,
+		DefaultValue:   []string{},
+		Annotations: config.Annotations{
+			config.DisplayOrderAnnotation: cfgOptionTrustNodeNodesOrder,
+			config.CategoryAnnotation:     "Routing",
+		},
+	})
+	if err != nil {
+		return err
+	}
+	cfgOptionTrustNodeNodes = config.Concurrent.GetAsStringArray(CfgOptionTrustNodeNodesKey, []string{})
 
 	err = config.Register(&config.Option{
 		Name:         "Special Access Code",

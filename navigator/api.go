@@ -180,7 +180,7 @@ func handleIntelUpdateRequest(ar *api.Request) (msg string, err error) {
 	}
 
 	// Apply intel data.
-	err = m.UpdateIntel(newIntel)
+	err = m.UpdateIntel(newIntel, cfgOptionTrustNodeNodes())
 	if err != nil {
 		return "", fmt.Errorf("failed to apply intel data: %w", err)
 	}
