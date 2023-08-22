@@ -49,7 +49,7 @@ func (m *Map) optimizeTestMap(t *testing.T) {
 			// Update measurements for the new home.
 			updateMeasurements(m, mcf)
 
-			optimizeResult, err := m.optimize(m.defaultOptions())
+			optimizeResult, err := m.optimize(nil)
 			if err != nil {
 				panic(err)
 			}
@@ -113,7 +113,7 @@ func TestOptimize(t *testing.T) {
 	t.Parallel()
 
 	m := getOptimizedDefaultTestMap(t)
-	matcher := m.defaultOptions().Matcher(DestinationHub, m.intel)
+	matcher := m.defaultOptions().Destination.Matcher(m.intel)
 	originalHome := m.home
 
 	for _, pin := range m.all {

@@ -349,7 +349,7 @@ func handleMapMeasurementsTableRequest(ar *api.Request) (data []byte, err error)
 	if !ok {
 		return nil, errors.New("map not found")
 	}
-	matcher := m.DefaultOptions().Matcher(TransitHub, m.GetIntel())
+	matcher := m.DefaultOptions().Transit.Matcher(m.GetIntel())
 
 	// Get and sort pins.
 	list := m.pinList(true)
