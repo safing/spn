@@ -20,6 +20,10 @@ const (
 	DestinationHub
 )
 
+// DeriveTunnelOptions derives and returns the tunnel options from the connection and profile.
+// This function lives in firewall/tunnel.go and is set here to avoid import loops.
+var DeriveTunnelOptions func(lp *profile.LayeredProfile, destination *intel.Entity, connEncrypted bool) *Options
+
 // Options holds configuration options for operations with the Map.
 type Options struct { //nolint:maligned
 	// Home holds the options for Home Hubs.

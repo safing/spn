@@ -1,6 +1,9 @@
 package navigator
 
-import "github.com/safing/portbase/log"
+import (
+	"github.com/safing/portbase/log"
+	"github.com/safing/portmaster/profile"
+)
 
 // RoutingProfile defines a routing algorithm with some options.
 type RoutingProfile struct {
@@ -36,12 +39,12 @@ const (
 	RoutingProfileSingleHopID = "single-hop"
 	RoutingProfileDoubleHopID = "double-hop"
 	RoutingProfileTripleHopID = "triple-hop"
-
-	DefaultRoutingProfileID = RoutingProfileDoubleHopID
 )
 
 // Routing Profiles.
 var (
+	DefaultRoutingProfileID = profile.DefaultRoutingProfileID
+
 	RoutingProfileHome = &RoutingProfile{
 		ID:      "home",
 		Name:    "Plain VPN Mode",
