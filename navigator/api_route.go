@@ -12,11 +12,13 @@ import (
 	"time"
 
 	"github.com/safing/portbase/api"
+	"github.com/safing/portbase/config"
 	"github.com/safing/portmaster/intel"
 	"github.com/safing/portmaster/intel/geoip"
 	"github.com/safing/portmaster/netenv"
 	"github.com/safing/portmaster/network/netutils"
 	"github.com/safing/portmaster/profile"
+	"github.com/safing/portmaster/profile/endpoints"
 )
 
 func registerRouteAPIEndpoints() error {
@@ -31,7 +33,7 @@ func registerRouteAPIEndpoints() error {
 			{
 				Method:      http.MethodGet,
 				Field:       "profile",
-				Value:       "<id>",
+				Value:       "<id>|global",
 				Description: "Specify a profile ID to load more settings for simulation.",
 			},
 			{
@@ -84,7 +86,48 @@ func handleRouteCalculationRequest(ar *api.Request) (msg string, err error) { //
 		locationV4 = locations.BestV4().LocationOrNil()
 		locationV6 = locations.BestV6().LocationOrNil()
 		matchFor = HomeHub
-		opts = m.defaultOptions()
+
+		// START of copied from captain/navigation.go
+
+		// Get own entity.
+		// Checking the entity against the entry policies is somewhat hit and miss
+		// anyway, as the device location is an approximation.
+		var myEntity *intel.Entity
+		if dl := locations.BestV4(); dl != nil && dl.IP != nil {
+			myEntity = &intel.Entity{}
+			myEntity.SetIP(dl.IP)
+			myEntity.FetchData(ar.Context())
+		} else if dl := locations.BestV6(); dl != nil && dl.IP != nil {
+			myEntity = &intel.Entity{}
+			myEntity.SetIP(dl.IP)
+			myEntity.FetchData(ar.Context())
+		}
+
+		// Build navigation options for searching for a home hub.
+		homePolicy, err := endpoints.ParseEndpoints(config.GetAsStringArray("spn/homePolicy", []string{})())
+		if err != nil {
+			return "", fmt.Errorf("failed to parse home hub policy: %w", err)
+		}
+
+		opts = &Options{
+			Home: &HomeHubOptions{
+				HubPolicies:        []endpoints.Endpoints{homePolicy},
+				CheckHubPolicyWith: myEntity,
+			},
+		}
+
+		// Add requirement to only use Safing nodes when not using community nodes.
+		if !config.GetAsBool("spn/useCommunityNodes", true)() {
+			opts.Home.RequireVerifiedOwners = []string{"Safing"}
+		}
+
+		// Require a trusted home node when the routing profile requires less than two hops.
+		routingProfile := GetRoutingProfile(config.GetAsString(profile.CfgOptionRoutingAlgorithmKey, DefaultRoutingProfileID)())
+		if routingProfile.MinHops < 2 {
+			opts.Home.Regard = opts.Home.Regard.Add(StateTrusted)
+		}
+
+		// END of copied
 
 	case net.ParseIP(destination) != nil:
 		entity.SetIP(net.ParseIP(destination))
@@ -140,12 +183,20 @@ func handleRouteCalculationRequest(ar *api.Request) (msg string, err error) { //
 
 		// Get profile.
 		if profileID != "" {
-			localProfile, err := profile.GetLocalProfile(profileID, nil, nil)
-			if err != nil {
-				return "", fmt.Errorf("failed to get profile: %w", err)
+			var lp *profile.LayeredProfile
+			if profileID == "global" {
+				// Create new empty profile for easy access to global settings.
+				lp = profile.NewLayeredProfile(profile.New(nil))
+			} else {
+				// Get local profile by ID.
+				localProfile, err := profile.GetLocalProfile(profileID, nil, nil)
+				if err != nil {
+					return "", fmt.Errorf("failed to get profile: %w", err)
+				}
+				lp = localProfile.LayeredProfile()
 			}
 			opts = DeriveTunnelOptions(
-				localProfile.LayeredProfile(),
+				lp,
 				entity,
 				ar.Request.URL.Query().Get("encrypted") != "",
 			)
@@ -160,7 +211,7 @@ func handleRouteCalculationRequest(ar *api.Request) (msg string, err error) { //
 	// Start formatting output.
 	lines := []string{
 		"Routing simulation: " + introText,
-		"Please not that this routing simulation does match the behavior of regular routing to 100%.",
+		"Please note that this routing simulation does match the behavior of regular routing to 100%.",
 		"",
 	}
 
@@ -169,6 +220,14 @@ func handleRouteCalculationRequest(ar *api.Request) (msg string, err error) { //
 
 	lines = append(lines, "Routing Options:")
 	lines = append(lines, "Algorithm: "+opts.RoutingProfile)
+	if opts.Home != nil {
+		lines = append(lines, "Home Options:")
+		lines = append(lines, fmt.Sprintf("  Regard: %s", opts.Home.Regard))
+		lines = append(lines, fmt.Sprintf("  Disregard: %s", opts.Home.Disregard))
+		lines = append(lines, fmt.Sprintf("  No Default: %v", opts.Home.NoDefaults))
+		lines = append(lines, fmt.Sprintf("  Hub Policies: %v", opts.Home.HubPolicies))
+		lines = append(lines, fmt.Sprintf("  Require Verified Owners: %v", opts.Home.RequireVerifiedOwners))
+	}
 	if opts.Transit != nil {
 		lines = append(lines, "Transit Options:")
 		lines = append(lines, fmt.Sprintf("  Regard: %s", opts.Transit.Regard))
@@ -197,6 +256,7 @@ func handleRouteCalculationRequest(ar *api.Request) (msg string, err error) { //
 			}
 		}
 	}
+	lines = append(lines, "\n")
 
 	// Find nearest hubs.
 	// ==================
