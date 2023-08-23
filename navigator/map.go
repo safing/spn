@@ -7,6 +7,7 @@ import (
 
 	"github.com/safing/portbase/database"
 	"github.com/safing/portbase/log"
+	"github.com/safing/portmaster/intel/geoip"
 	"github.com/safing/spn/docks"
 	"github.com/safing/spn/hub"
 )
@@ -98,6 +99,30 @@ func (m *Map) SetHome(id string, t *docks.CraneTerminal) (ok bool) {
 
 	m.PushPinChanges()
 	return true
+}
+
+// GetAvailableCountries returns a map of countries including their information
+// where the map has pins suitable for the given type.
+func (m *Map) GetAvailableCountries(forType HubType) map[string]*geoip.CountryInfo {
+	countries := make(map[string]*geoip.CountryInfo)
+
+	m.RLock()
+	defer m.RUnlock()
+
+	matcher := m.defaultOptions().Matcher(forType, m.intel)
+	for _, pin := range m.all {
+		if !matcher(pin) {
+			continue
+		}
+		if pin.LocationV4 != nil && countries[pin.LocationV4.Country.ISOCode] == nil {
+			countries[pin.LocationV4.Country.ISOCode] = geoip.GetCountryInfo(pin.LocationV4.Country.ISOCode)
+		}
+		if pin.LocationV6 != nil && countries[pin.LocationV6.Country.ISOCode] == nil {
+			countries[pin.LocationV6.Country.ISOCode] = geoip.GetCountryInfo(pin.LocationV6.Country.ISOCode)
+		}
+	}
+
+	return countries
 }
 
 // isEmpty returns whether the Map is regarded as empty.

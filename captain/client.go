@@ -143,6 +143,7 @@ reconnect:
 		netenv.ConnectedToSPN.Set()
 
 		module.TriggerEvent(SPNConnectedEvent, nil)
+		module.StartWorker("update quick setting countries", navigator.Main.UpdateConfigQuickSettings)
 
 		// Back off before starting initial health checks.
 		select {

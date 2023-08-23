@@ -4,10 +4,13 @@ import (
 	"context"
 	"fmt"
 	"path"
+	"strings"
 	"time"
 
 	"github.com/tevino/abool"
+	"golang.org/x/exp/slices"
 
+	"github.com/safing/portbase/config"
 	"github.com/safing/portbase/database"
 	"github.com/safing/portbase/database/query"
 	"github.com/safing/portbase/database/record"
@@ -16,6 +19,7 @@ import (
 	"github.com/safing/portbase/utils"
 	"github.com/safing/portmaster/intel/geoip"
 	"github.com/safing/portmaster/netenv"
+	"github.com/safing/portmaster/profile"
 	"github.com/safing/spn/hub"
 )
 
@@ -543,5 +547,70 @@ func (m *Map) addBootstrapHub(bootstrapTransport string) error {
 	// Add/update to map for bootstrapping.
 	m.updateHub(h, false, false)
 	log.Infof("spn/navigator: added/updated bootstrap %s to map %s", h, m.Name)
+	return nil
+}
+
+// UpdateConfigQuickSettings updates config quick settings with available countries.
+func (m *Map) UpdateConfigQuickSettings(ctx context.Context) error {
+	ctx, tracer := log.AddTracer(ctx)
+	tracer.Trace("navigator: updating SPN rules country quick settings")
+	defer tracer.Submit()
+
+	// Home Policy.
+	if err := m.updateQuickSettingCountryList(ctx, "spn/homePolicy", HomeHub); err != nil {
+		return err
+	}
+	// Transit Policy.
+	if err := m.updateQuickSettingCountryList(ctx, profile.CfgOptionTransitHubPolicyKey, TransitHub); err != nil {
+		return err
+	}
+	// Exit Policy.
+	if err := m.updateQuickSettingCountryList(ctx, profile.CfgOptionExitHubPolicyKey, DestinationHub); err != nil {
+		return err
+	}
+	// DNS Exit Policy.
+	if err := m.updateQuickSettingCountryList(ctx, "spn/dnsExitPolicy", DestinationHub); err != nil {
+		return err
+	}
+
+	tracer.Info("navigator: finished updating SPN rules country quick settings")
+	return nil
+}
+
+func (m *Map) updateQuickSettingCountryList(ctx context.Context, configKey string, matchFor HubType) error {
+	// Get config option.
+	cfgOption, err := config.GetOption(configKey)
+	if err != nil {
+		return fmt.Errorf("failed to get config option %s: %w", configKey, err)
+	}
+
+	// Get list of countries for this config option.
+	countries := m.GetAvailableCountries(matchFor)
+	// Convert to list.
+	countryList := make([]*geoip.CountryInfo, 0, len(countries))
+	for _, country := range countries {
+		countryList = append(countryList, country)
+	}
+	// Sort list.
+	slices.SortFunc[[]*geoip.CountryInfo, *geoip.CountryInfo](countryList, func(a, b *geoip.CountryInfo) int {
+		return strings.Compare(a.Name, b.Name)
+	})
+
+	// Compile list of quick settings.
+	quickSettings := make([]config.QuickSetting, 0, len(countries))
+	for _, country := range countryList {
+		quickSettings = append(quickSettings, config.QuickSetting{
+			Name:   fmt.Sprintf("Exclude %s (%s)", country.Name, country.ID),
+			Value:  []string{fmt.Sprintf("- %s", country.ID)},
+			Action: config.QuickMergeTop,
+		})
+	}
+
+	// Lock config option and set new quick settings.
+	cfgOption.Lock()
+	defer cfgOption.Unlock()
+	cfgOption.Annotations[config.QuickSettingsAnnotation] = quickSettings
+
+	log.Tracer(ctx).Debugf("navigator: updated %d country quick settings for %s", len(quickSettings), configKey)
 	return nil
 }
