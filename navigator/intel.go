@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 
+	"golang.org/x/exp/slices"
+
 	"github.com/safing/portbase/log"
 	"github.com/safing/portmaster/profile/endpoints"
 	"github.com/safing/spn/hub"
@@ -12,7 +14,7 @@ import (
 // UpdateIntel supplies the map with new intel data. The data is not copied, so
 // it must not be modified after being supplied. If the map is empty, the
 // bootstrap hubs will be added to the map.
-func (m *Map) UpdateIntel(update *hub.Intel) error {
+func (m *Map) UpdateIntel(update *hub.Intel, trustNodes []string) error {
 	// Check if intel data is already parsed.
 	if update.Parsed() == nil {
 		return errors.New("intel data is not parsed")
@@ -33,7 +35,7 @@ func (m *Map) UpdateIntel(update *hub.Intel) error {
 		m.updateInfoOverrides(pin)
 
 		// Update Trust and Advisory Statuses.
-		m.updateIntelStatuses(pin)
+		m.updateIntelStatuses(pin, trustNodes)
 
 		// Push changes.
 		// TODO: Only set when pin changed.
@@ -63,7 +65,7 @@ func (m *Map) GetIntel() *hub.Intel {
 	return m.intel
 }
 
-func (m *Map) updateIntelStatuses(pin *Pin) {
+func (m *Map) updateIntelStatuses(pin *Pin, trustNodes []string) {
 	// Reset all related states.
 	pin.removeStates(StateTrusted | StateUsageDiscouraged | StateUsageAsHomeDiscouraged | StateUsageAsDestinationDiscouraged)
 
@@ -90,6 +92,14 @@ func (m *Map) updateIntelStatuses(pin *Pin) {
 		if hubIntel.Trusted {
 			pin.addStates(StateTrusted)
 		}
+	}
+
+	// Check manual trust status.
+	switch {
+	case slices.Contains[[]string, string](trustNodes, pin.VerifiedOwner):
+		pin.addStates(StateTrusted)
+	case slices.Contains[[]string, string](trustNodes, pin.Hub.ID):
+		pin.addStates(StateTrusted)
 	}
 
 	// Check advisories.

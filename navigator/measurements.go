@@ -32,7 +32,7 @@ func (m *Map) measureHubs(ctx context.Context, _ *modules.Task) error {
 	}
 
 	var unknownErrCnt int
-	matcher := m.DefaultOptions().Matcher(TransitHub, m.GetIntel())
+	matcher := m.DefaultOptions().Transit.Matcher(m.GetIntel())
 
 	// Get list and sort in order to check near/low-cost hubs earlier.
 	list := m.pinList(true)

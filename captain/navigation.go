@@ -62,19 +62,21 @@ func establishHomeHub(ctx context.Context) error {
 
 	// Build navigation options for searching for a home hub.
 	opts := &navigator.Options{
-		HubPolicies:             []endpoints.Endpoints{homePolicy},
-		CheckHubEntryPolicyWith: myEntity,
+		Home: &navigator.HomeHubOptions{
+			HubPolicies:        []endpoints.Endpoints{homePolicy},
+			CheckHubPolicyWith: myEntity,
+		},
 	}
 
 	// Add requirement to only use Safing nodes when not using community nodes.
 	if !cfgOptionUseCommunityNodes() {
-		opts.RequireVerifiedOwners = NonCommunityVerifiedOwners
+		opts.Home.RequireVerifiedOwners = NonCommunityVerifiedOwners
 	}
 
 	// Require a trusted home node when the routing profile requires less than two hops.
 	routingProfile := navigator.GetRoutingProfile(cfgOptionRoutingAlgorithm())
 	if routingProfile.MinHops < 2 {
-		opts.Regard = opts.Regard.Add(navigator.StateTrusted)
+		opts.Home.Regard = opts.Home.Regard.Add(navigator.StateTrusted)
 	}
 
 	// Find nearby hubs.

@@ -111,7 +111,7 @@ type OptimizationResult struct {
 	StopOthers bool
 
 	// opts holds the options for matching Hubs in this optimization.
-	opts *Options
+	opts *HubOptions
 
 	// matcher is the matcher used to create the regarded Pins.
 	// Required for updating suggested hop distance.
@@ -184,7 +184,7 @@ func (or *OptimizationResult) markSuggestedReachable(suggested *Pin, hopDistance
 }
 
 // Optimize analyzes the map and suggests changes.
-func (m *Map) Optimize(opts *Options) (result *OptimizationResult, err error) {
+func (m *Map) Optimize(opts *HubOptions) (result *OptimizationResult, err error) {
 	m.RLock()
 	defer m.RUnlock()
 
@@ -195,15 +195,20 @@ func (m *Map) Optimize(opts *Options) (result *OptimizationResult, err error) {
 
 	// Set default options if unset.
 	if opts == nil {
-		opts = m.defaultOptions()
+		opts = &HubOptions{}
 	}
 
 	return m.optimize(opts)
 }
 
-func (m *Map) optimize(opts *Options) (result *OptimizationResult, err error) {
+func (m *Map) optimize(opts *HubOptions) (result *OptimizationResult, err error) {
 	if m.home == nil {
 		return nil, ErrHomeHubUnset
+	}
+
+	// Set default options if unset.
+	if opts == nil {
+		opts = &HubOptions{}
 	}
 
 	// Create result.

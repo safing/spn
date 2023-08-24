@@ -139,7 +139,7 @@ func (t *Tunnel) establish(ctx context.Context) (err error) {
 		}
 
 		// Append to policies.
-		t.connInfo.TunnelOpts.HubPolicies = append(t.connInfo.TunnelOpts.HubPolicies, avoidPolicy)
+		t.connInfo.TunnelOpts.Destination.HubPolicies = append(t.connInfo.TunnelOpts.Destination.HubPolicies, avoidPolicy)
 
 	default:
 		log.Tracer(ctx).Tracef("spn/crew: using stickied %s", sticksTo.Pin.Hub)

@@ -6,14 +6,19 @@ import (
 	"fmt"
 	mrand "math/rand"
 	"net"
+	"net/http"
 	"strings"
 	"text/tabwriter"
 	"time"
 
 	"github.com/safing/portbase/api"
+	"github.com/safing/portbase/config"
+	"github.com/safing/portmaster/intel"
 	"github.com/safing/portmaster/intel/geoip"
 	"github.com/safing/portmaster/netenv"
 	"github.com/safing/portmaster/network/netutils"
+	"github.com/safing/portmaster/profile"
+	"github.com/safing/portmaster/profile/endpoints"
 )
 
 func registerRouteAPIEndpoints() error {
@@ -24,6 +29,20 @@ func registerRouteAPIEndpoints() error {
 		ActionFunc:  handleRouteCalculationRequest,
 		Name:        "Calculate Route through SPN",
 		Description: "Returns a textual representation of the routing process.",
+		Parameters: []api.Parameter{
+			{
+				Method:      http.MethodGet,
+				Field:       "profile",
+				Value:       "<id>|global",
+				Description: "Specify a profile ID to load more settings for simulation.",
+			},
+			{
+				Method:      http.MethodGet,
+				Field:       "encrypted",
+				Value:       "true",
+				Description: "Specify to signify that the simulated connection should be regarded as encrypted. Only valid with a profile.",
+			},
+		},
 	}); err != nil {
 		return err
 	}
@@ -37,21 +56,27 @@ func handleRouteCalculationRequest(ar *api.Request) (msg string, err error) { //
 	if !ok {
 		return "", errors.New("map not found")
 	}
+	// Get profile ID.
+	profileID := ar.Request.URL.Query().Get("profile")
 
-	var introText string
-
-	// Parse destination.
-	var locationV4, locationV6 *geoip.Location
-	var dstIP net.IP
+	// Parse destination and prepare options.
+	entity := &intel.Entity{}
 	destination := ar.URLVars["destination"]
 	matchFor := DestinationHub
-	opts := m.defaultOptions()
+	var (
+		introText              string
+		locationV4, locationV6 *geoip.Location
+		opts                   *Options
+	)
 	switch {
 	case destination == "":
 		// Destination is required.
 		return "", errors.New("no destination provided")
 
 	case destination == "home":
+		if profileID != "" {
+			return "", errors.New("cannot apply profile to home hub route")
+		}
 		// Simulate finding home hub.
 		locations, ok := netenv.GetInternetLocation()
 		if !ok || len(locations.All) == 0 {
@@ -62,54 +87,121 @@ func handleRouteCalculationRequest(ar *api.Request) (msg string, err error) { //
 		locationV6 = locations.BestV6().LocationOrNil()
 		matchFor = HomeHub
 
-	case net.ParseIP(destination) != nil:
-		dstIP = net.ParseIP(destination)
-		if ip4 := dstIP.To4(); ip4 != nil {
-			locationV4, err = geoip.GetLocation(dstIP)
-			if err != nil {
-				return "", fmt.Errorf("failed to get geoip location for %s: %w", dstIP, err)
-			}
-			introText = fmt.Sprintf("looking for route to %s at %s", dstIP, formatLocation(locationV4))
-		} else {
-			locationV6, err = geoip.GetLocation(dstIP)
-			if err != nil {
-				return "", fmt.Errorf("failed to get geoip location for %s: %w", dstIP, err)
-			}
-			introText = fmt.Sprintf("looking for route to %s at %s", dstIP, formatLocation(locationV6))
+		// START of copied from captain/navigation.go
+
+		// Get own entity.
+		// Checking the entity against the entry policies is somewhat hit and miss
+		// anyway, as the device location is an approximation.
+		var myEntity *intel.Entity
+		if dl := locations.BestV4(); dl != nil && dl.IP != nil {
+			myEntity = &intel.Entity{}
+			myEntity.SetIP(dl.IP)
+			myEntity.FetchData(ar.Context())
+		} else if dl := locations.BestV6(); dl != nil && dl.IP != nil {
+			myEntity = &intel.Entity{}
+			myEntity.SetIP(dl.IP)
+			myEntity.FetchData(ar.Context())
 		}
 
+		// Build navigation options for searching for a home hub.
+		homePolicy, err := endpoints.ParseEndpoints(config.GetAsStringArray("spn/homePolicy", []string{})())
+		if err != nil {
+			return "", fmt.Errorf("failed to parse home hub policy: %w", err)
+		}
+
+		opts = &Options{
+			Home: &HomeHubOptions{
+				HubPolicies:        []endpoints.Endpoints{homePolicy},
+				CheckHubPolicyWith: myEntity,
+			},
+		}
+
+		// Add requirement to only use Safing nodes when not using community nodes.
+		if !config.GetAsBool("spn/useCommunityNodes", true)() {
+			opts.Home.RequireVerifiedOwners = []string{"Safing"}
+		}
+
+		// Require a trusted home node when the routing profile requires less than two hops.
+		routingProfile := GetRoutingProfile(config.GetAsString(profile.CfgOptionRoutingAlgorithmKey, DefaultRoutingProfileID)())
+		if routingProfile.MinHops < 2 {
+			opts.Home.Regard = opts.Home.Regard.Add(StateTrusted)
+		}
+
+		// END of copied
+
+	case net.ParseIP(destination) != nil:
+		entity.SetIP(net.ParseIP(destination))
+
+		fallthrough
 	case netutils.IsValidFqdn(destination):
 		fallthrough
 	case netutils.IsValidFqdn(destination + "."):
+		// Resolve domain to IP, if not inherired from a previous case.
+		var ignoredIPs int
+		if entity.IP == nil {
+			entity.Domain = destination
 
-		// Resolve name to IPs.
-		ips, err := net.DefaultResolver.LookupIP(ar.Context(), "ip", destination)
-		if err != nil {
-			return "", fmt.Errorf("failed to lookup IP address of %s: %w", destination, err)
-		}
-
-		// Shuffle IPs.
-		if len(ips) >= 2 {
-			mr := mrand.New(mrand.NewSource(time.Now().UnixNano())) //nolint:gosec
-			mr.Shuffle(len(ips), func(i, j int) {
-				ips[i], ips[j] = ips[j], ips[i]
-			})
-		}
-
-		// Get IP location.
-		dstIP = ips[0]
-		if ip4 := dstIP.To4(); ip4 != nil {
-			locationV4, err = geoip.GetLocation(dstIP)
+			// Resolve name to IPs.
+			ips, err := net.DefaultResolver.LookupIP(ar.Context(), "ip", destination)
 			if err != nil {
-				return "", fmt.Errorf("failed to get geoip location for %s: %w", dstIP, err)
+				return "", fmt.Errorf("failed to lookup IP address of %s: %w", destination, err)
 			}
-			introText = fmt.Sprintf("looking for route to %s at %s\n(ignoring %d additional IPs returned by DNS)", dstIP, formatLocation(locationV4), len(ips)-1)
+			if len(ips) == 0 {
+				return "", fmt.Errorf("failed to lookup IP address of %s: no result", destination)
+			}
+
+			// Shuffle IPs.
+			if len(ips) >= 2 {
+				mr := mrand.New(mrand.NewSource(time.Now().UnixNano())) //nolint:gosec
+				mr.Shuffle(len(ips), func(i, j int) {
+					ips[i], ips[j] = ips[j], ips[i]
+				})
+			}
+
+			entity.SetIP(ips[0])
+			ignoredIPs = len(ips) - 1
+		}
+
+		// Get location of IP.
+		location, ok := entity.GetLocation(ar.Context())
+		if !ok {
+			return "", fmt.Errorf("failed to get geoip location for %s", entity.IP)
+		}
+		// Assign location to separate variables.
+		if entity.IP.To4() != nil {
+			locationV4, _ = entity.GetLocation(ar.Context())
 		} else {
-			locationV6, err = geoip.GetLocation(dstIP)
-			if err != nil {
-				return "", fmt.Errorf("failed to get geoip location for %s: %w", dstIP, err)
+			locationV6, _ = entity.GetLocation(ar.Context())
+		}
+
+		// Set intro text.
+		if entity.Domain != "" {
+			introText = fmt.Sprintf("looking for route to %s at %s\n(ignoring %d additional IPs returned by DNS)", entity.IP, formatLocation(location), ignoredIPs)
+		} else {
+			introText = fmt.Sprintf("looking for route to %s at %s", entity.IP, formatLocation(location))
+		}
+
+		// Get profile.
+		if profileID != "" {
+			var lp *profile.LayeredProfile
+			if profileID == "global" {
+				// Create new empty profile for easy access to global settings.
+				lp = profile.NewLayeredProfile(profile.New(nil))
+			} else {
+				// Get local profile by ID.
+				localProfile, err := profile.GetLocalProfile(profileID, nil, nil)
+				if err != nil {
+					return "", fmt.Errorf("failed to get profile: %w", err)
+				}
+				lp = localProfile.LayeredProfile()
 			}
-			introText = fmt.Sprintf("looking for route to %s at %s\n(ignoring %d additional IPs returned by DNS)", dstIP, formatLocation(locationV6), len(ips)-1)
+			opts = DeriveTunnelOptions(
+				lp,
+				entity,
+				ar.Request.URL.Query().Get("encrypted") != "",
+			)
+		} else {
+			opts = m.defaultOptions()
 		}
 
 	default:
@@ -119,7 +211,7 @@ func handleRouteCalculationRequest(ar *api.Request) (msg string, err error) { //
 	// Start formatting output.
 	lines := []string{
 		"Routing simulation: " + introText,
-		"Please not that this routing simulation does match the behavior of regular routing to 100%.",
+		"Please note that this routing simulation does match the behavior of regular routing to 100%.",
 		"",
 	}
 
@@ -128,13 +220,43 @@ func handleRouteCalculationRequest(ar *api.Request) (msg string, err error) { //
 
 	lines = append(lines, "Routing Options:")
 	lines = append(lines, "Algorithm: "+opts.RoutingProfile)
-	lines = append(lines, fmt.Sprintf("Require Verified Owners: %s", opts.RequireVerifiedOwners))
-	lines = append(lines, fmt.Sprintf("Require Trusted Exit: %v", opts.RequireTrustedDestinationHubs))
-	lines = append(lines, "Hub Policy: ")
-	for _, ep := range opts.HubPolicies {
-		lines = append(lines, ep.String())
+	if opts.Home != nil {
+		lines = append(lines, "Home Options:")
+		lines = append(lines, fmt.Sprintf("  Regard: %s", opts.Home.Regard))
+		lines = append(lines, fmt.Sprintf("  Disregard: %s", opts.Home.Disregard))
+		lines = append(lines, fmt.Sprintf("  No Default: %v", opts.Home.NoDefaults))
+		lines = append(lines, fmt.Sprintf("  Hub Policies: %v", opts.Home.HubPolicies))
+		lines = append(lines, fmt.Sprintf("  Require Verified Owners: %v", opts.Home.RequireVerifiedOwners))
 	}
-	lines = append(lines, "")
+	if opts.Transit != nil {
+		lines = append(lines, "Transit Options:")
+		lines = append(lines, fmt.Sprintf("  Regard: %s", opts.Transit.Regard))
+		lines = append(lines, fmt.Sprintf("  Disregard: %s", opts.Transit.Disregard))
+		lines = append(lines, fmt.Sprintf("  No Default: %v", opts.Transit.NoDefaults))
+		lines = append(lines, fmt.Sprintf("  Hub Policies: %v", opts.Transit.HubPolicies))
+		lines = append(lines, fmt.Sprintf("  Require Verified Owners: %v", opts.Transit.RequireVerifiedOwners))
+	}
+	if opts.Destination != nil {
+		lines = append(lines, "Destination Options:")
+		lines = append(lines, fmt.Sprintf("  Regard: %s", opts.Destination.Regard))
+		lines = append(lines, fmt.Sprintf("  Disregard: %s", opts.Destination.Disregard))
+		lines = append(lines, fmt.Sprintf("  No Default: %v", opts.Destination.NoDefaults))
+		lines = append(lines, fmt.Sprintf("  Hub Policies: %v", opts.Destination.HubPolicies))
+		lines = append(lines, fmt.Sprintf("  Require Verified Owners: %v", opts.Destination.RequireVerifiedOwners))
+		if opts.Destination.CheckHubPolicyWith != nil {
+			lines = append(lines, "  Check Hub Policy With:")
+			if opts.Destination.CheckHubPolicyWith.Domain != "" {
+				lines = append(lines, fmt.Sprintf("    Domain: %v", opts.Destination.CheckHubPolicyWith.Domain))
+			}
+			if opts.Destination.CheckHubPolicyWith.IP != nil {
+				lines = append(lines, fmt.Sprintf("    IP: %v", opts.Destination.CheckHubPolicyWith.IP))
+			}
+			if opts.Destination.CheckHubPolicyWith.Port != 0 {
+				lines = append(lines, fmt.Sprintf("    Port: %v", opts.Destination.CheckHubPolicyWith.Port))
+			}
+		}
+	}
+	lines = append(lines, "\n")
 
 	// Find nearest hubs.
 	// ==================
@@ -212,7 +334,9 @@ func handleRouteCalculationRequest(ar *api.Request) (msg string, err error) { //
 	// Find routes.
 	routes, err := m.findRoutes(nbPins, opts)
 	if err != nil {
-		return "", fmt.Errorf("failed to find routes: %w", err)
+		lines = append(lines, fmt.Sprintf("FAILED to find routes: %s", err))
+		return strings.Join(lines, "\n"), nil
+		// return "", fmt.Errorf("failed to find routes: %w", err)
 	}
 
 	// Print found routes to table.
@@ -224,7 +348,7 @@ func handleRouteCalculationRequest(ar *api.Request) (msg string, err error) { //
 		fmt.Fprintf(tabWriter,
 			"%.0f\t%s\n",
 			route.TotalCost,
-			formatRoute(route, dstIP),
+			formatRoute(route, entity.IP),
 		)
 	}
 	_ = tabWriter.Flush()

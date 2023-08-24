@@ -5,6 +5,7 @@ import (
 
 	"github.com/safing/portbase/log"
 	"github.com/safing/portmaster/intel"
+	"github.com/safing/portmaster/profile"
 	"github.com/safing/portmaster/profile/endpoints"
 	"github.com/safing/spn/hub"
 )
@@ -19,8 +20,36 @@ const (
 	DestinationHub
 )
 
+// DeriveTunnelOptions derives and returns the tunnel options from the connection and profile.
+// This function lives in firewall/tunnel.go and is set here to avoid import loops.
+var DeriveTunnelOptions func(lp *profile.LayeredProfile, destination *intel.Entity, connEncrypted bool) *Options
+
 // Options holds configuration options for operations with the Map.
 type Options struct { //nolint:maligned
+	// Home holds the options for Home Hubs.
+	Home *HomeHubOptions
+
+	// Transit holds the options for Transit Hubs.
+	Transit *TransitHubOptions
+
+	// Destination holds the options for Destination Hubs.
+	Destination *DestinationHubOptions
+
+	// RoutingProfile defines the algorithm to use to find a route.
+	RoutingProfile string
+}
+
+// HomeHubOptions holds configuration options for Home Hub operations with the Map.
+type HomeHubOptions HubOptions
+
+// TransitHubOptions holds configuration options for Transit Hub operations with the Map.
+type TransitHubOptions HubOptions
+
+// DestinationHubOptions holds configuration options for Destination Hub operations with the Map.
+type DestinationHubOptions HubOptions
+
+// HubOptions holds configuration options for a specific hub type for operations with the Map.
+type HubOptions struct {
 	// Regard holds required States. Only Hubs where all of these are present
 	// will taken into account for the operation. If NoDefaults is not set, a
 	// basic set of desirable states is added automatically.
@@ -31,43 +60,51 @@ type Options struct { //nolint:maligned
 	// set, a basic set of undesirable states is added automatically.
 	Disregard PinState
 
+	// NoDefaults declares whether default and recommended Regard and Disregard states should not be used.
+	NoDefaults bool
+
 	// HubPolicies is a collection of endpoint lists that Hubs must pass in order
 	// to be taken into account for the operation.
 	HubPolicies []endpoints.Endpoints
-
-	// CheckHubEntryPolicyWith provides an entity that must match the Hubs entry
-	// policy in order to be taken into account for the operation.
-	CheckHubEntryPolicyWith *intel.Entity
-
-	// CheckHubExitPolicyWith provides an entity that must match the Hubs exit
-	// policy in order to be taken into account for the operation.
-	CheckHubExitPolicyWith *intel.Entity
 
 	// RequireVerifiedOwners specifies which verified owners are allowed to be used.
 	// If the list is empty, all owners are allowed.
 	RequireVerifiedOwners []string
 
-	// NoDefaults declares whether default and recommended Regard and Disregard states should not be used.
-	NoDefaults bool
-
-	// RequireTrustedDestinationHubs declares whether only Destination Hubs that have the Trusted state should be used.
-	RequireTrustedDestinationHubs bool
-
-	// RoutingProfile defines the algorithm to use to find a route.
-	RoutingProfile string
+	// CheckHubPolicyWith provides an entity that must match the Hubs entry or exit
+	// policy (depending on type) in order to be taken into account for the operation.
+	CheckHubPolicyWith *intel.Entity
 }
 
 // Copy returns a shallow copy of the Options.
 func (o *Options) Copy() *Options {
-	return &Options{
-		Regard:                        o.Regard,
-		Disregard:                     o.Disregard,
-		HubPolicies:                   o.HubPolicies,
-		CheckHubEntryPolicyWith:       o.CheckHubEntryPolicyWith,
-		CheckHubExitPolicyWith:        o.CheckHubExitPolicyWith,
-		NoDefaults:                    o.NoDefaults,
-		RequireTrustedDestinationHubs: o.RequireTrustedDestinationHubs,
-		RoutingProfile:                o.RoutingProfile,
+	copied := &Options{
+		RoutingProfile: o.RoutingProfile,
+	}
+	if o.Home != nil {
+		c := HomeHubOptions(HubOptions(*o.Home).Copy())
+		copied.Home = &c
+	}
+	if o.Transit != nil {
+		c := TransitHubOptions(HubOptions(*o.Transit).Copy())
+		copied.Transit = &c
+	}
+	if o.Destination != nil {
+		c := DestinationHubOptions(HubOptions(*o.Destination).Copy())
+		copied.Destination = &c
+	}
+	return copied
+}
+
+// Copy returns a shallow copy of the Options.
+func (o HubOptions) Copy() HubOptions {
+	return HubOptions{
+		Regard:                o.Regard,
+		Disregard:             o.Disregard,
+		NoDefaults:            o.NoDefaults,
+		HubPolicies:           o.HubPolicies,
+		RequireVerifiedOwners: o.RequireVerifiedOwners,
+		CheckHubPolicyWith:    o.CheckHubPolicyWith,
 	}
 }
 
@@ -90,9 +127,9 @@ func (m *Map) defaultOptions() *Options {
 	return opts
 }
 
-// HubPoliciesAreSet returns whether any hub policies are set and non-empty.
-func (o *Options) HubPoliciesAreSet() bool {
-	for _, policy := range o.HubPolicies {
+// HubPoliciesAreSet returns whether any of the given hub policies are set and non-empty.
+func HubPoliciesAreSet(policies []endpoints.Endpoints) bool {
+	for _, policy := range policies {
 		if policy.IsSet() {
 			return true
 		}
@@ -100,8 +137,63 @@ func (o *Options) HubPoliciesAreSet() bool {
 	return false
 }
 
+var emptyHubOptions = &HubOptions{}
+
 // Matcher generates a PinMatcher based on the Options.
+func (o *HomeHubOptions) Matcher(hubIntel *hub.Intel) PinMatcher {
+	if o == nil {
+		return emptyHubOptions.Matcher(HomeHub, hubIntel)
+	}
+
+	// Convert and call base func.
+	ho := HubOptions(*o)
+	return ho.Matcher(HomeHub, hubIntel)
+}
+
+// Matcher generates a PinMatcher based on the Options.
+func (o *TransitHubOptions) Matcher(hubIntel *hub.Intel) PinMatcher {
+	if o == nil {
+		return emptyHubOptions.Matcher(TransitHub, hubIntel)
+	}
+
+	// Convert and call base func.
+	ho := HubOptions(*o)
+	return ho.Matcher(TransitHub, hubIntel)
+}
+
+// Matcher generates a PinMatcher based on the Options.
+func (o *DestinationHubOptions) Matcher(hubIntel *hub.Intel) PinMatcher {
+	if o == nil {
+		return emptyHubOptions.Matcher(DestinationHub, hubIntel)
+	}
+
+	// Convert and call base func.
+	ho := HubOptions(*o)
+	return ho.Matcher(DestinationHub, hubIntel)
+}
+
+// Matcher generates a PinMatcher based on the Options.
+// Always use the Matcher on option structs if you can.
 func (o *Options) Matcher(hubType HubType, hubIntel *hub.Intel) PinMatcher {
+	switch hubType {
+	case HomeHub:
+		return o.Home.Matcher(hubIntel)
+	case TransitHub:
+		return o.Transit.Matcher(hubIntel)
+	case DestinationHub:
+		return o.Destination.Matcher(hubIntel)
+	default:
+		return nil // This will panic, but should never be used.
+	}
+}
+
+// Matcher generates a PinMatcher based on the Options.
+func (o *HubOptions) Matcher(hubType HubType, hubIntel *hub.Intel) PinMatcher {
+	// Fallback to empty hub options.
+	if o == nil {
+		o = emptyHubOptions
+	}
+
 	// Compile states to regard and disregard.
 	regard := o.Regard
 	disregard := o.Disregard
@@ -132,11 +224,6 @@ func (o *Options) Matcher(hubType HubType, hubIntel *hub.Intel) PinMatcher {
 		}
 	}
 
-	// Add Trusted requirement for Destination Hubs.
-	if o.RequireTrustedDestinationHubs && hubType == DestinationHub {
-		regard |= StateTrusted
-	}
-
 	// Add intel policies.
 	hubPolicies := o.HubPolicies
 	if hubIntel != nil && hubIntel.Parsed() != nil {
@@ -151,8 +238,7 @@ func (o *Options) Matcher(hubType HubType, hubIntel *hub.Intel) PinMatcher {
 	}
 
 	// Add entry/exit policiy checks.
-	checkHubEntryPolicyWith := o.CheckHubEntryPolicyWith
-	checkHubExitPolicyWith := o.CheckHubExitPolicyWith
+	checkHubPolicyWith := o.CheckHubPolicyWith
 
 	return func(pin *Pin) bool {
 		// Check required Pin States.
@@ -211,15 +297,21 @@ func (o *Options) Matcher(hubType HubType, hubIntel *hub.Intel) PinMatcher {
 		}
 
 		// Check entry/exit policies.
-		if checkHubEntryPolicyWith != nil &&
-			endpointListMatch(pin.Hub.Info.EntryPolicy(), checkHubEntryPolicyWith) == endpoints.Denied {
-			// Hub does not allow entry from the given entity.
-			return false
-		}
-		if checkHubExitPolicyWith != nil &&
-			endpointListMatch(pin.Hub.Info.EntryPolicy(), checkHubExitPolicyWith) == endpoints.Denied {
-			// Hub does not allow exit to the given entity.
-			return false
+		if checkHubPolicyWith != nil {
+			switch hubType {
+			case HomeHub:
+				if endpointListMatch(pin.Hub.Info.EntryPolicy(), checkHubPolicyWith) == endpoints.Denied {
+					// Hub does not allow entry from the given entity.
+					return false
+				}
+			case TransitHub:
+				// Transit Hubs do not have a hub policy.
+			case DestinationHub:
+				if endpointListMatch(pin.Hub.Info.ExitPolicy(), checkHubPolicyWith) == endpoints.Denied {
+					// Hub does not allow exit to the given entity.
+					return false
+				}
+			}
 		}
 
 		return true // All checks have passed.

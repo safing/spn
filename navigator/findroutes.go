@@ -119,8 +119,8 @@ func (m *Map) findRoutes(dsts *nearbyPins, opts *Options) (*Routes, error) {
 
 	// Initialize matchers.
 	var done bool
-	transitMatcher := opts.Matcher(TransitHub, m.intel)
-	destinationMatcher := opts.Matcher(DestinationHub, m.intel)
+	transitMatcher := opts.Transit.Matcher(m.intel)
+	destinationMatcher := opts.Destination.Matcher(m.intel)
 	routingProfile := GetRoutingProfile(opts.RoutingProfile)
 
 	// Create routes collector.
