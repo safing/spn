@@ -103,13 +103,16 @@ func (m *Map) SetHome(id string, t *docks.CraneTerminal) (ok bool) {
 
 // GetAvailableCountries returns a map of countries including their information
 // where the map has pins suitable for the given type.
-func (m *Map) GetAvailableCountries(forType HubType) map[string]*geoip.CountryInfo {
-	countries := make(map[string]*geoip.CountryInfo)
+func (m *Map) GetAvailableCountries(opts *Options, forType HubType) map[string]*geoip.CountryInfo {
+	if opts == nil {
+		opts = m.defaultOptions()
+	}
 
 	m.RLock()
 	defer m.RUnlock()
 
-	matcher := m.defaultOptions().Matcher(forType, m.intel)
+	matcher := opts.Matcher(forType, m.intel)
+	countries := make(map[string]*geoip.CountryInfo)
 	for _, pin := range m.all {
 		if !matcher(pin) {
 			continue
