@@ -2,6 +2,7 @@ package navigator
 
 import (
 	"context"
+	"net"
 	"strings"
 	"time"
 
@@ -157,6 +158,25 @@ func (pin *Pin) updateLocationData() {
 	} else {
 		pin.EntityV6 = nil
 		pin.LocationV6 = nil
+	}
+}
+
+// GetLocation returns the geoip location of the Pin, preferring first the given IP, then IPv4.
+func (pin *Pin) GetLocation(ip net.IP) *geoip.Location {
+	pin.Lock()
+	defer pin.Unlock()
+
+	switch {
+	case ip != nil && ip.Equal(pin.Hub.Info.IPv4) && pin.LocationV4 != nil:
+		return pin.LocationV4
+	case ip != nil && ip.Equal(pin.Hub.Info.IPv6) && pin.LocationV6 != nil:
+		return pin.LocationV6
+	case pin.LocationV4 != nil:
+		return pin.LocationV4
+	case pin.LocationV6 != nil:
+		return pin.LocationV6
+	default:
+		return nil
 	}
 }
 
