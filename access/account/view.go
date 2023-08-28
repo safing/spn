@@ -23,18 +23,31 @@ func (u *User) UpdateView(requestStatusCode int) {
 	// Clean up naming and fallbacks when finished.
 	defer func() {
 		// Display "Free" package if no plan is set or if it expired.
-		if u.CurrentPlan == nil ||
-			u.Subscription == nil ||
-			u.Subscription.EndsAt == nil ||
-			time.Now().After(*u.Subscription.EndsAt) {
+		switch {
+		case u.CurrentPlan == nil,
+			u.Subscription == nil,
+			u.Subscription.EndsAt == nil:
+			// Reset to free plan.
 			u.CurrentPlan = &Plan{
 				Name: "Free",
 			}
+			u.Subscription = nil
+
+		case u.Subscription.NextBillingDate != nil:
+			// Subscription is on auto-renew.
+			// Wait for update from server.
+
+		case time.Since(*u.Subscription.EndsAt) > 0:
+			// Reset to free plan.
+			u.CurrentPlan = &Plan{
+				Name: "Free",
+			}
+			u.Subscription = nil
 		}
 
 		// Prepend "Portmaster " to plan name.
 		// TODO: Remove when Plan/Package naming has been updated.
-		if !strings.HasPrefix(u.CurrentPlan.Name, "Portmaster ") {
+		if u.CurrentPlan != nil && !strings.HasPrefix(u.CurrentPlan.Name, "Portmaster ") {
 			u.CurrentPlan.Name = "Portmaster " + u.CurrentPlan.Name
 		}
 
@@ -55,10 +68,10 @@ func (u *User) UpdateView(requestStatusCode int) {
 		return
 
 	case StatusUnknownError:
-		v.Message = "There is an unknown error in the communication with the account server. The shown information may not be up to date. "
+		v.Message = "There is an unknown error in the communication with the account server. The shown information may not be accurate. "
 
 	case StatusConnectionError:
-		v.Message = "Portmaster could not connect to the account server. The shown information may not be up to date. "
+		v.Message = "Portmaster could not connect to the account server. The shown information may not be accurate. "
 	}
 
 	// Set view data based on profile data.
@@ -79,9 +92,17 @@ func (u *User) UpdateView(requestStatusCode int) {
 
 	case u.Subscription == nil || u.Subscription.EndsAt == nil:
 		// Account has never had a subscription.
-		v.Message += "Upgrade on the Account Page to protect your privacy even more."
+		v.Message += "Get more features. Upgrade today."
 
-	case time.Now().After(*u.Subscription.EndsAt):
+	case u.Subscription.NextBillingDate != nil:
+		switch {
+		case time.Since(*u.Subscription.NextBillingDate) > 0:
+			v.Message += "Your auto-renewal seems to be delayed. Please refresh and check the status of your payment. Payment information may be delayed."
+		case time.Until(*u.Subscription.NextBillingDate) < 24*time.Hour:
+			v.Message += "Your subscription will auto-renew soon. Please note that payment information may be delayed."
+		}
+
+	case time.Since(*u.Subscription.EndsAt) > 0:
 		// Subscription expired.
 		if u.CurrentPlan != nil {
 			v.Message += fmt.Sprintf("Your package %s has ended. Extend it on the Account Page.", u.CurrentPlan.Name)

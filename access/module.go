@@ -102,7 +102,7 @@ func UpdateAccount(_ context.Context, task *modules.Task) error {
 		}
 	}()
 
-	_, _, err := UpdateUser()
+	u, _, err := UpdateUser()
 	if err != nil {
 		return fmt.Errorf("failed to update user profile: %w", err)
 	}
@@ -110,6 +110,25 @@ func UpdateAccount(_ context.Context, task *modules.Task) error {
 	err = UpdateTokens()
 	if err != nil {
 		return fmt.Errorf("failed to get tokens: %w", err)
+	}
+
+	// Schedule next check.
+	switch {
+	case u == nil: // No user.
+	case u.Subscription == nil: // No subscription.
+	case u.Subscription.EndsAt == nil: // Subscription not active
+
+	case time.Until(*u.Subscription.EndsAt) < 24*time.Hour &&
+		time.Since(*u.Subscription.EndsAt) < 24*time.Hour:
+		// Update account every hour 24h hours before and after the subscription ends.
+		task.Schedule(time.Now().Add(time.Hour))
+
+	case u.Subscription.NextBillingDate == nil: // No auto-subscription.
+
+	case time.Until(*u.Subscription.NextBillingDate) < 24*time.Hour &&
+		time.Since(*u.Subscription.NextBillingDate) < 24*time.Hour:
+		// Update account every hour 24h hours before and after the next billing date.
+		task.Schedule(time.Now().Add(time.Hour))
 	}
 
 	return nil
