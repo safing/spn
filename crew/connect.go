@@ -454,7 +454,7 @@ func addTunnelContextToConnection(t *Tunnel) {
 				IP: hop.Pin().Hub.Info.IPv4,
 			}
 			if hop.Pin().LocationV4 != nil {
-				hopCtx.IPv4.Country = hop.Pin().LocationV4.Country.ISOCode
+				hopCtx.IPv4.Country = hop.Pin().LocationV4.Country.Code
 				hopCtx.IPv4.ASN = hop.Pin().LocationV4.AutonomousSystemNumber
 				hopCtx.IPv4.ASOwner = hop.Pin().LocationV4.AutonomousSystemOrganization
 			}
@@ -465,7 +465,7 @@ func addTunnelContextToConnection(t *Tunnel) {
 				IP: hop.Pin().Hub.Info.IPv6,
 			}
 			if hop.Pin().LocationV6 != nil {
-				hopCtx.IPv6.Country = hop.Pin().LocationV6.Country.ISOCode
+				hopCtx.IPv6.Country = hop.Pin().LocationV6.Country.Code
 				hopCtx.IPv6.ASN = hop.Pin().LocationV6.AutonomousSystemNumber
 				hopCtx.IPv6.ASOwner = hop.Pin().LocationV6.AutonomousSystemOrganization
 			}

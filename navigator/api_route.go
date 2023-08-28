@@ -359,8 +359,9 @@ func handleRouteCalculationRequest(ar *api.Request) (msg string, err error) { //
 
 func formatLocation(loc *geoip.Location) string {
 	return fmt.Sprintf(
-		"%s (AS%d %s)",
-		loc.Country.ISOCode,
+		"%s (%s - AS%d %s)",
+		loc.Country.Name,
+		loc.Country.Code,
 		loc.AutonomousSystemNumber,
 		loc.AutonomousSystemOrganization,
 	)

@@ -114,11 +114,11 @@ func (m *Map) GetAvailableCountries(forType HubType) map[string]*geoip.CountryIn
 		if !matcher(pin) {
 			continue
 		}
-		if pin.LocationV4 != nil && countries[pin.LocationV4.Country.ISOCode] == nil {
-			countries[pin.LocationV4.Country.ISOCode] = geoip.GetCountryInfo(pin.LocationV4.Country.ISOCode)
+		if pin.LocationV4 != nil && countries[pin.LocationV4.Country.Code] == nil {
+			countries[pin.LocationV4.Country.Code] = &pin.LocationV4.Country
 		}
-		if pin.LocationV6 != nil && countries[pin.LocationV6.Country.ISOCode] == nil {
-			countries[pin.LocationV6.Country.ISOCode] = geoip.GetCountryInfo(pin.LocationV6.Country.ISOCode)
+		if pin.LocationV6 != nil && countries[pin.LocationV6.Country.Code] == nil {
+			countries[pin.LocationV6.Country.Code] = &pin.LocationV6.Country
 		}
 	}
 
