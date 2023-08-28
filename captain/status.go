@@ -10,6 +10,7 @@ import (
 	"github.com/safing/portbase/database/record"
 	"github.com/safing/portbase/runtime"
 	"github.com/safing/portbase/utils/debug"
+	"github.com/safing/portmaster/intel/geoip"
 	"github.com/safing/spn/conf"
 	"github.com/safing/spn/navigator"
 )
@@ -24,6 +25,7 @@ type SPNStatus struct {
 	HomeHubName        string
 	ConnectedIP        string
 	ConnectedTransport string
+	ConnectedCountry   *geoip.CountryInfo
 	ConnectedSince     *time.Time
 }
 
@@ -68,6 +70,7 @@ func resetSPNStatus(statusName SPNStatusName, overrideEvenIfConnected bool) {
 	spnStatus.HomeHubName = ""
 	spnStatus.ConnectedIP = ""
 	spnStatus.ConnectedTransport = ""
+	spnStatus.ConnectedCountry = nil
 	spnStatus.ConnectedSince = nil
 
 	// Push new status.
@@ -91,6 +94,7 @@ func GetSPNStatus() *SPNStatus {
 		HomeHubName:        spnStatus.HomeHubName,
 		ConnectedIP:        spnStatus.ConnectedIP,
 		ConnectedTransport: spnStatus.ConnectedTransport,
+		ConnectedCountry:   spnStatus.ConnectedCountry,
 		ConnectedSince:     spnStatus.ConnectedSince,
 	}
 }

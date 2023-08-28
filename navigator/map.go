@@ -103,22 +103,25 @@ func (m *Map) SetHome(id string, t *docks.CraneTerminal) (ok bool) {
 
 // GetAvailableCountries returns a map of countries including their information
 // where the map has pins suitable for the given type.
-func (m *Map) GetAvailableCountries(forType HubType) map[string]*geoip.CountryInfo {
-	countries := make(map[string]*geoip.CountryInfo)
+func (m *Map) GetAvailableCountries(opts *Options, forType HubType) map[string]*geoip.CountryInfo {
+	if opts == nil {
+		opts = m.defaultOptions()
+	}
 
 	m.RLock()
 	defer m.RUnlock()
 
-	matcher := m.defaultOptions().Matcher(forType, m.intel)
+	matcher := opts.Matcher(forType, m.intel)
+	countries := make(map[string]*geoip.CountryInfo)
 	for _, pin := range m.all {
 		if !matcher(pin) {
 			continue
 		}
-		if pin.LocationV4 != nil && countries[pin.LocationV4.Country.ISOCode] == nil {
-			countries[pin.LocationV4.Country.ISOCode] = geoip.GetCountryInfo(pin.LocationV4.Country.ISOCode)
+		if pin.LocationV4 != nil && countries[pin.LocationV4.Country.Code] == nil {
+			countries[pin.LocationV4.Country.Code] = &pin.LocationV4.Country
 		}
-		if pin.LocationV6 != nil && countries[pin.LocationV6.Country.ISOCode] == nil {
-			countries[pin.LocationV6.Country.ISOCode] = geoip.GetCountryInfo(pin.LocationV6.Country.ISOCode)
+		if pin.LocationV6 != nil && countries[pin.LocationV6.Country.Code] == nil {
+			countries[pin.LocationV6.Country.Code] = &pin.LocationV6.Country
 		}
 	}
 

@@ -20,9 +20,11 @@ func notifyOfPackageEnd(u *UserRecord) {
 	// TODO: Check if subscription auto-renews.
 
 	// Skip if there is not active subscription or if it has ended already.
-	if u.Subscription == nil ||
-		u.Subscription.EndsAt == nil ||
-		time.Now().After(*u.Subscription.EndsAt) {
+	switch {
+	case u.Subscription == nil, // No subscription.
+		u.Subscription.EndsAt == nil,             // Subscription not active.
+		u.Subscription.NextBillingDate != nil,    // Subscription is auto-renewing.
+		time.Now().After(*u.Subscription.EndsAt): // Subscription has ended.
 		return
 	}
 
@@ -68,27 +70,16 @@ func notifyOfPackageEnd(u *UserRecord) {
 			endsText = fmt.Sprintf("in %d days", daysUntilEnd)
 		}
 
-		var message string
-		if u.CurrentPlan != nil && strings.HasSuffix(u.CurrentPlan.Name, "Supporter") {
-			message = fmt.Sprintf(
-				"Your current %s ends %s. Extend it to keep your benefits and continue your support of Portmaster.",
-				packageNameBody,
-				endsText,
-			)
-		} else {
-			message = fmt.Sprintf(
+		// Send notification.
+		notifications.Notify(&notifications.Notification{
+			EventID: endOfPackageNearNotifID,
+			Type:    notifType,
+			Title:   fmt.Sprintf("%s About to Expire", packageNameTitle),
+			Message: fmt.Sprintf(
 				"Your current %s ends %s. Extend it to keep your full privacy protections.",
 				packageNameBody,
 				endsText,
-			)
-		}
-
-		// Send notification.
-		notifications.Notify(&notifications.Notification{
-			EventID:      endOfPackageNearNotifID,
-			Type:         notifType,
-			Title:        fmt.Sprintf("%s About to Expire", packageNameTitle),
-			Message:      message,
+			),
 			ShowOnSystem: notifType == notifications.Warning,
 			AvailableActions: []*notifications.Action{
 				{

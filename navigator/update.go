@@ -556,20 +556,34 @@ func (m *Map) UpdateConfigQuickSettings(ctx context.Context) error {
 	tracer.Trace("navigator: updating SPN rules country quick settings")
 	defer tracer.Submit()
 
+	opts := m.DefaultOptions()
+	opts.Home = &HomeHubOptions{
+		Regard: StateTrusted,
+	}
+	opts.Destination = &DestinationHubOptions{
+		Regard:    StateTrusted,
+		Disregard: StateIsHomeHub,
+	}
+
 	// Home Policy.
-	if err := m.updateQuickSettingCountryList(ctx, "spn/homePolicy", HomeHub); err != nil {
+	if err := m.updateQuickSettingExcludeCountryList(ctx, "spn/homePolicy", opts, HomeHub); err != nil {
 		return err
 	}
 	// Transit Policy.
-	if err := m.updateQuickSettingCountryList(ctx, profile.CfgOptionTransitHubPolicyKey, TransitHub); err != nil {
+	if err := m.updateQuickSettingExcludeCountryList(ctx, profile.CfgOptionTransitHubPolicyKey, opts, TransitHub); err != nil {
 		return err
 	}
 	// Exit Policy.
-	if err := m.updateQuickSettingCountryList(ctx, profile.CfgOptionExitHubPolicyKey, DestinationHub); err != nil {
+	if err := m.updateSelectRuleCountryList(ctx, profile.CfgOptionExitHubPolicyKey, opts, DestinationHub); err != nil {
 		return err
 	}
 	// DNS Exit Policy.
-	if err := m.updateQuickSettingCountryList(ctx, "spn/dnsExitPolicy", DestinationHub); err != nil {
+	if err := m.updateSelectRuleCountryList(ctx, "spn/dnsExitPolicy", opts, DestinationHub); err != nil {
+		return err
+	}
+
+	// Trust Nodes.
+	if err := m.updateQuickSettingVerifiedOwnerList(ctx, "spn/trustNodes"); err != nil {
 		return err
 	}
 
@@ -577,7 +591,7 @@ func (m *Map) UpdateConfigQuickSettings(ctx context.Context) error {
 	return nil
 }
 
-func (m *Map) updateQuickSettingCountryList(ctx context.Context, configKey string, matchFor HubType) error {
+func (m *Map) updateQuickSettingExcludeCountryList(ctx context.Context, configKey string, opts *Options, matchFor HubType) error {
 	// Get config option.
 	cfgOption, err := config.GetOption(configKey)
 	if err != nil {
@@ -585,7 +599,7 @@ func (m *Map) updateQuickSettingCountryList(ctx context.Context, configKey strin
 	}
 
 	// Get list of countries for this config option.
-	countries := m.GetAvailableCountries(matchFor)
+	countries := m.GetAvailableCountries(opts, matchFor)
 	// Convert to list.
 	countryList := make([]*geoip.CountryInfo, 0, len(countries))
 	for _, country := range countries {
@@ -600,8 +614,8 @@ func (m *Map) updateQuickSettingCountryList(ctx context.Context, configKey strin
 	quickSettings := make([]config.QuickSetting, 0, len(countries))
 	for _, country := range countryList {
 		quickSettings = append(quickSettings, config.QuickSetting{
-			Name:   fmt.Sprintf("Exclude %s (%s)", country.Name, country.ID),
-			Value:  []string{fmt.Sprintf("- %s", country.ID)},
+			Name:   fmt.Sprintf("Exclude %s (%s)", country.Name, country.Code),
+			Value:  []string{fmt.Sprintf("- %s", country.Code)},
 			Action: config.QuickMergeTop,
 		})
 	}
@@ -611,6 +625,145 @@ func (m *Map) updateQuickSettingCountryList(ctx context.Context, configKey strin
 	defer cfgOption.Unlock()
 	cfgOption.Annotations[config.QuickSettingsAnnotation] = quickSettings
 
-	log.Tracer(ctx).Debugf("navigator: updated %d country quick settings for %s", len(quickSettings), configKey)
+	log.Tracer(ctx).Debugf("navigator: updated %d countries in quick settings for %s", len(quickSettings), configKey)
+	return nil
+}
+
+type selectCountry struct {
+	config.QuickSetting
+	FlagID string
+}
+
+func (m *Map) updateSelectRuleCountryList(ctx context.Context, configKey string, opts *Options, matchFor HubType) error {
+	// Get config option.
+	cfgOption, err := config.GetOption(configKey)
+	if err != nil {
+		return fmt.Errorf("failed to get config option %s: %w", configKey, err)
+	}
+
+	// Get list of countries for this config option.
+	countries := m.GetAvailableCountries(opts, matchFor)
+	// Convert to list.
+	countryList := make([]*geoip.CountryInfo, 0, len(countries))
+	for _, country := range countries {
+		countryList = append(countryList, country)
+	}
+	// Sort list.
+	slices.SortFunc[[]*geoip.CountryInfo, *geoip.CountryInfo](countryList, func(a, b *geoip.CountryInfo) int {
+		return strings.Compare(a.Name, b.Name)
+	})
+
+	// Get continents from countries.
+	continents := make(map[string]*geoip.ContinentInfo)
+	for _, country := range countryList {
+		continents[country.Continent.Code] = &country.Continent
+	}
+	// Convert to list.
+	continentList := make([]*geoip.ContinentInfo, 0, len(continents))
+	for _, continent := range continents {
+		continentList = append(continentList, continent)
+	}
+	// Sort list.
+	slices.SortFunc[[]*geoip.ContinentInfo, *geoip.ContinentInfo](continentList, func(a, b *geoip.ContinentInfo) int {
+		return strings.Compare(a.Name, b.Name)
+	})
+
+	// Start compiling all options.
+	selections := make([]selectCountry, 0, len(continents)+len(countries)+2)
+
+	// Add EU as special region.
+	selections = append(selections, selectCountry{
+		QuickSetting: config.QuickSetting{
+			Name:   "European Union",
+			Value:  []string{"+ AT", "+ BE", "+ BG", "+ CY", "+ CZ", "+ DE", "+ DK", "+ EE", "+ ES", "+ FI", "+ FR", "+ GR", "+ HR", "+ HU", "+ IE", "+ IT", "+ LT", "+ LU", "+ LV", "+ MT", "+ NL", "+ PL", "+ PT", "+ RO", "+ SE", "+ SI", "+ SK", "- *"},
+			Action: config.QuickReplace,
+		},
+		FlagID: "EU",
+	})
+	selections = append(selections, selectCountry{
+		QuickSetting: config.QuickSetting{
+			Name:   "US and Canada",
+			Value:  []string{"+ US", "+ CA"},
+			Action: config.QuickReplace,
+		},
+	})
+
+	// Add countries to quick settings.
+	for _, country := range countryList {
+		selections = append(selections, selectCountry{
+			QuickSetting: config.QuickSetting{
+				Name:   fmt.Sprintf("%s (%s)", country.Name, country.Code),
+				Value:  []string{fmt.Sprintf("+ %s", country.Code), "- *"},
+				Action: config.QuickReplace,
+			},
+			FlagID: country.Code,
+		})
+	}
+
+	// Add continents to quick settings.
+	for _, continent := range continentList {
+		selections = append(selections, selectCountry{
+			QuickSetting: config.QuickSetting{
+				Name:   fmt.Sprintf("%s (C:%s)", continent.Name, continent.Code),
+				Value:  []string{fmt.Sprintf("+ C:%s", continent.Code), "- *"},
+				Action: config.QuickReplace,
+			},
+		})
+	}
+
+	// Lock config option and set new quick settings.
+	cfgOption.Lock()
+	defer cfgOption.Unlock()
+	cfgOption.Annotations[config.QuickSettingsAnnotation] = selections
+
+	log.Tracer(ctx).Debugf("navigator: updated %d countries in quick settings for %s", len(selections), configKey)
+	return nil
+}
+
+func (m *Map) updateQuickSettingVerifiedOwnerList(ctx context.Context, configKey string) error {
+	// Get config option.
+	cfgOption, err := config.GetOption(configKey)
+	if err != nil {
+		return fmt.Errorf("failed to get config option %s: %w", configKey, err)
+	}
+
+	pins := m.pinList(true)
+	verifiedOwners := make([]string, 0, len(pins)/5) // Capacity is an estimation.
+	for _, pin := range pins {
+		pin.Lock()
+		vo := pin.VerifiedOwner
+		pin.Unlock()
+
+		// Skip invalid/unneeded values.
+		switch vo {
+		case "", "Safing":
+			continue
+		}
+
+		// Add to list, if not yet in there.
+		if !slices.Contains[[]string, string](verifiedOwners, vo) {
+			verifiedOwners = append(verifiedOwners, vo)
+		}
+	}
+
+	// Sort list.
+	slices.Sort[[]string](verifiedOwners)
+
+	// Compile list of quick settings.
+	quickSettings := make([]config.QuickSetting, 0, len(verifiedOwners))
+	for _, vo := range verifiedOwners {
+		quickSettings = append(quickSettings, config.QuickSetting{
+			Name:   fmt.Sprintf("Trust %s", vo),
+			Value:  []string{vo},
+			Action: config.QuickMergeBottom,
+		})
+	}
+
+	// Lock config option and set new quick settings.
+	cfgOption.Lock()
+	defer cfgOption.Unlock()
+	cfgOption.Annotations[config.QuickSettingsAnnotation] = quickSettings
+
+	log.Tracer(ctx).Debugf("navigator: updated %d verified owners in quick settings for %s", len(quickSettings), configKey)
 	return nil
 }

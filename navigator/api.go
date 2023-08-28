@@ -398,10 +398,10 @@ func handleMapMeasurementsTableRequest(ar *api.Request) (data []byte, err error)
 
 func getPinCountry(pin *Pin) string {
 	switch {
-	case pin.LocationV4 != nil && pin.LocationV4.Country.ISOCode != "":
-		return pin.LocationV4.Country.ISOCode
-	case pin.LocationV6 != nil && pin.LocationV6.Country.ISOCode != "":
-		return pin.LocationV6.Country.ISOCode
+	case pin.LocationV4 != nil && pin.LocationV4.Country.Code != "":
+		return pin.LocationV4.Country.Code
+	case pin.LocationV6 != nil && pin.LocationV6.Country.Code != "":
+		return pin.LocationV6.Country.Code
 	case pin.EntityV4 != nil && pin.EntityV4.Country != "":
 		return pin.EntityV4.Country
 	case pin.EntityV6 != nil && pin.EntityV6.Country != "":
@@ -545,7 +545,7 @@ func graphNodeTooltip(pin *Pin) string {
 			v4Info = fmt.Sprintf(
 				"%s (%s AS%d %s)",
 				pin.Hub.Info.IPv4.String(),
-				pin.LocationV4.Country.ISOCode,
+				pin.LocationV4.Country.Code,
 				pin.LocationV4.AutonomousSystemNumber,
 				pin.LocationV4.AutonomousSystemOrganization,
 			)
@@ -558,7 +558,7 @@ func graphNodeTooltip(pin *Pin) string {
 			v6Info = fmt.Sprintf(
 				"%s (%s AS%d %s)",
 				pin.Hub.Info.IPv6.String(),
-				pin.LocationV6.Country.ISOCode,
+				pin.LocationV6.Country.Code,
 				pin.LocationV6.AutonomousSystemNumber,
 				pin.LocationV6.AutonomousSystemOrganization,
 			)

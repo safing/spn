@@ -410,6 +410,11 @@ func clientSetActiveConnectionStatus(ctx context.Context) clientComponentResult 
 		}
 		spnStatus.ConnectedTransport = homeTerminal.Transport().String()
 
+		geoLoc := home.GetLocation(connectedIP)
+		if geoLoc != nil {
+			spnStatus.ConnectedCountry = &geoLoc.Country
+		}
+
 		now := time.Now()
 		spnStatus.ConnectedSince = &now
 

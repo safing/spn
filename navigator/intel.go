@@ -7,6 +7,7 @@ import (
 	"golang.org/x/exp/slices"
 
 	"github.com/safing/portbase/log"
+	"github.com/safing/portmaster/intel/geoip"
 	"github.com/safing/portmaster/profile/endpoints"
 	"github.com/safing/spn/hub"
 )
@@ -162,23 +163,15 @@ func (m *Map) updateInfoOverrides(pin *Pin) {
 	overrides := hubIntel.Override
 
 	// Apply overrides
-	if overrides.ContinentCode != "" {
-		if pin.LocationV4 != nil {
-			pin.LocationV4.Continent.Code = overrides.ContinentCode
-		}
-		if pin.LocationV6 != nil {
-			pin.LocationV6.Continent.Code = overrides.ContinentCode
-		}
-	}
 	if overrides.CountryCode != "" {
 		if pin.LocationV4 != nil {
-			pin.LocationV4.Country.ISOCode = overrides.CountryCode
+			pin.LocationV4.Country = geoip.GetCountryInfo(overrides.CountryCode)
 		}
 		if pin.EntityV4 != nil {
 			pin.EntityV4.Country = overrides.CountryCode
 		}
 		if pin.LocationV6 != nil {
-			pin.LocationV6.Country.ISOCode = overrides.CountryCode
+			pin.LocationV6.Country = geoip.GetCountryInfo(overrides.CountryCode)
 		}
 		if pin.EntityV6 != nil {
 			pin.EntityV6.Country = overrides.CountryCode
