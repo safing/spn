@@ -10,7 +10,7 @@ require (
 	github.com/mr-tron/base58 v1.2.0
 	github.com/rot256/pblind v0.0.0-20230622102829-4dc2c6e4b857
 	github.com/safing/jess v0.3.1
-	github.com/safing/portbase v0.17.2
+	github.com/safing/portbase v0.17.3
 	github.com/safing/portmaster v1.4.4-prep
 	github.com/spf13/cobra v1.7.0
 	github.com/stretchr/testify v1.8.4

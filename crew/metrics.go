@@ -36,7 +36,9 @@ func registerMetrics() (err error) {
 		nil,
 		&metrics.Options{
 			Name:       "SPN Total Connect Operations",
+			InternalID: "spn_connect_count",
 			Permission: api.PermitUser,
+			Persist:    true,
 		},
 	)
 	if err != nil {
@@ -61,7 +63,9 @@ func registerMetrics() (err error) {
 		nil,
 		&metrics.Options{
 			Name:       "SPN Connect Operation Incoming Bytes",
+			InternalID: "spn_connect_in_bytes",
 			Permission: api.PermitUser,
+			Persist:    true,
 		},
 	)
 	if err != nil {
@@ -73,7 +77,9 @@ func registerMetrics() (err error) {
 		nil,
 		&metrics.Options{
 			Name:       "SPN Connect Operation Outgoing Bytes",
+			InternalID: "spn_connect_out_bytes",
 			Permission: api.PermitUser,
+			Persist:    true,
 		},
 	)
 	if err != nil {

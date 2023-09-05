@@ -94,6 +94,9 @@ func init() {
 
 // NewConnectOp starts a new connect operation.
 func NewConnectOp(tunnel *Tunnel) (*ConnectOp, *terminal.Error) {
+	// Submit metrics.
+	newConnectOp.Inc()
+
 	// Create request.
 	request := &ConnectRequest{
 		Domain:              tunnel.connInfo.Entity.Domain,

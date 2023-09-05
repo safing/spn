@@ -196,6 +196,8 @@ github.com/safing/portbase v0.15.2/go.mod h1:5bHi99fz7Hh/wOsZUOI631WF9ePSHk57c4f
 github.com/safing/portbase v0.16.2/go.mod h1:mzNCWqPbO7vIYbbK5PElGbudwd2vx4YPNawymL8Aro8=
 github.com/safing/portbase v0.17.2 h1:HzJkURMmXkv30wMHB7xJ+Z5U5aTMe+EzvlHavKoKkos=
 github.com/safing/portbase v0.17.2/go.mod h1:1cVgDZIsPiqM5b+K88Kshir5PGIvsftYkx7y1x925+8=
+github.com/safing/portbase v0.17.3 h1:LLV2kq4mli2phHFHxigTkIoOjConieMTWsDyi9kJd00=
+github.com/safing/portbase v0.17.3/go.mod h1:1cVgDZIsPiqM5b+K88Kshir5PGIvsftYkx7y1x925+8=
 github.com/safing/portmaster v1.4.4-prep h1:r1GqXl8UEyWOqC1QecCO+HEV5YFhHrWvwGC7FQ+wTfs=
 github.com/safing/portmaster v1.4.4-prep/go.mod h1:u35kfStZppEViVmONmSTtaQh7/6vtGEB2kAraj8C9OU=
 github.com/safing/portmaster-android/go v0.0.0-20230605085256-6abf4c495626 h1:olc/REnUdpJN/Gmz8B030OxLpMYxyPDTrDILNEw0eKs=
@@ -413,3 +415,5 @@ gopkg.in/yaml.v3 v3.0.1 h1:fxVm/GzAzEWqLHuvctI91KS9hhNmmWOoWu0XTYJS7CA=
 gopkg.in/yaml.v3 v3.0.1/go.mod h1:K4uyk7z7BCEPqu6E+C64Yfv1cQ7kz7rIZviUmN+EgEM=
 gvisor.dev/gvisor v0.0.0-20220817001344-846276b3dbc5 h1:cv/zaNV0nr1mJzaeo4S5mHIm5va1W0/9J3/5prlsuRM=
 gvisor.dev/gvisor v0.0.0-20220817001344-846276b3dbc5/go.mod h1:TIvkJD0sxe8pIob3p6T8IzxXunlp6yfgktvTNp+DGNM=
+honnef.co/go/tools v0.2.1/go.mod h1:lPVVZ2BS5TfnjLyizF7o7hv7j9/L+8cZY2hLyjP9cGY=
+honnef.co/go/tools v0.2.2/go.mod h1:lPVVZ2BS5TfnjLyizF7o7hv7j9/L+8cZY2hLyjP9cGY=
