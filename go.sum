@@ -200,6 +200,8 @@ github.com/safing/portbase v0.17.3 h1:LLV2kq4mli2phHFHxigTkIoOjConieMTWsDyi9kJd0
 github.com/safing/portbase v0.17.3/go.mod h1:1cVgDZIsPiqM5b+K88Kshir5PGIvsftYkx7y1x925+8=
 github.com/safing/portmaster v1.4.4-prep h1:r1GqXl8UEyWOqC1QecCO+HEV5YFhHrWvwGC7FQ+wTfs=
 github.com/safing/portmaster v1.4.4-prep/go.mod h1:u35kfStZppEViVmONmSTtaQh7/6vtGEB2kAraj8C9OU=
+github.com/safing/portmaster v1.4.6-prep h1:UAOnpeVicHwoTWiKskjZMRWCDoQg/uWHGh6hcDoUUIs=
+github.com/safing/portmaster v1.4.6-prep/go.mod h1:fAxKg69OX4RuUAgmmJ0+ao1ZUFdu3IA0a42P3kHGqzo=
 github.com/safing/portmaster-android/go v0.0.0-20230605085256-6abf4c495626 h1:olc/REnUdpJN/Gmz8B030OxLpMYxyPDTrDILNEw0eKs=
 github.com/safing/portmaster-android/go v0.0.0-20230605085256-6abf4c495626/go.mod h1:abwyAQrZGemWbSh/aCD9nnkp0SvFFf/mGWkAbOwPnFE=
 github.com/satori/go.uuid v1.2.0 h1:0uYX9dsZ2yD7q2RtLRtPSdGDWzjeM3TbMJP9utgA0ww=
