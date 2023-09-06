@@ -99,17 +99,18 @@ func dockingRequestHandler(ctx context.Context) error {
 }
 
 func checkDockingPermission(ctx context.Context, ship ships.Ship) error {
-	remoteIP, err := netutils.IPFromAddr(ship.RemoteAddr())
+	remoteIP, remotePort, err := netutils.IPPortFromAddr(ship.RemoteAddr())
 	if err != nil {
 		return fmt.Errorf("failed to parse remote IP: %w", err)
 	}
 
 	// Create entity.
-	entity := &intel.Entity{}
-	entity.SetIP(remoteIP)
+	entity := (&intel.Entity{
+		IP:       remoteIP,
+		Protocol: uint8(netutils.ProtocolFromNetwork(ship.RemoteAddr().Network())),
+		Port:     remotePort,
+	}).Init(ship.Transport().Port)
 	entity.FetchData(ctx)
-
-	// TODO: Do we want to handle protocol and port too?
 
 	// Check against policy.
 	result, reason := publicIdentity.Hub.GetInfo().EntryPolicy().Match(ctx, entity)

@@ -127,10 +127,10 @@ func (pin *Pin) updateLocationData() {
 	// enough bits left that this cannot be easily exploited.
 
 	if pin.Hub.Info.IPv4 != nil {
-		pin.EntityV4 = &intel.Entity{
+		pin.EntityV4 = (&intel.Entity{
+			IP:     pin.Hub.Info.IPv4,
 			Domain: strings.ToLower(pin.Hub.ID) + ".",
-		}
-		pin.EntityV4.SetIP(pin.Hub.Info.IPv4)
+		}).Init(0)
 
 		var ok bool
 		pin.LocationV4, ok = pin.EntityV4.GetLocation(context.TODO())
@@ -144,10 +144,10 @@ func (pin *Pin) updateLocationData() {
 	}
 
 	if pin.Hub.Info.IPv6 != nil {
-		pin.EntityV6 = &intel.Entity{
+		pin.EntityV6 = (&intel.Entity{
+			IP:     pin.Hub.Info.IPv6,
 			Domain: strings.ToLower(pin.Hub.ID) + ".",
-		}
-		pin.EntityV6.SetIP(pin.Hub.Info.IPv6)
+		}).Init(0)
 
 		var ok bool
 		pin.LocationV6, ok = pin.EntityV6.GetLocation(context.TODO())

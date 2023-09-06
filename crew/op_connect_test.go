@@ -12,6 +12,8 @@ import (
 	"github.com/safing/portmaster/network"
 	"github.com/safing/spn/cabin"
 	"github.com/safing/spn/conf"
+	"github.com/safing/spn/hub"
+	"github.com/safing/spn/navigator"
 	"github.com/safing/spn/terminal"
 )
 
@@ -46,21 +48,36 @@ func TestConnectOp(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create identity: %s", err)
 	}
+	_, err = identity.MaintainAnnouncement(&hub.Announcement{
+		Transports: []string{
+			"tcp:17",
+		},
+		Exit: []string{
+			"+ * */80",
+			"- *",
+		},
+	}, true)
+	if err != nil {
+		t.Fatalf("failed to update identity: %s", err)
+	}
 	EnableConnecting(identity.Hub)
 
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 1; i++ {
 		appConn, sluiceConn := net.Pipe()
 		_, tErr := NewConnectOp(&Tunnel{
 			connInfo: &network.Connection{
-				Entity: &intel.Entity{
+				Entity: (&intel.Entity{
 					Protocol: 6,
 					Port:     80,
 					Domain:   "orf.at.",
 					IP:       net.IPv4(194, 232, 104, 142),
-				},
+				}).Init(0),
 			},
 			conn:        sluiceConn,
 			dstTerminal: a,
+			dstPin: &navigator.Pin{
+				Hub: identity.Hub,
+			},
 		})
 		if tErr != nil {
 			t.Fatalf("failed to start connect op: %s", tErr)

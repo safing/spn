@@ -45,12 +45,10 @@ func establishHomeHub(ctx context.Context) error {
 	// anyway, as the device location is an approximation.
 	var myEntity *intel.Entity
 	if dl := locations.BestV4(); dl != nil && dl.IP != nil {
-		myEntity = &intel.Entity{}
-		myEntity.SetIP(dl.IP)
+		myEntity = (&intel.Entity{IP: dl.IP}).Init(0)
 		myEntity.FetchData(ctx)
 	} else if dl := locations.BestV6(); dl != nil && dl.IP != nil {
-		myEntity = &intel.Entity{}
-		myEntity.SetIP(dl.IP)
+		myEntity = (&intel.Entity{IP: dl.IP}).Init(0)
 		myEntity.FetchData(ctx)
 	}
 

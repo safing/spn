@@ -118,7 +118,7 @@ func TriggerHubStatusMaintenance() {
 }
 
 func maintainPublicIdentity(ctx context.Context, task *modules.Task) error {
-	changed, err := publicIdentity.MaintainAnnouncement(false)
+	changed, err := publicIdentity.MaintainAnnouncement(nil, false)
 	if err != nil {
 		return fmt.Errorf("failed to maintain announcement: %w", err)
 	}

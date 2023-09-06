@@ -402,7 +402,7 @@ func clientSetActiveConnectionStatus(ctx context.Context) clientComponentResult 
 		spnStatus.HomeHubID = home.Hub.ID
 		spnStatus.HomeHubName = home.Hub.Info.Name
 
-		connectedIP, err := netutils.IPFromAddr(homeTerminal.RemoteAddr())
+		connectedIP, _, err := netutils.IPPortFromAddr(homeTerminal.RemoteAddr())
 		if err != nil {
 			spnStatus.ConnectedIP = homeTerminal.RemoteAddr().String()
 		} else {

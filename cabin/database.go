@@ -49,7 +49,7 @@ func LoadIdentity(key string) (id *Identity, changed bool, err error) {
 	}
 
 	// Run a initial maintenance routine.
-	infoChanged, err := id.MaintainAnnouncement(true)
+	infoChanged, err := id.MaintainAnnouncement(nil, true)
 	if err != nil {
 		return nil, false, fmt.Errorf("failed to initialize announcement: %w", err)
 	}
