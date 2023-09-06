@@ -33,12 +33,12 @@ func checkExitPolicy(request *ConnectRequest) *terminal.Error {
 	}
 
 	// Create entity.
-	entity := &intel.Entity{
+	entity := (&intel.Entity{
+		IP:       request.IP,
 		Protocol: uint8(request.Protocol),
 		Port:     request.Port,
 		Domain:   request.Domain,
-	}
-	entity.SetIP(request.IP)
+	}).Init(0)
 	entity.FetchData(context.TODO())
 
 	// Check against policy.

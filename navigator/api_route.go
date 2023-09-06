@@ -94,12 +94,10 @@ func handleRouteCalculationRequest(ar *api.Request) (msg string, err error) { //
 		// anyway, as the device location is an approximation.
 		var myEntity *intel.Entity
 		if dl := locations.BestV4(); dl != nil && dl.IP != nil {
-			myEntity = &intel.Entity{}
-			myEntity.SetIP(dl.IP)
+			myEntity = (&intel.Entity{IP: dl.IP}).Init(0)
 			myEntity.FetchData(ar.Context())
 		} else if dl := locations.BestV6(); dl != nil && dl.IP != nil {
-			myEntity = &intel.Entity{}
-			myEntity.SetIP(dl.IP)
+			myEntity = (&intel.Entity{IP: dl.IP}).Init(0)
 			myEntity.FetchData(ar.Context())
 		}
 
@@ -130,7 +128,7 @@ func handleRouteCalculationRequest(ar *api.Request) (msg string, err error) { //
 		// END of copied
 
 	case net.ParseIP(destination) != nil:
-		entity.SetIP(net.ParseIP(destination))
+		entity.IP = net.ParseIP(destination)
 
 		fallthrough
 	case netutils.IsValidFqdn(destination):
@@ -158,7 +156,7 @@ func handleRouteCalculationRequest(ar *api.Request) (msg string, err error) { //
 				})
 			}
 
-			entity.SetIP(ips[0])
+			entity.IP = ips[0]
 			ignoredIPs = len(ips) - 1
 		}
 
@@ -207,6 +205,9 @@ func handleRouteCalculationRequest(ar *api.Request) (msg string, err error) { //
 	default:
 		return "", errors.New("invalid destination provided")
 	}
+
+	// Finalize entity.
+	entity.Init(0)
 
 	// Start formatting output.
 	lines := []string{
