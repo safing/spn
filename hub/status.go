@@ -17,6 +17,7 @@ const VersionOffline = "offline"
 
 // Status Flags.
 const (
+	// FlagNetError signifies whether the Hub reports a network connectivity failure or impairment.
 	FlagNetError = "net-error"
 )
 
@@ -35,7 +36,8 @@ type Status struct {
 	// Load describes max(CPU, Memory) in percent, averaged over at least 15
 	// minutes. Load is published in fixed steps only.
 	Load int `json:",omitempty"`
-	// NetError signifies whether the Hub reports a network connectivity failure or impairment.
+
+	// Flags holds flags that signify special states.
 	Flags []string `json:",omitempty"`
 }
 

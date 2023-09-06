@@ -6,6 +6,7 @@ import (
 
 	"github.com/safing/portbase/database/record"
 	"github.com/safing/portmaster/intel"
+	"github.com/safing/spn/hub"
 )
 
 // PinExport is the exportable version of a Pin.
@@ -29,6 +30,9 @@ type PinExport struct {
 	ConnectedTo   map[string]*LaneExport // Key is Hub ID.
 	Route         []string               // Includes Home Hub and this Pin's ID.
 	SessionActive bool
+
+	Info   *hub.Announcement
+	Status *hub.Status
 }
 
 // LaneExport is the exportable version of a Lane.
@@ -61,6 +65,8 @@ func (pin *Pin) Export() *PinExport {
 		VerifiedOwner: pin.VerifiedOwner,
 		HopDistance:   pin.HopDistance,
 		SessionActive: pin.hasActiveTerminal() || pin.State.Has(StateIsHomeHub),
+		Info:          pin.Hub.Info,
+		Status:        pin.Hub.Status,
 	}
 
 	// Export lanes.
