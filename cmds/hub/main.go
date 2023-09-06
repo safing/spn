@@ -56,6 +56,6 @@ func main() {
 	// Set threshold.
 	modules.SetMaxConcurrentMicroTasks(microTasksThreshold)
 
-	// start
+	// Start.
 	os.Exit(run.Run())
 }

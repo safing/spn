@@ -174,20 +174,22 @@ func connectToHomeHub(ctx context.Context, dst *hub.Hub) error {
 		return tErr.Wrap("failed to connect home terminal")
 	}
 
-	// Authenticate to home hub.
-	authOp, tErr := access.AuthorizeToTerminal(homeTerminal)
-	if tErr != nil {
-		return tErr.Wrap("failed to authorize")
-	}
-	select {
-	case tErr := <-authOp.Result:
-		if !tErr.Is(terminal.ErrExplicitAck) {
-			return tErr.Wrap("failed to authenticate to")
+	if !DisableAccount {
+		// Authenticate to home hub.
+		authOp, tErr := access.AuthorizeToTerminal(homeTerminal)
+		if tErr != nil {
+			return tErr.Wrap("failed to authorize")
 		}
-	case <-time.After(3 * time.Second):
-		return terminal.ErrTimeout.With("waiting for auth to complete")
-	case <-ctx.Done():
-		return terminal.ErrStopping
+		select {
+		case tErr := <-authOp.Result:
+			if !tErr.Is(terminal.ErrExplicitAck) {
+				return tErr.Wrap("failed to authenticate to")
+			}
+		case <-time.After(3 * time.Second):
+			return terminal.ErrTimeout.With("waiting for auth to complete")
+		case <-ctx.Done():
+			return terminal.ErrStopping
+		}
 	}
 
 	// Set new home on map.

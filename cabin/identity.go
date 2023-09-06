@@ -145,10 +145,7 @@ func (id *Identity) MaintainStatus(lanes []*hub.Lane, load *int, flags []string,
 	// Create a new status or make a copy of the status for editing.
 	var newStatus *hub.Status
 	if id.Hub.Status != nil {
-		newStatus, err = id.Hub.Status.Copy()
-		if err != nil {
-			return false, fmt.Errorf("failed to copy status for maintenance: %w", err)
-		}
+		newStatus = id.Hub.Status.Copy()
 	} else {
 		newStatus = &hub.Status{}
 	}

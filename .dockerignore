@@ -1,0 +1,19 @@
+# Compiled binaries
+spn
+spn.exe
+client
+client.exe
+main
+main.exe
+
+# Dist dir
+dist
+
+# Custom dev deops
+go.mod.*
+
+# vendor dir
+vendor
+
+# testing data
+testing/simple/testdata

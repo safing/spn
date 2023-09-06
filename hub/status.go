@@ -6,7 +6,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/mitchellh/copystructure"
+	"golang.org/x/exp/slices"
 
 	"github.com/safing/jess"
 	"github.com/safing/portbase/utils"
@@ -63,12 +63,20 @@ type Lane struct {
 }
 
 // Copy returns a deep copy of the Status.
-func (s *Status) Copy() (*Status, error) {
-	copied, err := copystructure.Copy(s)
-	if err != nil {
-		return nil, err
+func (s *Status) Copy() *Status {
+	newStatus := &Status{
+		Timestamp: s.Timestamp,
+		Version:   s.Version,
+		Lanes:     slices.Clone(s.Lanes),
+		Load:      s.Load,
+		Flags:     slices.Clone(s.Flags),
 	}
-	return copied.(*Status), nil //nolint:forcetypeassert // Can only be an *Status.
+	// Copy map.
+	newStatus.Keys = make(map[string]*Key, len(s.Keys))
+	for k, v := range s.Keys {
+		newStatus.Keys[k] = v
+	}
+	return newStatus
 }
 
 // SelectSignet selects the public key to use for initiating connections to that Hub.
