@@ -51,7 +51,7 @@ func TestIdentity(t *testing.T) {
 	fmt.Printf("id.Hub.Status: %+v\n", id.Hub.Status)
 
 	// Maintenance is run in creation, so nothing should change now.
-	changed, err := id.MaintainAnnouncement(false)
+	changed, err := id.MaintainAnnouncement(nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}

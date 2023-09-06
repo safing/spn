@@ -77,7 +77,7 @@ func CreateIdentity(ctx context.Context, mapName string) (*Identity, error) {
 	}
 
 	// initial maintenance routine
-	_, err = id.MaintainAnnouncement(true)
+	_, err = id.MaintainAnnouncement(nil, true)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize announcement: %w", err)
 	}
@@ -89,13 +89,17 @@ func CreateIdentity(ctx context.Context, mapName string) (*Identity, error) {
 	return id, nil
 }
 
-// MaintainAnnouncement maintains the Hub's Announcenemt and returns whether there was a change that should be communicated to other Hubs.
-func (id *Identity) MaintainAnnouncement(selfcheck bool) (changed bool, err error) {
+// MaintainAnnouncement maintains the Hub's Announcenemt and returns whether
+// there was a change that should be communicated to other Hubs.
+// If newInfo is nil, it will be derived from configuration.
+func (id *Identity) MaintainAnnouncement(newInfo *hub.Announcement, selfcheck bool) (changed bool, err error) {
 	id.Lock()
 	defer id.Unlock()
 
 	// Populate new info with data.
-	newInfo := getPublicHubInfo()
+	if newInfo == nil {
+		newInfo = getPublicHubInfo()
+	}
 	newInfo.ID = id.Hub.ID
 	if id.Hub.Info != nil {
 		newInfo.Timestamp = id.Hub.Info.Timestamp
