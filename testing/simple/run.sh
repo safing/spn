@@ -49,4 +49,4 @@ cp entrypoint.sh ./testdata/shared/entrypoint.sh
 chmod 555 ./testdata/shared/entrypoint.sh
 
 # Run!
-docker-compose -p spn-test-simple up --remove-orphans
+docker compose -p spn-test-simple up --remove-orphans
