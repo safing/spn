@@ -4,7 +4,6 @@ import (
 	"time"
 
 	"github.com/safing/portbase/modules"
-	_ "github.com/safing/portmaster/firewall/interception"
 	"github.com/safing/spn/terminal"
 )
 
