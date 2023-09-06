@@ -25,6 +25,7 @@ func main() {
 
 	// Configure user agent.
 	updates.UserAgent = fmt.Sprintf("SPN Hub (%s %s)", runtime.GOOS, runtime.GOARCH)
+	helper.IntelOnly()
 
 	// Configure SPN mode.
 	conf.EnablePublicHub(true)
@@ -54,10 +55,6 @@ func main() {
 	microTasksThreshold += 4
 	// Set threshold.
 	modules.SetMaxConcurrentMicroTasks(microTasksThreshold)
-
-	// adapt portmaster updates module
-	updates.UserAgent = "Hub"
-	helper.IntelOnly()
 
 	// start
 	os.Exit(run.Run())
