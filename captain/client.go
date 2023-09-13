@@ -203,6 +203,8 @@ func clientCheckNetworkReady(ctx context.Context) clientComponentResult {
 	return clientResultOk
 }
 
+// DisableAccount disables using any account related SPN functionality.
+// Attempts to use the same will result in errors.
 var DisableAccount bool
 
 func clientCheckAccountAndTokens(ctx context.Context) clientComponentResult {
