@@ -194,7 +194,7 @@ func updateUserWithFailedRequest(statusCode int, disableSubscription bool) {
 		}
 
 		// Disable the subscription if desired.
-		if disableSubscription {
+		if disableSubscription && user.Subscription != nil {
 			user.Subscription.EndsAt = nil
 		}
 
