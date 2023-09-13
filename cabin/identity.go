@@ -217,7 +217,8 @@ func (id *Identity) MakeOfflineStatus() (offlineStatusExport []byte, err error) 
 	// Make offline status.
 	newStatus := &hub.Status{
 		Timestamp: time.Now().Unix(),
-		Version:   hub.VersionOffline,
+		Version:   info.Version(),
+		Flags:     []string{hub.FlagOffline},
 	}
 
 	// Export new data.

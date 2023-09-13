@@ -13,12 +13,16 @@ import (
 )
 
 // VersionOffline is a special version used to signify that the Hub has gone offline.
+// This is depracated, please use FlagOffline instead.
 const VersionOffline = "offline"
 
 // Status Flags.
 const (
-	// FlagNetError signifies whether the Hub reports a network connectivity failure or impairment.
+	// FlagNetError signifies that the Hub reports a network connectivity failure or impairment.
 	FlagNetError = "net-error"
+
+	// FlagOffline signifies that the Hub has gone offline by itself.
+	FlagOffline = "offline"
 )
 
 // Status is the message type used to update changing Hub Information. Changes are made automatically.
