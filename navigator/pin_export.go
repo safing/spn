@@ -65,8 +65,8 @@ func (pin *Pin) Export() *PinExport {
 		VerifiedOwner: pin.VerifiedOwner,
 		HopDistance:   pin.HopDistance,
 		SessionActive: pin.hasActiveTerminal() || pin.State.Has(StateIsHomeHub),
-		Info:          pin.Hub.Info,
-		Status:        pin.Hub.Status,
+		Info:          pin.Hub.Info,   // Is updated as a whole, no need to copy.
+		Status:        pin.Hub.Status, // Is updated as a whole, no need to copy.
 	}
 
 	// Export lanes.

@@ -236,7 +236,7 @@ func (m *Map) updateHub(h *hub.Hub, lockMap, lockHub bool) {
 	}
 
 	// Update online status of the Pin.
-	if pin.Hub.Status.Version == hub.VersionOffline {
+	if pin.Hub.Status.HasFlag(hub.FlagOffline) || pin.Hub.Status.Version == hub.VersionOffline {
 		pin.addStates(StateOffline)
 	} else {
 		pin.removeStates(StateOffline)
@@ -587,7 +587,7 @@ func (m *Map) UpdateConfigQuickSettings(ctx context.Context) error {
 		return err
 	}
 
-	tracer.Info("navigator: finished updating SPN rules country quick settings")
+	tracer.Trace("navigator: finished updating SPN rules country quick settings")
 	return nil
 }
 

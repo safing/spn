@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mitchellh/copystructure"
+	"golang.org/x/exp/slices"
 
 	"github.com/safing/jess"
 	"github.com/safing/portbase/database/record"
@@ -116,13 +116,23 @@ type Announcement struct {
 }
 
 // Copy returns a deep copy of the Announcement.
-func (a *Announcement) Copy() (*Announcement, error) {
-	// TODO: Improve this.
-	copied, err := copystructure.Copy(a)
-	if err != nil {
-		return nil, err
+func (a *Announcement) Copy() *Announcement {
+	return &Announcement{
+		ID:             a.ID,
+		Timestamp:      a.Timestamp,
+		Name:           a.Name,
+		ContactAddress: a.ContactAddress,
+		ContactService: a.ContactService,
+		Hosters:        slices.Clone(a.Hosters),
+		Datacenter:     a.Datacenter,
+		IPv4:           a.IPv4,
+		IPv6:           a.IPv6,
+		Transports:     slices.Clone(a.Transports),
+		Entry:          slices.Clone(a.Entry),
+		entryPolicy:    slices.Clone(a.entryPolicy),
+		Exit:           slices.Clone(a.Exit),
+		exitPolicy:     slices.Clone(a.exitPolicy),
 	}
-	return copied.(*Announcement), nil //nolint:forcetypeassert // Can only be an *Announcement.
 }
 
 // GetInfo returns the hub info.

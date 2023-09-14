@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"os"
 	"runtime"
@@ -17,13 +18,17 @@ import (
 	"github.com/safing/spn/conf"
 )
 
+func init() {
+	flag.BoolVar(&updates.RebootOnRestart, "reboot-on-restart", false, "reboot server on auto-upgrade")
+}
+
 func main() {
 	info.Set("SPN Hub", "0.6.19", "AGPLv3", true)
 
 	// Configure metrics.
 	_ = metrics.SetNamespace("hub")
 
-	// Configure user agent.
+	// Configure updating.
 	updates.UserAgent = fmt.Sprintf("SPN Hub (%s %s)", runtime.GOOS, runtime.GOARCH)
 	helper.IntelOnly()
 
@@ -56,6 +61,6 @@ func main() {
 	// Set threshold.
 	modules.SetMaxConcurrentMicroTasks(microTasksThreshold)
 
-	// start
+	// Start.
 	os.Exit(run.Run())
 }

@@ -6,11 +6,11 @@ require (
 	github.com/awalterschulze/gographviz v2.0.3+incompatible
 	github.com/brianvoe/gofakeit v3.18.0+incompatible
 	github.com/ghodss/yaml v1.0.0
-	github.com/mitchellh/copystructure v1.2.0
 	github.com/mr-tron/base58 v1.2.0
+	github.com/r3labs/diff/v3 v3.0.1
 	github.com/rot256/pblind v0.0.0-20230622102829-4dc2c6e4b857
 	github.com/safing/jess v0.3.1
-	github.com/safing/portbase v0.17.3
+	github.com/safing/portbase v0.17.4
 	github.com/safing/portmaster v1.4.6-prep2
 	github.com/spf13/cobra v1.7.0
 	github.com/stretchr/testify v1.8.4
@@ -25,18 +25,14 @@ require (
 	github.com/aead/serpent v0.0.0-20160714141033-fba169763ea6 // indirect
 	github.com/armon/go-radix v1.0.0 // indirect
 	github.com/bluele/gcache v0.0.2 // indirect
-	github.com/cilium/ebpf v0.11.0 // indirect
 	github.com/coreos/go-iptables v0.7.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
-	github.com/florianl/go-conntrack v0.4.0 // indirect
-	github.com/florianl/go-nfqueue v1.3.1 // indirect
 	github.com/fxamacker/cbor v1.5.1 // indirect
 	github.com/fxamacker/cbor/v2 v2.5.0 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/godbus/dbus/v5 v5.1.0 // indirect
 	github.com/gofrs/uuid v4.4.0+incompatible // indirect
 	github.com/google/btree v1.1.2 // indirect
-	github.com/google/go-cmp v0.5.9 // indirect
 	github.com/google/gopacket v1.1.19 // indirect
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510 // indirect
 	github.com/gorilla/mux v1.8.0 // indirect
@@ -45,13 +41,11 @@ require (
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
 	github.com/hashicorp/go-version v1.6.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
-	github.com/josharian/native v1.1.0 // indirect
-	github.com/mdlayher/netlink v1.7.2 // indirect
-	github.com/mdlayher/socket v0.5.0 // indirect
+	github.com/kr/pretty v0.3.1 // indirect
 	github.com/miekg/dns v1.1.55 // indirect
+	github.com/mitchellh/copystructure v1.2.0 // indirect
 	github.com/mitchellh/reflectwalk v1.0.2 // indirect
 	github.com/oschwald/maxminddb-golang v1.12.0 // indirect
-	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/safing/portmaster-android/go v0.0.0-20230830120134-3226ceac3bec // indirect
 	github.com/satori/go.uuid v1.2.0 // indirect

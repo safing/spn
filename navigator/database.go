@@ -95,7 +95,11 @@ func (s *StorageInterface) processQuery(m *Map, q *query.Query, it *iterator.Ite
 	for _, pin := range m.sortedPins(true) {
 		export := pin.Export()
 		if q.Matches(export) {
-			it.Next <- export
+			select {
+			case it.Next <- export:
+			case <-it.Done:
+				return
+			}
 		}
 	}
 
