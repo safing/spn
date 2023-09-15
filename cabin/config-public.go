@@ -217,12 +217,13 @@ func prepPublicHubConfig() error {
 	publicCfgOptionIPv6 = config.GetAsString(publicCfgOptionIPv6Key, publicCfgOptionIPv6Default)
 
 	err = config.Register(&config.Option{
-		Name:           "Transports",
-		Key:            publicCfgOptionTransportsKey,
-		Description:    "List of transports this Hub supports.",
-		OptType:        config.OptTypeStringArray,
-		ExpertiseLevel: config.ExpertiseLevelExpert,
-		DefaultValue:   publicCfgOptionTransportsDefault,
+		Name:            "Transports",
+		Key:             publicCfgOptionTransportsKey,
+		Description:     "List of transports this Hub supports.",
+		OptType:         config.OptTypeStringArray,
+		ExpertiseLevel:  config.ExpertiseLevelExpert,
+		RequiresRestart: true,
+		DefaultValue:    publicCfgOptionTransportsDefault,
 		Annotations: config.Annotations{
 			config.DisplayOrderAnnotation: publicCfgOptionTransportsOrder,
 		},

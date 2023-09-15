@@ -263,8 +263,7 @@ func (crane *Crane) RemoteAddr() net.Addr {
 
 // Transport returns ship's transport.
 func (crane *Crane) Transport() *hub.Transport {
-	t := crane.ship.Transport()
-	return &t
+	return crane.ship.Transport()
 }
 
 func (crane *Crane) getNextTerminalID() uint32 {

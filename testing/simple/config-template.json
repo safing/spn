@@ -7,7 +7,8 @@
   },
   "spn": {
     "publicHub": {
-      "name": "test-$HUBNAME"
+      "name": "test-$HUBNAME",
+      "transports": ["http:80", "tcp:17"]
     }
   }
 }

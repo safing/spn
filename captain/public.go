@@ -140,11 +140,6 @@ func maintainPublicIdentity(ctx context.Context, task *modules.Task) error {
 	// forward to other connected Hubs
 	gossipRelayMsg("", GossipHubAnnouncementMsg, announcementData)
 
-	// manage docks in order to react to possibly changed transports
-	if managePiersTask != nil {
-		managePiersTask.Queue()
-	}
-
 	return nil
 }
 

@@ -41,8 +41,8 @@ func (ship *TestShip) String() string {
 }
 
 // Transport returns the transport used for this ship.
-func (ship *TestShip) Transport() hub.Transport {
-	return hub.Transport{
+func (ship *TestShip) Transport() *hub.Transport {
+	return &hub.Transport{
 		Protocol: "dummy",
 	}
 }
