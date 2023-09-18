@@ -10,6 +10,7 @@ import (
 
 	"github.com/safing/jess"
 	"github.com/safing/portbase/database/record"
+	"github.com/safing/portbase/log"
 	"github.com/safing/portmaster/profile/endpoints"
 )
 
@@ -114,6 +115,9 @@ type Announcement struct {
 	Exit       []string
 	exitPolicy endpoints.Endpoints
 	// {"- * TCP/25", "- US"}
+
+	// Flags holds flags that signify special states.
+	Flags []string
 }
 
 // Copy returns a deep copy of the Announcement.
@@ -134,6 +138,7 @@ func (a *Announcement) Copy() *Announcement {
 		entryPolicy:      slices.Clone(a.entryPolicy),
 		Exit:             slices.Clone(a.Exit),
 		exitPolicy:       slices.Clone(a.exitPolicy),
+		Flags:            slices.Clone(a.Flags),
 	}
 }
 
@@ -235,7 +240,7 @@ func (h *Hub) Obsolete() bool {
 	switch {
 	case h.InvalidInfo:
 	case h.InvalidStatus:
-	case h.Status.Version == VersionOffline:
+	case h.HasFlag(FlagOffline):
 		// Treat offline as invalid.
 	default:
 		valid = true
@@ -252,6 +257,17 @@ func (h *Hub) Obsolete() bool {
 		return time.Now().Add(-obsoleteValidAfter).After(lastSeen)
 	}
 	return time.Now().Add(-obsoleteInvalidAfter).After(lastSeen)
+}
+
+// HasFlag returns whether the Announcement or Status has the given flag set.
+func (h *Hub) HasFlag(flagName string) bool {
+	switch {
+	case h.Status != nil && slices.Contains[[]string, string](h.Status.Flags, flagName):
+		return true
+	case h.Info != nil && slices.Contains[[]string, string](h.Info.Flags, flagName):
+		return true
+	}
+	return false
 }
 
 // Equal returns whether the given Announcements are equal.
@@ -283,50 +299,55 @@ func (a *Announcement) Equal(b *Announcement) bool {
 		return false
 	case !equalStringSlice(a.Exit, b.Exit):
 		return false
+	case !equalStringSlice(a.Flags, b.Flags):
+		return false
 	default:
 		return true
 	}
 }
 
 // validateFormatting check if all values conform to the basic format.
-func (a *Announcement) validateFormatting() (err error) {
-	if err = checkStringFormat("ID", a.ID, 255); err != nil {
+func (a *Announcement) validateFormatting() error {
+	if err := checkStringFormat("ID", a.ID, 255); err != nil {
 		return err
 	}
-	if err = checkStringFormat("Name", a.Name, 32); err != nil {
+	if err := checkStringFormat("Name", a.Name, 32); err != nil {
 		return err
 	}
-	if err = checkStringFormat("Group", a.Group, 32); err != nil {
+	if err := checkStringFormat("Group", a.Group, 32); err != nil {
 		return err
 	}
-	if err = checkStringFormat("ContactAddress", a.ContactAddress, 255); err != nil {
+	if err := checkStringFormat("ContactAddress", a.ContactAddress, 255); err != nil {
 		return err
 	}
-	if err = checkStringFormat("ContactService", a.ContactService, 255); err != nil {
+	if err := checkStringFormat("ContactService", a.ContactService, 255); err != nil {
 		return err
 	}
-	if err = checkStringSliceFormat("Hosters", a.Hosters, 255, 255); err != nil {
+	if err := checkStringSliceFormat("Hosters", a.Hosters, 255, 255); err != nil {
 		return err
 	}
-	if err = checkStringFormat("Datacenter", a.Datacenter, 255); err != nil {
+	if err := checkStringFormat("Datacenter", a.Datacenter, 255); err != nil {
 		return err
 	}
-	if err = checkIPFormat("IPv4", a.IPv4); err != nil {
+	if err := checkIPFormat("IPv4", a.IPv4); err != nil {
 		return err
 	}
-	if err = checkIPFormat("IPv6", a.IPv6); err != nil {
+	if err := checkIPFormat("IPv6", a.IPv6); err != nil {
 		return err
 	}
-	if err = checkStringSliceFormat("Transports", a.Transports, 255, 255); err != nil {
+	if err := checkStringSliceFormat("Transports", a.Transports, 255, 255); err != nil {
 		return err
 	}
-	if err = checkStringSliceFormat("Entry", a.Entry, 255, 255); err != nil {
+	if err := checkStringSliceFormat("Entry", a.Entry, 255, 255); err != nil {
 		return err
 	}
-	if err = checkStringSliceFormat("Exit", a.Exit, 255, 255); err != nil {
+	if err := checkStringSliceFormat("Exit", a.Exit, 255, 255); err != nil {
 		return err
 	}
-	return a.parsePolicies()
+	if err := checkStringSliceFormat("Flags", a.Flags, 16, 32); err != nil {
+		return err
+	}
+	return nil
 }
 
 // Prepare prepares the announcement by parsing policies and transports.
@@ -380,6 +401,11 @@ func (a *Announcement) ExitPolicy() endpoints.Endpoints {
 // ParsedTransports returns the Hub's parsed transports.
 func (a *Announcement) ParsedTransports() []*Transport {
 	return a.parsedTransports
+}
+
+// HasFlag returns whether the Announcement has the given flag set.
+func (a *Announcement) HasFlag(flagName string) bool {
+	return slices.Contains[[]string, string](a.Flags, flagName)
 }
 
 // String returns the string representation of the scope.

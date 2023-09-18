@@ -1,6 +1,7 @@
 package cabin
 
 import (
+	"fmt"
 	"net"
 	"os"
 
@@ -85,6 +86,12 @@ var (
 	publicCfgOptionExit        config.StringArrayOption
 	publicCfgOptionExitDefault = []string{"- * TCP/25"}
 	publicCfgOptionExitOrder   = 522
+
+	// Allow Unencrypted.
+	publicCfgOptionAllowUnencryptedKey     = "spn/publicHub/allowUnencrypted"
+	publicCfgOptionAllowUnencrypted        config.BoolOption
+	publicCfgOptionAllowUnencryptedDefault = false
+	publicCfgOptionAllowUnencryptedOrder   = 523
 )
 
 func prepPublicHubConfig() error {
@@ -279,6 +286,22 @@ func prepPublicHubConfig() error {
 	}
 	publicCfgOptionExit = config.GetAsStringArray(publicCfgOptionExitKey, publicCfgOptionExitDefault)
 
+	err = config.Register(&config.Option{
+		Name:           "Allow Unencrypted Connections",
+		Key:            publicCfgOptionAllowUnencryptedKey,
+		Description:    "Advertise that this Hub is available for handling unencrypted connections, as detected by clients.",
+		OptType:        config.OptTypeBool,
+		ExpertiseLevel: config.ExpertiseLevelExpert,
+		DefaultValue:   publicCfgOptionAllowUnencryptedDefault,
+		Annotations: config.Annotations{
+			config.DisplayOrderAnnotation: publicCfgOptionAllowUnencryptedOrder,
+		},
+	})
+	if err != nil {
+		return err
+	}
+	publicCfgOptionAllowUnencrypted = config.GetAsBool(publicCfgOptionAllowUnencryptedKey, publicCfgOptionAllowUnencryptedDefault)
+
 	// update defaults from system
 	setDynamicPublicDefaults()
 
@@ -297,6 +320,11 @@ func getPublicHubInfo() *hub.Announcement {
 		Transports:     publicCfgOptionTransports(),
 		Entry:          publicCfgOptionEntry(),
 		Exit:           publicCfgOptionExit(),
+		Flags:          []string{},
+	}
+
+	if publicCfgOptionAllowUnencrypted() {
+		info.Flags = append(info.Flags, hub.FlagAllowUnencrypted)
 	}
 
 	ip4 := publicCfgOptionIPv4()

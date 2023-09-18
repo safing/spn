@@ -75,6 +75,9 @@ const (
 	// This does not invalidate the Hub for all operations and not in all cases.
 	StateConnectivityIssues // 0x2000
 
+	// StateAllowUnencrypted signifies that the Hub is available to handle unencrypted connections.
+	StateAllowUnencrypted // 0x4000
+
 	// State Summaries.
 
 	// StateSummaryRegard summarizes all states that must always be set in order to take a Hub into consideration for any task.
@@ -104,6 +107,7 @@ var allStates = []PinState{
 	StateUsageAsDestinationDiscouraged,
 	StateIsHomeHub,
 	StateConnectivityIssues,
+	StateAllowUnencrypted,
 }
 
 // Add returns a new PinState with the given states added.
@@ -411,6 +415,8 @@ func (pinState PinState) Name() string {
 		return "IsHomeHub"
 	case StateConnectivityIssues:
 		return "ConnectivityIssues"
+	case StateAllowUnencrypted:
+		return "AllowUnencrypted"
 	case StateSummaryRegard, StateSummaryDisregard:
 		// Satisfy exhaustive linter.
 		fallthrough
