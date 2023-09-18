@@ -224,6 +224,18 @@ func prepPublicHubConfig() error {
 		ExpertiseLevel:  config.ExpertiseLevelExpert,
 		RequiresRestart: true,
 		DefaultValue:    publicCfgOptionTransportsDefault,
+		ValidationFunc: func(value any) error {
+			if transports, ok := value.([]string); ok {
+				for i, transport := range transports {
+					if _, err := hub.ParseTransport(transport); err != nil {
+						return fmt.Errorf("failed to parse transport #%d: %w", i, err)
+					}
+				}
+			} else {
+				return fmt.Errorf("not a []string, but %T", value)
+			}
+			return nil
+		},
 		Annotations: config.Annotations{
 			config.DisplayOrderAnnotation: publicCfgOptionTransportsOrder,
 		},

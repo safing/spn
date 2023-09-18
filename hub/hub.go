@@ -105,6 +105,7 @@ type Announcement struct {
 	//   "ws:80",
 	//   "wss://example.com:443/spn",
 	// } // protocols with metadata
+	parsedTransports []*Transport
 
 	// Policies - default permit
 	Entry       []string
@@ -118,20 +119,21 @@ type Announcement struct {
 // Copy returns a deep copy of the Announcement.
 func (a *Announcement) Copy() *Announcement {
 	return &Announcement{
-		ID:             a.ID,
-		Timestamp:      a.Timestamp,
-		Name:           a.Name,
-		ContactAddress: a.ContactAddress,
-		ContactService: a.ContactService,
-		Hosters:        slices.Clone(a.Hosters),
-		Datacenter:     a.Datacenter,
-		IPv4:           a.IPv4,
-		IPv6:           a.IPv6,
-		Transports:     slices.Clone(a.Transports),
-		Entry:          slices.Clone(a.Entry),
-		entryPolicy:    slices.Clone(a.entryPolicy),
-		Exit:           slices.Clone(a.Exit),
-		exitPolicy:     slices.Clone(a.exitPolicy),
+		ID:               a.ID,
+		Timestamp:        a.Timestamp,
+		Name:             a.Name,
+		ContactAddress:   a.ContactAddress,
+		ContactService:   a.ContactService,
+		Hosters:          slices.Clone(a.Hosters),
+		Datacenter:       a.Datacenter,
+		IPv4:             a.IPv4,
+		IPv6:             a.IPv6,
+		Transports:       slices.Clone(a.Transports),
+		parsedTransports: slices.Clone(a.parsedTransports),
+		Entry:            slices.Clone(a.Entry),
+		entryPolicy:      slices.Clone(a.entryPolicy),
+		Exit:             slices.Clone(a.Exit),
+		exitPolicy:       slices.Clone(a.exitPolicy),
 	}
 }
 
@@ -327,14 +329,41 @@ func (a *Announcement) validateFormatting() (err error) {
 	return a.parsePolicies()
 }
 
-func (a *Announcement) parsePolicies() error {
+// Prepare prepares the announcement by parsing policies and transports.
+// If fields are already parsed, they will only be parsed again, when force is set to true.
+func (a *Announcement) prepare(force bool) error {
 	var err error
-	if a.entryPolicy, err = endpoints.ParseEndpoints(a.Entry); err != nil {
-		return fmt.Errorf("failed to parse entry policy: %w", err)
+
+	// Parse policies.
+	if a.entryPolicy == nil || force {
+		if a.entryPolicy, err = endpoints.ParseEndpoints(a.Entry); err != nil {
+			return fmt.Errorf("failed to parse entry policy: %w", err)
+		}
 	}
-	if a.exitPolicy, err = endpoints.ParseEndpoints(a.Exit); err != nil {
-		return fmt.Errorf("failed to parse exit policy: %w", err)
+	if a.exitPolicy == nil || force {
+		if a.exitPolicy, err = endpoints.ParseEndpoints(a.Exit); err != nil {
+			return fmt.Errorf("failed to parse exit policy: %w", err)
+		}
 	}
+
+	// Parse transports.
+	if a.parsedTransports == nil || force {
+		a.parsedTransports = make([]*Transport, 0, len(a.Transports))
+		for _, t := range a.Transports {
+			pt, err := ParseTransport(t)
+			if err != nil {
+				log.Warningf("hub: Hub %s (%s) has configured an unknown or invalid transport %q: %s", a.Name, a.ID, t, err)
+			} else {
+				a.parsedTransports = append(a.parsedTransports, pt)
+			}
+		}
+		SortTransports(a.parsedTransports)
+		// Check if there are any valid transports.
+		if len(a.parsedTransports) == 0 {
+			return ErrMissingTransports
+		}
+	}
+
 	return nil
 }
 
@@ -346,6 +375,11 @@ func (a *Announcement) EntryPolicy() endpoints.Endpoints {
 // ExitPolicy returns the Hub's exit policy.
 func (a *Announcement) ExitPolicy() endpoints.Endpoints {
 	return a.exitPolicy
+}
+
+// ParsedTransports returns the Hub's parsed transports.
+func (a *Announcement) ParsedTransports() []*Transport {
+	return a.parsedTransports
 }
 
 // String returns the string representation of the scope.

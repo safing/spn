@@ -63,15 +63,6 @@ func GetHubByKey(key string) (*Hub, error) {
 		return nil, err
 	}
 
-	// Check Formatting
-	// This should also be checked on records loaded from disk in order to update validation criteria retroactively.
-	if err = hub.Info.validateFormatting(); err != nil {
-		return nil, fmt.Errorf("announcement failed format validation: %w", err)
-	}
-	if err = hub.Status.validateFormatting(); err != nil {
-		return nil, fmt.Errorf("status failed format validation: %w", err)
-	}
-
 	return hub, nil
 }
 
@@ -85,7 +76,20 @@ func EnsureHub(r record.Record) (*Hub, error) {
 		if err != nil {
 			return nil, err
 		}
-		return checkAndReturn(newHub), nil
+		newHub = prepHub(newHub)
+
+		// Fully validate when getting from database.
+		if err := newHub.Info.validateFormatting(); err != nil {
+			return nil, fmt.Errorf("announcement failed format validation: %w", err)
+		}
+		if err := newHub.Status.validateFormatting(); err != nil {
+			return nil, fmt.Errorf("status failed format validation: %w", err)
+		}
+		if err := newHub.Info.prepare(false); err != nil {
+			return nil, fmt.Errorf("failed to prepare announcement: %w", err)
+		}
+
+		return newHub, nil
 	}
 
 	// or adjust type
@@ -93,12 +97,18 @@ func EnsureHub(r record.Record) (*Hub, error) {
 	if !ok {
 		return nil, fmt.Errorf("record not of type *Hub, but %T", r)
 	}
+	newHub = prepHub(newHub)
+
+	// Prepare only when already parsed.
+	if err := newHub.Info.prepare(false); err != nil {
+		return nil, fmt.Errorf("failed to prepare announcement: %w", err)
+	}
 
 	// ensure status
-	return checkAndReturn(newHub), nil
+	return newHub, nil
 }
 
-func checkAndReturn(h *Hub) *Hub {
+func prepHub(h *Hub) *Hub {
 	if h.Status == nil {
 		h.Status = &Status{}
 	}

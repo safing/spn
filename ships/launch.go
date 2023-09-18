@@ -22,15 +22,8 @@ func Launch(ctx context.Context, h *hub.Hub, transport *hub.Transport, ip net.IP
 		if h.Info == nil {
 			return nil, hub.ErrMissingInfo
 		}
-		for _, definition := range h.Info.Transports {
-			t, err := hub.ParseTransport(definition)
-			if err != nil {
-				log.Warningf("spn/ships: failed to parse transport definition %s of %s: %s", definition, h, err)
-			} else {
-				transports = append(transports, t)
-			}
-		}
-		if len(h.Info.Transports) == 0 {
+		transports = h.Info.ParsedTransports()
+		if len(transports) == 0 {
 			return nil, hub.ErrMissingTransports
 		}
 	}
