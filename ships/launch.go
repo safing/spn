@@ -75,8 +75,16 @@ func Launch(ctx context.Context, h *hub.Hub, transport *hub.Transport, ip net.IP
 			ship, err := connectTo(ctx, h, tr, ip)
 			if err == nil {
 				return ship, nil // return on success
-			} else if firstErr == nil {
-				firstErr = err // save first error
+			}
+
+			// Check if context is canceled.
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
+
+			// Save first error.
+			if firstErr == nil {
+				firstErr = err
 			}
 		}
 	}

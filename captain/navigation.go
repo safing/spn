@@ -111,6 +111,11 @@ findCandidates:
 	for tries, candidate = range candidates {
 		err = connectToHomeHub(ctx, candidate)
 		if err != nil {
+			// Check if context is canceled.
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			// Check if the SPN protocol is stopping again.
 			if errors.Is(err, terminal.ErrStopping) {
 				return err
 			}
