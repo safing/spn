@@ -6,6 +6,8 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+
+	"golang.org/x/exp/slices"
 )
 
 // Examples:
@@ -92,5 +94,40 @@ func (t *Transport) String() string {
 		return fmt.Sprintf("%s://%s:%d%s", t.Protocol, t.Domain, t.Port, t.Path)
 	default:
 		return fmt.Sprintf("%s:%d%s", t.Protocol, t.Port, t.Path)
+	}
+}
+
+// SortTransports sorts the transports to emphasize certain protocols, but
+// otherwise leaves the order intact.
+func SortTransports(ts []*Transport) {
+	slices.SortStableFunc[[]*Transport, *Transport](ts, func(a, b *Transport) int {
+		aOrder := a.protocolOrder()
+		bOrder := b.protocolOrder()
+
+		switch {
+		case aOrder != bOrder:
+			return aOrder - bOrder
+		// case a.Port != b.Port:
+		// 	return int(a.Port) - int(b.Port)
+		// case a.Domain != b.Domain:
+		// 	return strings.Compare(a.Domain, b.Domain)
+		// case a.Path != b.Path:
+		// 	return strings.Compare(a.Path, b.Path)
+		// case a.Option != b.Option:
+		// 	return strings.Compare(a.Option, b.Option)
+		default:
+			return 0
+		}
+	})
+}
+
+func (t *Transport) protocolOrder() int {
+	switch t.Protocol {
+	case "http":
+		return 1
+	case "spn":
+		return 2
+	default:
+		return 100
 	}
 }

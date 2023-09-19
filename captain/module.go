@@ -30,7 +30,7 @@ var module *modules.Module
 const SPNConnectedEvent = "spn connect"
 
 func init() {
-	module = modules.Register("captain", prep, start, stop, "base", "terminal", "cabin", "docks", "crew", "navigator", "sluice", "patrol", "netenv")
+	module = modules.Register("captain", prep, start, stop, "base", "terminal", "cabin", "ships", "docks", "crew", "navigator", "sluice", "patrol", "netenv")
 	module.RegisterEvent(SPNConnectedEvent, false)
 	subsystems.Register(
 		"spn",
@@ -130,7 +130,10 @@ func start() error {
 		if err := prepPublicIdentityMgmt(); err != nil {
 			return err
 		}
-		if err := startPierMgmt(); err != nil {
+		// Set ID to display on http info page.
+		ships.DisplayHubID = publicIdentity.ID
+		// Start listeners.
+		if err := startPiers(); err != nil {
 			return err
 		}
 
@@ -174,6 +177,8 @@ func stop() error {
 	// Send shutdown status message.
 	if conf.PublicHub() {
 		publishShutdownStatus()
+		stopPiers()
+		closePendingDockingRequests()
 	}
 
 	return nil

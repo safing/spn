@@ -1,6 +1,7 @@
 package cabin
 
 import (
+	"fmt"
 	"net"
 	"os"
 
@@ -85,6 +86,12 @@ var (
 	publicCfgOptionExit        config.StringArrayOption
 	publicCfgOptionExitDefault = []string{"- * TCP/25"}
 	publicCfgOptionExitOrder   = 522
+
+	// Allow Unencrypted.
+	publicCfgOptionAllowUnencryptedKey     = "spn/publicHub/allowUnencrypted"
+	publicCfgOptionAllowUnencrypted        config.BoolOption
+	publicCfgOptionAllowUnencryptedDefault = false
+	publicCfgOptionAllowUnencryptedOrder   = 523
 )
 
 func prepPublicHubConfig() error {
@@ -217,12 +224,25 @@ func prepPublicHubConfig() error {
 	publicCfgOptionIPv6 = config.GetAsString(publicCfgOptionIPv6Key, publicCfgOptionIPv6Default)
 
 	err = config.Register(&config.Option{
-		Name:           "Transports",
-		Key:            publicCfgOptionTransportsKey,
-		Description:    "List of transports this Hub supports.",
-		OptType:        config.OptTypeStringArray,
-		ExpertiseLevel: config.ExpertiseLevelExpert,
-		DefaultValue:   publicCfgOptionTransportsDefault,
+		Name:            "Transports",
+		Key:             publicCfgOptionTransportsKey,
+		Description:     "List of transports this Hub supports.",
+		OptType:         config.OptTypeStringArray,
+		ExpertiseLevel:  config.ExpertiseLevelExpert,
+		RequiresRestart: true,
+		DefaultValue:    publicCfgOptionTransportsDefault,
+		ValidationFunc: func(value any) error {
+			if transports, ok := value.([]string); ok {
+				for i, transport := range transports {
+					if _, err := hub.ParseTransport(transport); err != nil {
+						return fmt.Errorf("failed to parse transport #%d: %w", i, err)
+					}
+				}
+			} else {
+				return fmt.Errorf("not a []string, but %T", value)
+			}
+			return nil
+		},
 		Annotations: config.Annotations{
 			config.DisplayOrderAnnotation: publicCfgOptionTransportsOrder,
 		},
@@ -266,6 +286,22 @@ func prepPublicHubConfig() error {
 	}
 	publicCfgOptionExit = config.GetAsStringArray(publicCfgOptionExitKey, publicCfgOptionExitDefault)
 
+	err = config.Register(&config.Option{
+		Name:           "Allow Unencrypted Connections",
+		Key:            publicCfgOptionAllowUnencryptedKey,
+		Description:    "Advertise that this Hub is available for handling unencrypted connections, as detected by clients.",
+		OptType:        config.OptTypeBool,
+		ExpertiseLevel: config.ExpertiseLevelExpert,
+		DefaultValue:   publicCfgOptionAllowUnencryptedDefault,
+		Annotations: config.Annotations{
+			config.DisplayOrderAnnotation: publicCfgOptionAllowUnencryptedOrder,
+		},
+	})
+	if err != nil {
+		return err
+	}
+	publicCfgOptionAllowUnencrypted = config.GetAsBool(publicCfgOptionAllowUnencryptedKey, publicCfgOptionAllowUnencryptedDefault)
+
 	// update defaults from system
 	setDynamicPublicDefaults()
 
@@ -284,6 +320,11 @@ func getPublicHubInfo() *hub.Announcement {
 		Transports:     publicCfgOptionTransports(),
 		Entry:          publicCfgOptionEntry(),
 		Exit:           publicCfgOptionExit(),
+		Flags:          []string{},
+	}
+
+	if publicCfgOptionAllowUnencrypted() {
+		info.Flags = append(info.Flags, hub.FlagAllowUnencrypted)
 	}
 
 	ip4 := publicCfgOptionIPv4()

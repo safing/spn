@@ -159,17 +159,18 @@ func handleRouteCalculationRequest(ar *api.Request) (msg string, err error) { //
 			entity.IP = ips[0]
 			ignoredIPs = len(ips) - 1
 		}
+		entity.Init(0)
 
 		// Get location of IP.
 		location, ok := entity.GetLocation(ar.Context())
 		if !ok {
-			return "", fmt.Errorf("failed to get geoip location for %s", entity.IP)
+			return "", fmt.Errorf("failed to get geoip location for %s: %s", entity.IP, entity.LocationError)
 		}
 		// Assign location to separate variables.
 		if entity.IP.To4() != nil {
-			locationV4, _ = entity.GetLocation(ar.Context())
+			locationV4 = location
 		} else {
-			locationV6, _ = entity.GetLocation(ar.Context())
+			locationV6 = location
 		}
 
 		// Set intro text.
@@ -196,7 +197,7 @@ func handleRouteCalculationRequest(ar *api.Request) (msg string, err error) { //
 			opts = DeriveTunnelOptions(
 				lp,
 				entity,
-				ar.Request.URL.Query().Get("encrypted") != "",
+				ar.Request.URL.Query().Has("encrypted"),
 			)
 		} else {
 			opts = m.defaultOptions()
@@ -273,7 +274,9 @@ func handleRouteCalculationRequest(ar *api.Request) (msg string, err error) { //
 	// Find nearest hubs.
 	nbPins, err := m.findNearestPins(locationV4, locationV6, opts, matchFor, true)
 	if err != nil {
-		return "", fmt.Errorf("failed to search for nearby pins: %w", err)
+		lines = append(lines, fmt.Sprintf("FAILED to find any suitable exit hub: %s", err))
+		return strings.Join(lines, "\n"), nil
+		// return "", fmt.Errorf("failed to search for nearby pins: %w", err)
 	}
 
 	// Print found exits to table.

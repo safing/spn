@@ -21,7 +21,7 @@ func TestEffectiveBandwidth(t *testing.T) { //nolint:paralleltest // Run alone.
 		bwTestDelay            = 50 * time.Millisecond
 		bwTestQueueSize uint32 = 1000
 		bwTestVolume           = 10000000 // 10MB
-		beTestTime             = 10 * time.Second
+		bwTestTime             = 10 * time.Second
 	)
 
 	// Create test terminal pair.
@@ -44,7 +44,7 @@ func TestEffectiveBandwidth(t *testing.T) { //nolint:paralleltest // Run alone.
 	op := &CapacityTestOp{
 		opts: &CapacityTestOptions{
 			TestVolume: bwTestVolume,
-			MaxTime:    beTestTime,
+			MaxTime:    bwTestTime,
 			testing:    true,
 		},
 		recvQueue:       make(chan *terminal.Msg),

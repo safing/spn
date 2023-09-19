@@ -2,11 +2,10 @@ package captain
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"sync"
 
 	"github.com/safing/portbase/log"
-	"github.com/safing/portbase/modules"
 	"github.com/safing/portmaster/intel"
 	"github.com/safing/portmaster/network/netutils"
 	"github.com/safing/portmaster/profile/endpoints"
@@ -16,62 +15,45 @@ import (
 )
 
 var (
-	managePiersTask *modules.Task
-	pierMgmtLock    sync.Mutex
-	pierMgmtCycleID int
-
-	dockingRequests = make(chan *ships.DockingRequest, 10)
+	dockingRequests = make(chan ships.Ship, 100)
+	piers           []ships.Pier
 )
 
-func startPierMgmt() error {
-	managePiersTask = module.NewTask(
-		"manage piers",
-		managePiers,
-	)
-
-	module.StartServiceWorker("docking request handler", 0, dockingRequestHandler)
-
-	err := managePiers(module.Ctx, managePiersTask)
-	if err != nil {
-		log.Warningf("spn/captain: failed to initialize piers: %s", err)
+func startPiers() error {
+	// Get and check transports.
+	transports := publicIdentity.Hub.Info.Transports
+	if len(transports) == 0 {
+		return errors.New("no transports defined")
 	}
+
+	piers = make([]ships.Pier, 0, len(transports))
+	for _, t := range transports {
+		// Parse transport.
+		transport, err := hub.ParseTransport(t)
+		if err != nil {
+			return fmt.Errorf("cannot build pier for invalid transport %q: %w", t, err)
+		}
+
+		// Establish pier / listener.
+		pier, err := ships.EstablishPier(transport, dockingRequests)
+		if err != nil {
+			return fmt.Errorf("failed to establish pier for transport %q: %w", t, err)
+		}
+
+		piers = append(piers, pier)
+		log.Infof("spn/captain: pier for transport %q built", t)
+	}
+
+	// Start worker to handle docking requests.
+	module.StartServiceWorker("docking request handler", 0, dockingRequestHandler)
 
 	return nil
 }
 
-func managePiers(ctx context.Context, task *modules.Task) error {
-	pierMgmtLock.Lock()
-	defer pierMgmtLock.Unlock()
-
-	// TODO: do proper management (this is a workaround for now)
-	if pierMgmtCycleID > 0 {
-		return nil
+func stopPiers() {
+	for _, pier := range piers {
+		pier.Abolish()
 	}
-	pierMgmtCycleID = 1
-
-	for _, t := range publicIdentity.Hub.Info.Transports {
-		transport, err := hub.ParseTransport(t)
-		if err != nil {
-			log.Warningf("spn/captain: cannot build pier for invalid transport %q: %s", t, err)
-			continue
-		}
-
-		// create listener
-		pier, err := ships.EstablishPier(transport, dockingRequests)
-		if err != nil {
-			log.Warningf("spn/captin: failed to establish pier for transport %q: %s", t, err)
-			continue
-		}
-		log.Infof("spn/captain: pier for transport %q built", t)
-
-		// start accepting connections
-		module.StartWorker("pier docking", pier.Docking)
-	}
-
-	// TODO:
-	// task.Schedule(5 * time.Minute)
-
-	return nil
 }
 
 func dockingRequestHandler(ctx context.Context) error {
@@ -79,22 +61,23 @@ func dockingRequestHandler(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			return nil
-		case r := <-dockingRequests:
-			switch {
-			case r.Err != nil:
-				// TODO: Restart pier?
-				// TODO: Do actual pier management.
-				log.Errorf("spn/captain: pier %s failed: %s", r.Pier.Transport(), r.Err)
-			case r.Ship != nil:
-				if err := checkDockingPermission(ctx, r.Ship); err != nil {
-					log.Warningf("spn/captain: denied ship from %s to dock at pier %s: %s", r.Ship.RemoteAddr(), r.Pier.Transport(), err)
-				} else {
-					handleDockingRequest(r.Ship)
-				}
-			default:
-				log.Warningf("spn/captain: received invalid docking request without ship for pier %s", r.Pier.Transport())
+		case ship := <-dockingRequests:
+			if ship == nil {
+				return errors.New("received nil ship")
+			}
+
+			if err := checkDockingPermission(ctx, ship); err != nil {
+				log.Warningf("spn/captain: denied ship from %s to dock at pier %s: %s", ship.RemoteAddr(), ship.Transport().String(), err)
+			} else {
+				handleDockingRequest(ship)
 			}
 		}
+	}
+}
+
+func closePendingDockingRequests() {
+	for ship := range dockingRequests {
+		ship.Sink()
 	}
 }
 

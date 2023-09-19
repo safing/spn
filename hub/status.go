@@ -9,7 +9,6 @@ import (
 	"golang.org/x/exp/slices"
 
 	"github.com/safing/jess"
-	"github.com/safing/portbase/utils"
 )
 
 // VersionOffline is a special version used to signify that the Hub has gone offline.
@@ -23,26 +22,29 @@ const (
 
 	// FlagOffline signifies that the Hub has gone offline by itself.
 	FlagOffline = "offline"
+
+	// FlagAllowUnencrypted signifies that the Hub is available to handle unencrypted connections.
+	FlagAllowUnencrypted = "allow-unencrypted"
 )
 
 // Status is the message type used to update changing Hub Information. Changes are made automatically.
 type Status struct {
-	Timestamp int64
+	Timestamp int64 `cbor:"t"`
 
 	// Version holds the current software version of the Hub.
-	Version string
+	Version string `cbor:"v"`
 
 	// Routing Information
-	Keys  map[string]*Key // public keys (with type)
-	Lanes []*Lane         // Connections to other Hubs.
+	Keys  map[string]*Key `cbor:"k,omitempty" json:",omitempty"` // public keys (with type)
+	Lanes []*Lane         `cbor:"c,omitempty" json:",omitempty"` // Connections to other Hubs.
 
 	// Status Information
 	// Load describes max(CPU, Memory) in percent, averaged over at least 15
 	// minutes. Load is published in fixed steps only.
-	Load int `json:",omitempty"`
+	Load int `cbor:"l,omitempty" json:",omitempty"`
 
 	// Flags holds flags that signify special states.
-	Flags []string `json:",omitempty"`
+	Flags []string `cbor:"f,omitempty" json:",omitempty"`
 }
 
 // Key represents a semi-ephemeral public key used for 0-RTT connection establishment.
@@ -209,19 +211,19 @@ func (l *Lane) Equal(other *Lane) bool {
 }
 
 // validateFormatting check if all values conform to the basic format.
-func (s *Status) validateFormatting() (err error) {
+func (s *Status) validateFormatting() error {
 	// public keys
 	if len(s.Keys) > 255 {
 		return fmt.Errorf("field Keys with array/slice length of %d exceeds max length of %d", len(s.Keys), 255)
 	}
 	for keyID, key := range s.Keys {
-		if err = checkStringFormat("Keys#ID", keyID, 255); err != nil {
+		if err := checkStringFormat("Keys#ID", keyID, 255); err != nil {
 			return err
 		}
-		if err = checkStringFormat("Keys.Scheme", key.Scheme, 255); err != nil {
+		if err := checkStringFormat("Keys.Scheme", key.Scheme, 255); err != nil {
 			return err
 		}
-		if err = checkByteSliceFormat("Keys.Key", key.Key, 1024); err != nil {
+		if err := checkByteSliceFormat("Keys.Key", key.Key, 1024); err != nil {
 			return err
 		}
 	}
@@ -231,13 +233,13 @@ func (s *Status) validateFormatting() (err error) {
 		return fmt.Errorf("field Lanes with array/slice length of %d exceeds max length of %d", len(s.Lanes), 255)
 	}
 	for _, lanes := range s.Lanes {
-		if err = checkStringFormat("Lanes.ID", lanes.ID, 255); err != nil {
+		if err := checkStringFormat("Lanes.ID", lanes.ID, 255); err != nil {
 			return err
 		}
 	}
 
 	// Flags
-	if err = checkStringSliceFormat("Flags", s.Flags, 255, 255); err != nil {
+	if err := checkStringSliceFormat("Flags", s.Flags, 255, 255); err != nil {
 		return err
 	}
 
@@ -276,7 +278,7 @@ func SortLanes(l []*Lane) {
 
 // HasFlag returns whether the Status has the given flag set.
 func (s *Status) HasFlag(flagName string) bool {
-	return utils.StringInSlice(s.Flags, flagName)
+	return slices.Contains[[]string, string](s.Flags, flagName)
 }
 
 // FlagsEqual returns whether the given status flags are equal.

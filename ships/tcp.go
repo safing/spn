@@ -48,7 +48,7 @@ func launchTCPShip(ctx context.Context, transport *hub.Transport, ip net.IP) (Sh
 	return ship, nil
 }
 
-func establishTCPPier(transport *hub.Transport, dockingRequests chan *DockingRequest) (Pier, error) {
+func establishTCPPier(transport *hub.Transport, dockingRequests chan Ship) (Pier, error) {
 	listener, err := net.ListenTCP("tcp", &net.TCPAddr{
 		Port: int(transport.Port),
 	})
@@ -56,6 +56,7 @@ func establishTCPPier(transport *hub.Transport, dockingRequests chan *DockingReq
 		return nil, err
 	}
 
+	// Create new pier.
 	pier := &TCPPier{
 		PierBase: PierBase{
 			transport:       transport,
@@ -63,27 +64,48 @@ func establishTCPPier(transport *hub.Transport, dockingRequests chan *DockingReq
 			dockingRequests: dockingRequests,
 		},
 	}
-	pier.PierBase.dockShip = pier.dockShip
 	pier.initBase()
+
+	// Start worker.
+	module.StartServiceWorker("accept TCP docking requests", 0, pier.dockingWorker)
+
 	return pier, nil
 }
 
-func (pier *TCPPier) dockShip() (Ship, error) {
-	conn, err := pier.listener.Accept()
-	if err != nil {
-		return nil, err
-	}
+func (pier *TCPPier) dockingWorker(ctx context.Context) error {
+	for {
+		// Block until something happens.
+		conn, err := pier.listener.Accept()
 
-	ship := &TCPShip{
-		ShipBase: ShipBase{
-			transport: pier.transport,
-			conn:      conn,
-			mine:      false,
-			secure:    false,
-		},
-	}
+		// Check if we are done.
+		select {
+		case <-ctx.Done():
+			return nil
+		default:
+		}
 
-	ship.calculateLoadSize(nil, conn.RemoteAddr(), TCPHeaderMTUSize)
-	ship.initBase()
-	return ship, nil
+		// Check for error.
+		if err != nil {
+			return err
+		}
+
+		// Create new ship.
+		ship := &TCPShip{
+			ShipBase: ShipBase{
+				transport: pier.transport,
+				conn:      conn,
+				mine:      false,
+				secure:    false,
+			},
+		}
+		ship.calculateLoadSize(nil, conn.RemoteAddr(), TCPHeaderMTUSize)
+		ship.initBase()
+
+		// Submit new docking request.
+		select {
+		case pier.dockingRequests <- ship:
+		case <-ctx.Done():
+			return nil
+		}
+	}
 }

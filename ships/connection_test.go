@@ -41,27 +41,20 @@ func TestConnections(t *testing.T) {
 			t.Parallel()
 
 			var wg sync.WaitGroup
-			ctx := context.Background()
+			ctx, cancelCtx := context.WithCancel(context.Background())
 
 			// docking requests
-			requests := make(chan *DockingRequest, 1)
+			dockingRequests := make(chan Ship, 1)
 			transport := &hub.Transport{
 				Protocol: protocol,
 				Port:     getTestPort(),
 			}
 
 			// create listener
-			pier, err := builder.EstablishPier(transport, requests)
+			pier, err := builder.EstablishPier(transport, dockingRequests)
 			if err != nil {
 				t.Fatal(err)
 			}
-			wg.Add(1)
-			var dockingErr error
-			go func() {
-				err := pier.Docking(ctx)
-				dockingErr = err
-				wg.Done()
-			}()
 
 			// connect to listener
 			ship, err := builder.LaunchShip(ctx, transport, localhost)
@@ -76,11 +69,10 @@ func TestConnections(t *testing.T) {
 			}
 
 			// dock client
-			request := <-requests
-			if request.Err != nil {
-				t.Fatalf("%s failed to dock: %s", request.Pier, request.Err)
+			srvShip := <-dockingRequests
+			if srvShip == nil {
+				t.Fatalf("%s failed to dock", pier)
 			}
-			srvShip := request.Ship
 
 			// server recv
 			buf := getTestBuf()
@@ -129,20 +121,11 @@ func TestConnections(t *testing.T) {
 				fmt.Print(".")
 			}
 
-			// Check for docking error.
-			if dockingErr != nil {
-				t.Fatal(err)
-			}
-
 			ship.Sink()
 			srvShip.Sink()
 			pier.Abolish()
+			cancelCtx()
 			wg.Wait() // wait for docking procedure to end
-
-			// Check for docking error again.
-			if dockingErr != nil {
-				t.Fatal(err)
-			}
 		})
 	}
 }

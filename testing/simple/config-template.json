@@ -1,5 +1,8 @@
 {
   "core": {
+    "log": {
+      "level": "trace"
+    },
     "metrics": {
       "instance": "test_$HUBNAME",
       "push": ""
@@ -7,7 +10,9 @@
   },
   "spn": {
     "publicHub": {
-      "name": "test-$HUBNAME"
+      "name": "test-$HUBNAME",
+      "transports": ["http:80", "tcp:17"],
+      "allowUnencrypted": true
     }
   }
 }

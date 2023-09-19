@@ -1,7 +1,6 @@
 package ships
 
 import (
-	"context"
 	"fmt"
 	"net"
 
@@ -18,9 +17,6 @@ type Pier interface {
 	// Transport returns the transport used for this ship.
 	Transport() *hub.Transport
 
-	// Docking is the blocking (!) procedure that docks new ships and sends docking requests. This should be run as a worker by the caller.
-	Docking(ctx context.Context) error
-
 	// Addr returns the underlying network address used by the listener.
 	Addr() net.Addr
 
@@ -36,7 +32,7 @@ type DockingRequest struct {
 }
 
 // EstablishPier is shorthand function to get the transport's builder and establish a pier.
-func EstablishPier(transport *hub.Transport, dockingRequests chan *DockingRequest) (Pier, error) {
+func EstablishPier(transport *hub.Transport, dockingRequests chan Ship) (Pier, error) {
 	builder := GetBuilder(transport.Protocol)
 	if builder == nil {
 		return nil, fmt.Errorf("protocol %s not supported", transport.Protocol)
@@ -57,11 +53,8 @@ type PierBase struct {
 	// listener is the actual underlying listener.
 	listener net.Listener
 
-	// dockShip is used to accept new connections from the listener and must be
-	// assigned by Pier implementations.
-	dockShip func() (Ship, error)
 	// dockingRequests is used to report new connections to the higher layer.
-	dockingRequests chan *DockingRequest
+	dockingRequests chan Ship
 
 	// abolishing specifies if the pier and listener is being closed.
 	abolishing *abool.AtomicBool
@@ -80,44 +73,6 @@ func (pier *PierBase) String() string {
 // Transport returns the transport used for this ship.
 func (pier *PierBase) Transport() *hub.Transport {
 	return pier.transport
-}
-
-// Docking is the blocking (!) procedure that docks new ships and sends docking requests. This should be run as a worker by the caller.
-func (pier *PierBase) Docking(ctx context.Context) error {
-	defer pier.Abolish()
-
-	// TODO: Find a nicer way for a clean shutdown.
-	// We need this to detect a shutdown because pier.dockShip() blocks.
-	go func() {
-		<-ctx.Done()
-		pier.Abolish()
-	}()
-
-	for {
-		ship, err := pier.dockShip()
-		if err != nil {
-			if pier.abolishing.SetToIf(false, true) {
-				// Notify higher layer, if possible.
-				select {
-				case pier.dockingRequests <- &DockingRequest{
-					Pier: pier,
-					Err:  err,
-				}:
-				default:
-				}
-			}
-			return nil
-		}
-
-		select {
-		case <-ctx.Done():
-			return nil
-		case pier.dockingRequests <- &DockingRequest{
-			Pier: pier,
-			Ship: ship,
-		}:
-		}
-	}
 }
 
 // Addr returns the underlying network address used by the listener.

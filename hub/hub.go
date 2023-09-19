@@ -10,6 +10,7 @@ import (
 
 	"github.com/safing/jess"
 	"github.com/safing/portbase/database/record"
+	"github.com/safing/portbase/log"
 	"github.com/safing/portmaster/profile/endpoints"
 )
 
@@ -70,30 +71,30 @@ type Announcement struct {
 	// Primary Key
 	// hash of public key
 	// must be checked if it matches the public key
-	ID string // via jess.LabeledHash
+	ID string `cbor:"i"` // via jess.LabeledHash
 
 	// PublicKey *jess.Signet
 	// PublicKey // if not part of signature
 	// Signature *jess.Letter
-	Timestamp int64 // Unix timestamp in seconds
+	Timestamp int64 `cbor:"t"` // Unix timestamp in seconds
 
 	// Node Information
-	Name           string // name of the node
-	Group          string // person or organisation, who is in control of the node (should be same for all nodes of this person or organisation)
-	ContactAddress string // contact possibility  (recommended, but optional)
-	ContactService string // type of service of the contact address, if not email
+	Name           string `cbor:"n"`                              // name of the node
+	Group          string `cbor:"g,omitempty"  json:",omitempty"` // person or organisation, who is in control of the node (should be same for all nodes of this person or organisation)
+	ContactAddress string `cbor:"ca,omitempty" json:",omitempty"` // contact possibility  (recommended, but optional)
+	ContactService string `cbor:"cs,omitempty" json:",omitempty"` // type of service of the contact address, if not email
 
 	// currently unused, but collected for later use
-	Hosters    []string // hoster supply chain (reseller, hosting provider, datacenter operator, ...)
-	Datacenter string   // datacenter will be bullshit checked
+	Hosters    []string `cbor:"ho,omitempty" json:",omitempty"` // hoster supply chain (reseller, hosting provider, datacenter operator, ...)
+	Datacenter string   `cbor:"dc,omitempty" json:",omitempty"` // datacenter will be bullshit checked
 	// Format: CC-COMPANY-INTERNALCODE
 	// Eg: DE-Hetzner-FSN1-DC5
 
 	// Network Location and Access
 	// If node is behind NAT (or similar), IP addresses must be configured
-	IPv4       net.IP // must be global and accessible
-	IPv6       net.IP // must be global and accessible
-	Transports []string
+	IPv4       net.IP   `cbor:"ip4,omitempty" json:",omitempty"` // must be global and accessible
+	IPv6       net.IP   `cbor:"ip6,omitempty" json:",omitempty"` // must be global and accessible
+	Transports []string `cbor:"tp,omitempty"  json:",omitempty"`
 	// {
 	//   "spn:17",
 	//   "smtp:25", // also support "smtp://:25
@@ -105,33 +106,39 @@ type Announcement struct {
 	//   "ws:80",
 	//   "wss://example.com:443/spn",
 	// } // protocols with metadata
+	parsedTransports []*Transport
 
 	// Policies - default permit
-	Entry       []string
+	Entry       []string `cbor:"pi,omitempty" json:",omitempty"`
 	entryPolicy endpoints.Endpoints
 	// {"+ ", "- *"}
-	Exit       []string
+	Exit       []string `cbor:"po,omitempty" json:",omitempty"`
 	exitPolicy endpoints.Endpoints
 	// {"- * TCP/25", "- US"}
+
+	// Flags holds flags that signify special states.
+	Flags []string `cbor:"f,omitempty" json:",omitempty"`
 }
 
 // Copy returns a deep copy of the Announcement.
 func (a *Announcement) Copy() *Announcement {
 	return &Announcement{
-		ID:             a.ID,
-		Timestamp:      a.Timestamp,
-		Name:           a.Name,
-		ContactAddress: a.ContactAddress,
-		ContactService: a.ContactService,
-		Hosters:        slices.Clone(a.Hosters),
-		Datacenter:     a.Datacenter,
-		IPv4:           a.IPv4,
-		IPv6:           a.IPv6,
-		Transports:     slices.Clone(a.Transports),
-		Entry:          slices.Clone(a.Entry),
-		entryPolicy:    slices.Clone(a.entryPolicy),
-		Exit:           slices.Clone(a.Exit),
-		exitPolicy:     slices.Clone(a.exitPolicy),
+		ID:               a.ID,
+		Timestamp:        a.Timestamp,
+		Name:             a.Name,
+		ContactAddress:   a.ContactAddress,
+		ContactService:   a.ContactService,
+		Hosters:          slices.Clone(a.Hosters),
+		Datacenter:       a.Datacenter,
+		IPv4:             a.IPv4,
+		IPv6:             a.IPv6,
+		Transports:       slices.Clone(a.Transports),
+		parsedTransports: slices.Clone(a.parsedTransports),
+		Entry:            slices.Clone(a.Entry),
+		entryPolicy:      slices.Clone(a.entryPolicy),
+		Exit:             slices.Clone(a.Exit),
+		exitPolicy:       slices.Clone(a.exitPolicy),
+		Flags:            slices.Clone(a.Flags),
 	}
 }
 
@@ -233,7 +240,7 @@ func (h *Hub) Obsolete() bool {
 	switch {
 	case h.InvalidInfo:
 	case h.InvalidStatus:
-	case h.Status.Version == VersionOffline:
+	case h.HasFlag(FlagOffline):
 		// Treat offline as invalid.
 	default:
 		valid = true
@@ -250,6 +257,17 @@ func (h *Hub) Obsolete() bool {
 		return time.Now().Add(-obsoleteValidAfter).After(lastSeen)
 	}
 	return time.Now().Add(-obsoleteInvalidAfter).After(lastSeen)
+}
+
+// HasFlag returns whether the Announcement or Status has the given flag set.
+func (h *Hub) HasFlag(flagName string) bool {
+	switch {
+	case h.Status != nil && slices.Contains[[]string, string](h.Status.Flags, flagName):
+		return true
+	case h.Info != nil && slices.Contains[[]string, string](h.Info.Flags, flagName):
+		return true
+	}
+	return false
 }
 
 // Equal returns whether the given Announcements are equal.
@@ -281,60 +299,92 @@ func (a *Announcement) Equal(b *Announcement) bool {
 		return false
 	case !equalStringSlice(a.Exit, b.Exit):
 		return false
+	case !equalStringSlice(a.Flags, b.Flags):
+		return false
 	default:
 		return true
 	}
 }
 
 // validateFormatting check if all values conform to the basic format.
-func (a *Announcement) validateFormatting() (err error) {
-	if err = checkStringFormat("ID", a.ID, 255); err != nil {
+func (a *Announcement) validateFormatting() error {
+	if err := checkStringFormat("ID", a.ID, 255); err != nil {
 		return err
 	}
-	if err = checkStringFormat("Name", a.Name, 32); err != nil {
+	if err := checkStringFormat("Name", a.Name, 32); err != nil {
 		return err
 	}
-	if err = checkStringFormat("Group", a.Group, 32); err != nil {
+	if err := checkStringFormat("Group", a.Group, 32); err != nil {
 		return err
 	}
-	if err = checkStringFormat("ContactAddress", a.ContactAddress, 255); err != nil {
+	if err := checkStringFormat("ContactAddress", a.ContactAddress, 255); err != nil {
 		return err
 	}
-	if err = checkStringFormat("ContactService", a.ContactService, 255); err != nil {
+	if err := checkStringFormat("ContactService", a.ContactService, 255); err != nil {
 		return err
 	}
-	if err = checkStringSliceFormat("Hosters", a.Hosters, 255, 255); err != nil {
+	if err := checkStringSliceFormat("Hosters", a.Hosters, 255, 255); err != nil {
 		return err
 	}
-	if err = checkStringFormat("Datacenter", a.Datacenter, 255); err != nil {
+	if err := checkStringFormat("Datacenter", a.Datacenter, 255); err != nil {
 		return err
 	}
-	if err = checkIPFormat("IPv4", a.IPv4); err != nil {
+	if err := checkIPFormat("IPv4", a.IPv4); err != nil {
 		return err
 	}
-	if err = checkIPFormat("IPv6", a.IPv6); err != nil {
+	if err := checkIPFormat("IPv6", a.IPv6); err != nil {
 		return err
 	}
-	if err = checkStringSliceFormat("Transports", a.Transports, 255, 255); err != nil {
+	if err := checkStringSliceFormat("Transports", a.Transports, 255, 255); err != nil {
 		return err
 	}
-	if err = checkStringSliceFormat("Entry", a.Entry, 255, 255); err != nil {
+	if err := checkStringSliceFormat("Entry", a.Entry, 255, 255); err != nil {
 		return err
 	}
-	if err = checkStringSliceFormat("Exit", a.Exit, 255, 255); err != nil {
+	if err := checkStringSliceFormat("Exit", a.Exit, 255, 255); err != nil {
 		return err
 	}
-	return a.parsePolicies()
+	if err := checkStringSliceFormat("Flags", a.Flags, 16, 32); err != nil {
+		return err
+	}
+	return nil
 }
 
-func (a *Announcement) parsePolicies() error {
+// Prepare prepares the announcement by parsing policies and transports.
+// If fields are already parsed, they will only be parsed again, when force is set to true.
+func (a *Announcement) prepare(force bool) error {
 	var err error
-	if a.entryPolicy, err = endpoints.ParseEndpoints(a.Entry); err != nil {
-		return fmt.Errorf("failed to parse entry policy: %w", err)
+
+	// Parse policies.
+	if a.entryPolicy == nil || force {
+		if a.entryPolicy, err = endpoints.ParseEndpoints(a.Entry); err != nil {
+			return fmt.Errorf("failed to parse entry policy: %w", err)
+		}
 	}
-	if a.exitPolicy, err = endpoints.ParseEndpoints(a.Exit); err != nil {
-		return fmt.Errorf("failed to parse exit policy: %w", err)
+	if a.exitPolicy == nil || force {
+		if a.exitPolicy, err = endpoints.ParseEndpoints(a.Exit); err != nil {
+			return fmt.Errorf("failed to parse exit policy: %w", err)
+		}
 	}
+
+	// Parse transports.
+	if a.parsedTransports == nil || force {
+		a.parsedTransports = make([]*Transport, 0, len(a.Transports))
+		for _, t := range a.Transports {
+			pt, err := ParseTransport(t)
+			if err != nil {
+				log.Warningf("hub: Hub %s (%s) has configured an unknown or invalid transport %q: %s", a.Name, a.ID, t, err)
+			} else {
+				a.parsedTransports = append(a.parsedTransports, pt)
+			}
+		}
+		SortTransports(a.parsedTransports)
+		// Check if there are any valid transports.
+		if len(a.parsedTransports) == 0 {
+			return ErrMissingTransports
+		}
+	}
+
 	return nil
 }
 
@@ -346,6 +396,16 @@ func (a *Announcement) EntryPolicy() endpoints.Endpoints {
 // ExitPolicy returns the Hub's exit policy.
 func (a *Announcement) ExitPolicy() endpoints.Endpoints {
 	return a.exitPolicy
+}
+
+// ParsedTransports returns the Hub's parsed transports.
+func (a *Announcement) ParsedTransports() []*Transport {
+	return a.parsedTransports
+}
+
+// HasFlag returns whether the Announcement has the given flag set.
+func (a *Announcement) HasFlag(flagName string) bool {
+	return slices.Contains[[]string, string](a.Flags, flagName)
 }
 
 // String returns the string representation of the scope.

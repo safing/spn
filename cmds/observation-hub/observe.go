@@ -347,11 +347,6 @@ func formatChange(change diff.Change, fullPath string) string {
 			return formatState(fmt.Sprintf("%v", change.From), false)
 		}
 
-	case fullPath == "Status.Version":
-		if change.To != "offline" {
-			return fmt.Sprintf("Version is %v", change.To)
-		}
-
 	default:
 		switch change.Type {
 		case diff.CREATE:

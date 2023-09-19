@@ -236,14 +236,21 @@ func (m *Map) updateHub(h *hub.Hub, lockMap, lockHub bool) {
 	}
 
 	// Update online status of the Pin.
-	if pin.Hub.Status.HasFlag(hub.FlagOffline) || pin.Hub.Status.Version == hub.VersionOffline {
+	if pin.Hub.HasFlag(hub.FlagOffline) || pin.Hub.Status.Version == hub.VersionOffline {
 		pin.addStates(StateOffline)
 	} else {
 		pin.removeStates(StateOffline)
 	}
 
+	// Update online status of the Pin.
+	if pin.Hub.HasFlag(hub.FlagAllowUnencrypted) {
+		pin.addStates(StateAllowUnencrypted)
+	} else {
+		pin.removeStates(StateAllowUnencrypted)
+	}
+
 	// Update from status flags.
-	if pin.Hub.Status.HasFlag(hub.FlagNetError) {
+	if pin.Hub.HasFlag(hub.FlagNetError) {
 		pin.addStates(StateConnectivityIssues)
 	} else {
 		pin.removeStates(StateConnectivityIssues)

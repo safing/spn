@@ -211,14 +211,14 @@ func ApplyAnnouncement(existingHub *Hub, data []byte, mapName string, scope Scop
 
 	// Check if there was an error with the Hub msg.
 	if err != nil {
-		return
+		return //nolint:nakedret
 	}
 
 	// parse
 	announcement = &Announcement{}
 	_, err = dsd.Load(msg, announcement)
 	if err != nil {
-		return
+		return //nolint:nakedret
 	}
 
 	// integrity check
@@ -229,7 +229,7 @@ func ApplyAnnouncement(existingHub *Hub, data []byte, mapName string, scope Scop
 	// Fake IDs are possible because the hash algorithm of the ID is dynamic.
 	if hub.ID != announcement.ID {
 		err = fmt.Errorf("announcement ID %q mismatches hub ID %q", announcement.ID, hub.ID)
-		return
+		return //nolint:nakedret
 	}
 
 	// version check
@@ -239,14 +239,14 @@ func ApplyAnnouncement(existingHub *Hub, data []byte, mapName string, scope Scop
 		case announcement.Timestamp == hub.Info.Timestamp && !selfcheck:
 			// The new copy is not saved, as we expect the versions to be identical.
 			// Also, the new version has not been validated at this point.
-			return
+			return //nolint:nakedret
 		case announcement.Timestamp < hub.Info.Timestamp:
 			// Received an old version, do not update.
 			err = fmt.Errorf(
 				"%wannouncement from %s @ %s is older than current status @ %s",
 				ErrOldData, hub.StringWithoutLocking(), time.Unix(announcement.Timestamp, 0), time.Unix(hub.Info.Timestamp, 0),
 			)
-			return
+			return //nolint:nakedret
 		}
 	}
 
@@ -263,7 +263,7 @@ func ApplyAnnouncement(existingHub *Hub, data []byte, mapName string, scope Scop
 	if err != nil {
 		if selfcheck || hub.FirstSeen.IsZero() {
 			err = fmt.Errorf("failed to validate announcement of %s: %w", hub.StringWithoutLocking(), err)
-			return
+			return //nolint:nakedret
 		}
 
 		log.Warningf("spn/hub: received an invalid announcement of %s: %s", hub.StringWithoutLocking(), err)
@@ -290,6 +290,10 @@ func (h *Hub) validateAnnouncement(announcement *Announcement, scope Scope) erro
 	// value formatting
 	if err := announcement.validateFormatting(); err != nil {
 		return err
+	}
+	// check parsables
+	if err := announcement.prepare(true); err != nil {
+		return fmt.Errorf("failed to prepare announcement: %w", err)
 	}
 
 	// check timestamp
@@ -347,19 +351,6 @@ func (h *Hub) validateAnnouncement(announcement *Announcement, scope Scope) erro
 		}
 	}
 
-	// validate transports
-	invalidTransports := 0
-	for _, definition := range announcement.Transports {
-		_, err := ParseTransport(definition)
-		if err != nil {
-			invalidTransports++
-			log.Warningf("spn/hub: invalid transport in announcement from %s: %s", h.ID, definition)
-		}
-	}
-	if invalidTransports >= len(announcement.Transports) {
-		return errors.New("no valid transports present")
-	}
-
 	return nil
 }
 
@@ -399,14 +390,14 @@ func ApplyStatus(existingHub *Hub, data []byte, mapName string, scope Scope, sel
 
 	// Check if there was an error with the Hub msg.
 	if err != nil {
-		return
+		return //nolint:nakedret
 	}
 
 	// parse
 	status := &Status{}
 	_, err = dsd.Load(msg, status)
 	if err != nil {
-		return
+		return //nolint:nakedret
 	}
 
 	// version check
@@ -416,14 +407,14 @@ func ApplyStatus(existingHub *Hub, data []byte, mapName string, scope Scope, sel
 		case status.Timestamp == hub.Status.Timestamp && !selfcheck:
 			// The new copy is not saved, as we expect the versions to be identical.
 			// Also, the new version has not been validated at this point.
-			return
+			return //nolint:nakedret
 		case status.Timestamp < hub.Status.Timestamp:
 			// Received an old version, do not update.
 			err = fmt.Errorf(
 				"%wstatus from %s @ %s is older than current status @ %s",
 				ErrOldData, hub.StringWithoutLocking(), time.Unix(status.Timestamp, 0), time.Unix(hub.Status.Timestamp, 0),
 			)
-			return
+			return //nolint:nakedret
 		}
 	}
 
@@ -440,7 +431,7 @@ func ApplyStatus(existingHub *Hub, data []byte, mapName string, scope Scope, sel
 	if err != nil {
 		if selfcheck {
 			err = fmt.Errorf("failed to validate status of %s: %w", hub.StringWithoutLocking(), err)
-			return
+			return //nolint:nakedret
 		}
 
 		log.Warningf("spn/hub: received an invalid status of %s: %s", hub.StringWithoutLocking(), err)
