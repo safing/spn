@@ -29,22 +29,22 @@ const (
 
 // Status is the message type used to update changing Hub Information. Changes are made automatically.
 type Status struct {
-	Timestamp int64
+	Timestamp int64 `cbor:"t"`
 
 	// Version holds the current software version of the Hub.
-	Version string
+	Version string `cbor:"v"`
 
 	// Routing Information
-	Keys  map[string]*Key // public keys (with type)
-	Lanes []*Lane         // Connections to other Hubs.
+	Keys  map[string]*Key `cbor:"k,omitempty" json:",omitempty"` // public keys (with type)
+	Lanes []*Lane         `cbor:"c,omitempty" json:",omitempty"` // Connections to other Hubs.
 
 	// Status Information
 	// Load describes max(CPU, Memory) in percent, averaged over at least 15
 	// minutes. Load is published in fixed steps only.
-	Load int `json:",omitempty"`
+	Load int `cbor:"l,omitempty" json:",omitempty"`
 
 	// Flags holds flags that signify special states.
-	Flags []string `json:",omitempty"`
+	Flags []string `cbor:"f,omitempty" json:",omitempty"`
 }
 
 // Key represents a semi-ephemeral public key used for 0-RTT connection establishment.

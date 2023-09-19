@@ -71,30 +71,30 @@ type Announcement struct {
 	// Primary Key
 	// hash of public key
 	// must be checked if it matches the public key
-	ID string // via jess.LabeledHash
+	ID string `cbor:"i"` // via jess.LabeledHash
 
 	// PublicKey *jess.Signet
 	// PublicKey // if not part of signature
 	// Signature *jess.Letter
-	Timestamp int64 // Unix timestamp in seconds
+	Timestamp int64 `cbor:"t"` // Unix timestamp in seconds
 
 	// Node Information
-	Name           string // name of the node
-	Group          string // person or organisation, who is in control of the node (should be same for all nodes of this person or organisation)
-	ContactAddress string // contact possibility  (recommended, but optional)
-	ContactService string // type of service of the contact address, if not email
+	Name           string `cbor:"n"`                              // name of the node
+	Group          string `cbor:"g,omitempty"  json:",omitempty"` // person or organisation, who is in control of the node (should be same for all nodes of this person or organisation)
+	ContactAddress string `cbor:"ca,omitempty" json:",omitempty"` // contact possibility  (recommended, but optional)
+	ContactService string `cbor:"cs,omitempty" json:",omitempty"` // type of service of the contact address, if not email
 
 	// currently unused, but collected for later use
-	Hosters    []string // hoster supply chain (reseller, hosting provider, datacenter operator, ...)
-	Datacenter string   // datacenter will be bullshit checked
+	Hosters    []string `cbor:"ho,omitempty" json:",omitempty"` // hoster supply chain (reseller, hosting provider, datacenter operator, ...)
+	Datacenter string   `cbor:"dc,omitempty" json:",omitempty"` // datacenter will be bullshit checked
 	// Format: CC-COMPANY-INTERNALCODE
 	// Eg: DE-Hetzner-FSN1-DC5
 
 	// Network Location and Access
 	// If node is behind NAT (or similar), IP addresses must be configured
-	IPv4       net.IP // must be global and accessible
-	IPv6       net.IP // must be global and accessible
-	Transports []string
+	IPv4       net.IP   `cbor:"ip4,omitempty" json:",omitempty"` // must be global and accessible
+	IPv6       net.IP   `cbor:"ip6,omitempty" json:",omitempty"` // must be global and accessible
+	Transports []string `cbor:"tp,omitempty"  json:",omitempty"`
 	// {
 	//   "spn:17",
 	//   "smtp:25", // also support "smtp://:25
@@ -109,15 +109,15 @@ type Announcement struct {
 	parsedTransports []*Transport
 
 	// Policies - default permit
-	Entry       []string
+	Entry       []string `cbor:"pi,omitempty" json:",omitempty"`
 	entryPolicy endpoints.Endpoints
 	// {"+ ", "- *"}
-	Exit       []string
+	Exit       []string `cbor:"po,omitempty" json:",omitempty"`
 	exitPolicy endpoints.Endpoints
 	// {"- * TCP/25", "- US"}
 
 	// Flags holds flags that signify special states.
-	Flags []string
+	Flags []string `cbor:"f,omitempty" json:",omitempty"`
 }
 
 // Copy returns a deep copy of the Announcement.
