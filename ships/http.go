@@ -7,8 +7,10 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"time"
 
 	"github.com/safing/portbase/log"
+	"github.com/safing/spn/conf"
 	"github.com/safing/spn/hub"
 )
 
@@ -67,10 +69,19 @@ func launchHTTPShip(ctx context.Context, transport *hub.Transport, ip net.IP) (S
 	request.Header.Set("Upgrade", "SPN")
 
 	// Create connection.
-	conn, err := net.DialTCP("tcp", nil, &net.TCPAddr{
-		IP:   ip,
-		Port: int(transport.Port),
-	})
+	var dialNet string
+	if ip4 := ip.To4(); ip4 != nil {
+		dialNet = "tcp4"
+	} else {
+		dialNet = "tcp6"
+	}
+	dialer := &net.Dialer{
+		Timeout:       30 * time.Second,
+		LocalAddr:     conf.GetConnectAddr(dialNet),
+		FallbackDelay: -1, // Disables Fast Fallback from IPv6 to IPv4.
+		KeepAlive:     -1, // Disable keep-alive.
+	}
+	conn, err := dialer.DialContext(ctx, dialNet, net.JoinHostPort(ip.String(), portToA(transport.Port)))
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect: %w", err)
 	}

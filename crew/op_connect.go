@@ -73,6 +73,27 @@ type ConnectRequest struct {
 }
 
 // Address returns the address of the connext request.
+func (r *ConnectRequest) DialNetwork() string {
+	if ip4 := r.IP.To4(); ip4 != nil {
+		switch r.Protocol {
+		case packet.TCP:
+			return "tcp4"
+		case packet.UDP:
+			return "udp4"
+		}
+	} else {
+		switch r.Protocol {
+		case packet.TCP:
+			return "tcp6"
+		case packet.UDP:
+			return "udp6"
+		}
+	}
+
+	return ""
+}
+
+// Address returns the address of the connext request.
 func (r *ConnectRequest) Address() string {
 	return net.JoinHostPort(r.IP.String(), strconv.Itoa(int(r.Port)))
 }
@@ -167,21 +188,15 @@ func startConnectOp(t terminal.Terminal, opID uint32, data *container.Container)
 		return nil, terminal.ErrInvalidOptions.With("invalid queue size of %d", request.QueueSize)
 	}
 
+	// Check if IP seems valid.
+	if len(request.IP) != net.IPv4len && len(request.IP) != net.IPv6len {
+		return nil, terminal.ErrInvalidOptions.With("ip address is not valid")
+	}
+
 	// Check if connection target is in global scope.
 	ipScope := netutils.GetIPScope(request.IP)
 	if ipScope != netutils.Global {
 		return nil, terminal.ErrPermissionDenied.With("denied request to connect to non-global IP %s", request.IP)
-	}
-
-	// Get protocol net for connecting.
-	var dialNet string
-	switch request.Protocol { //nolint:exhaustive // Only looking at specific values.
-	case packet.TCP:
-		dialNet = "tcp"
-	case packet.UDP:
-		dialNet = "udp"
-	default:
-		return nil, terminal.ErrIncorrectUsage.With("protocol %s is not supported", request.Protocol)
 	}
 
 	// Check exit policy.
@@ -190,7 +205,17 @@ func startConnectOp(t terminal.Terminal, opID uint32, data *container.Container)
 	}
 
 	// Connect to destination.
-	conn, err := net.DialTimeout(dialNet, request.Address(), 3*time.Second)
+	dialNet := request.DialNetwork()
+	if dialNet == "" {
+		return nil, terminal.ErrIncorrectUsage.With("protocol %s is not supported", request.Protocol)
+	}
+	dialer := &net.Dialer{
+		Timeout:       5 * time.Second,
+		LocalAddr:     conf.GetConnectAddr(dialNet),
+		FallbackDelay: -1, // Disables Fast Fallback from IPv6 to IPv4.
+		KeepAlive:     -1, // Disable keep-alive.
+	}
+	conn, err := dialer.Dial(dialNet, request.Address())
 	if err != nil {
 		return nil, terminal.ErrConnectionError.With("failed to connect to %s: %w", request, err)
 	}
