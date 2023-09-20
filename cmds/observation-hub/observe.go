@@ -31,12 +31,28 @@ var (
 	reportAllChanges bool
 
 	errNoChanges = errors.New("no changes")
+
+	reportingDelayFlag string
+	reportingDelay     = 10 * time.Minute
 )
 
 func init() {
-	observerModule = modules.Register("observer", nil, startObserver, nil, "captain", "apprise")
+	observerModule = modules.Register("observer", prepObserver, startObserver, nil, "captain", "apprise")
 
 	flag.BoolVar(&reportAllChanges, "report-all-changes", false, "report all changes, no just interesting ones")
+	flag.StringVar(&reportingDelayFlag, "reporting-delay", "10m", "delay reports to summarize changes")
+}
+
+func prepObserver() error {
+	if reportingDelayFlag != "" {
+		duration, err := time.ParseDuration(reportingDelayFlag)
+		if err != nil {
+			return fmt.Errorf("failed to parse reporting-delay: %w", err)
+		}
+		reportingDelay = duration
+	}
+
+	return nil
 }
 
 func startObserver() error {
@@ -212,8 +228,8 @@ query:
 				switch {
 				case observedPin.lastUpdateReported:
 					// Change already reported.
-				case time.Since(observedPin.lastUpdate) < time.Minute:
-					// Only report changes if older than one minute.
+				case time.Since(observedPin.lastUpdate) < reportingDelay:
+					// Only report changes if older than the configured delay.
 				default:
 					// Format and report.
 					title, changes, err := formatPinChanges(observedPin.previous, observedPin.latest)
@@ -258,6 +274,7 @@ var (
 		"HopDistance",
 		"Info.entryPolicy", // Alternatively, ignore "Info.Entry"
 		"Info.exitPolicy",  // Alternatively, ignore "Info.Exit"
+		"Info.parsedTransports",
 		"Info.Timestamp",
 		"SessionActive",
 		"Status.Keys",
