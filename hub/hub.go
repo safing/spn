@@ -356,33 +356,29 @@ func (a *Announcement) prepare(force bool) error {
 	var err error
 
 	// Parse policies.
-	if a.entryPolicy == nil || force {
+	if len(a.entryPolicy) == 0 || force {
 		if a.entryPolicy, err = endpoints.ParseEndpoints(a.Entry); err != nil {
 			return fmt.Errorf("failed to parse entry policy: %w", err)
 		}
 	}
-	if a.exitPolicy == nil || force {
+	if len(a.exitPolicy) == 0 || force {
 		if a.exitPolicy, err = endpoints.ParseEndpoints(a.Exit); err != nil {
 			return fmt.Errorf("failed to parse exit policy: %w", err)
 		}
 	}
 
 	// Parse transports.
-	if a.parsedTransports == nil || force {
-		a.parsedTransports = make([]*Transport, 0, len(a.Transports))
-		for _, t := range a.Transports {
-			pt, err := ParseTransport(t)
-			if err != nil {
-				log.Warningf("hub: Hub %s (%s) has configured an unknown or invalid transport %q: %s", a.Name, a.ID, t, err)
-			} else {
-				a.parsedTransports = append(a.parsedTransports, pt)
-			}
+	if len(a.parsedTransports) == 0 || force {
+		parsed, errs := ParseTransports(a.Transports)
+		// Log parsing warnings.
+		for _, err := range errs {
+			log.Warningf("hub: Hub %s (%s) has configured an %s", a.Name, a.ID, err)
 		}
-		SortTransports(a.parsedTransports)
 		// Check if there are any valid transports.
-		if len(a.parsedTransports) == 0 {
+		if len(parsed) == 0 {
 			return ErrMissingTransports
 		}
+		a.parsedTransports = parsed
 	}
 
 	return nil
