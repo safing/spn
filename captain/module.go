@@ -17,6 +17,7 @@ import (
 	"github.com/safing/portmaster/network/netutils"
 	"github.com/safing/spn/conf"
 	"github.com/safing/spn/crew"
+	"github.com/safing/spn/navigator"
 	"github.com/safing/spn/patrol"
 	"github.com/safing/spn/ships"
 	_ "github.com/safing/spn/sluice"
@@ -162,6 +163,21 @@ func start() error {
 	// client + home hub manager
 	if conf.Client() {
 		module.StartServiceWorker("client manager", 0, clientManager)
+
+		// Reset failing hubs when the network changes while not connected.
+		if err := module.RegisterEventHook(
+			"netenv",
+			"network changed",
+			"reset failing hubs",
+			func(_ context.Context, _ interface{}) error {
+				if ready.IsNotSet() {
+					navigator.Main.ResetFailingStates(module.Ctx)
+				}
+				return nil
+			},
+		); err != nil {
+			return err
+		}
 	}
 
 	return nil
