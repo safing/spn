@@ -61,6 +61,7 @@ var (
 	clientHealthCheckTimeout               = 15 * time.Second
 
 	clientHealthCheckTrigger = make(chan struct{}, 1)
+	lastHealthCheck          time.Time
 )
 
 func triggerClientHealthCheck() {
@@ -144,6 +145,9 @@ reconnect:
 
 		module.TriggerEvent(SPNConnectedEvent, nil)
 		module.StartWorker("update quick setting countries", navigator.Main.UpdateConfigQuickSettings)
+
+		// Reset last health check value, as we have just connected.
+		lastHealthCheck = time.Now()
 
 		// Back off before starting initial health checks.
 		select {
@@ -456,11 +460,20 @@ func clientCheckHomeHubConnection(ctx context.Context) clientComponentResult {
 
 		// Reset all failing states, as these might have been caused by the failing home hub.
 		navigator.Main.ResetFailingStates(ctx)
+
+		// If the last health check is clearly too long ago, assume that the device was sleeping and do not set the home node to failing yet.
+		if time.Since(lastHealthCheck) > clientHealthCheckTickDuration+
+			clientHealthCheckTickDurationSleepMode+
+			(clientHealthCheckTimeout*2) {
+			return clientResultReconnect
+		}
+
 		// Mark the home hub itself as failing, as we want to try to connect to somewhere else.
 		home.MarkAsFailingFor(5 * time.Minute)
 
 		return clientResultReconnect
 	}
+	lastHealthCheck = time.Now()
 
 	log.Debugf("spn/captain: pinged home hub in %s", latency)
 	return clientResultOk
