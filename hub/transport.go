@@ -30,6 +30,25 @@ type Transport struct {
 	Option   string
 }
 
+// ParseTransports returns a list of parsed transports and errors from parsing
+// the given definitions.
+func ParseTransports(definitions []string) (transports []*Transport, errs []error) {
+	transports = make([]*Transport, 0, len(definitions))
+	for _, definition := range definitions {
+		parsed, err := ParseTransport(definition)
+		if err != nil {
+			errs = append(errs, fmt.Errorf(
+				"unknown or invalid transport %q: %w", definition, err,
+			))
+		} else {
+			transports = append(transports, parsed)
+		}
+	}
+
+	SortTransports(transports)
+	return transports, errs
+}
+
 // ParseTransport parses a transport definition.
 func ParseTransport(definition string) (*Transport, error) {
 	u, err := url.Parse(definition)

@@ -23,6 +23,13 @@ func Launch(ctx context.Context, h *hub.Hub, transport *hub.Transport, ip net.IP
 			return nil, hub.ErrMissingInfo
 		}
 		transports = h.Info.ParsedTransports()
+		// If there are no transports, check if they were parsed.
+		if len(transports) == 0 && len(h.Info.Transports) > 0 {
+			log.Errorf("ships: %s has no parsed transports, but transports are %v", h, h.Info.Transports)
+			// Attempt to parse transports now.
+			transports, _ = hub.ParseTransports(h.Info.Transports)
+		}
+		// Fail if there are not transports.
 		if len(transports) == 0 {
 			return nil, hub.ErrMissingTransports
 		}
