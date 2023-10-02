@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	defaultSluiceTTL = 5 * time.Minute
+	defaultSluiceTTL = 30 * time.Second
 )
 
 var (
@@ -44,12 +44,11 @@ func AwaitRequest(connInfo *network.Connection, callbackFn RequestCallbackFunc) 
 		return fmt.Errorf("sluice for network %s %w", network, ErrSluiceOffline)
 	}
 
-	sluice.AwaitRequest(&Request{
+	return sluice.AwaitRequest(&Request{
 		ConnInfo:   connInfo,
 		CallbackFn: callbackFn,
 		Expires:    time.Now().Add(defaultSluiceTTL),
 	})
-	return nil
 }
 
 func getNetworkFromConnInfo(connInfo *network.Connection) string {
