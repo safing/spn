@@ -54,7 +54,7 @@ func StartSluice(network, address string) {
 }
 
 // AwaitRequest pre-registers a connection.
-func (s *Sluice) AwaitRequest(r *Request) {
+func (s *Sluice) AwaitRequest(r *Request) error {
 	// Set default expiry.
 	if r.Expires.IsZero() {
 		r.Expires = time.Now().Add(defaultSluiceTTL)
@@ -63,8 +63,16 @@ func (s *Sluice) AwaitRequest(r *Request) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
+	// Check if a pending request already exists for this local address.
 	key := net.JoinHostPort(r.ConnInfo.LocalIP.String(), strconv.Itoa(int(r.ConnInfo.LocalPort)))
+	_, exists := s.pendingRequests[key]
+	if exists {
+		return fmt.Errorf("a pending request for %s already exists", key)
+	}
+
+	// Add to pending requests.
 	s.pendingRequests[key] = r
+	return nil
 }
 
 func (s *Sluice) getRequest(address string) (r *Request, ok bool) {
