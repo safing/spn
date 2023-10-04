@@ -2,7 +2,7 @@
 
 cd "$( dirname "${BASH_SOURCE[0]}" )"
 
-MAIN_INTEL_FILE="main-intel.json"
+MAIN_INTEL_FILE="intel-testnet.json"
 
 if [[ ! -f $MAIN_INTEL_FILE ]]; then
   echo "missing $MAIN_INTEL_FILE"
