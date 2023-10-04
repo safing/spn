@@ -193,38 +193,10 @@ func startConnectOp(t terminal.Terminal, opID uint32, data *container.Container)
 		return nil, terminal.ErrInvalidOptions.With("ip address is not valid")
 	}
 
-	// Check if connection target is in global scope.
-	ipScope := netutils.GetIPScope(request.IP)
-	if ipScope != netutils.Global {
-		return nil, terminal.ErrPermissionDenied.With("denied request to connect to non-global IP %s", request.IP)
-	}
-
-	// Check exit policy.
-	if tErr := checkExitPolicy(request); tErr != nil {
-		return nil, tErr
-	}
-
-	// Connect to destination.
-	dialNet := request.DialNetwork()
-	if dialNet == "" {
-		return nil, terminal.ErrIncorrectUsage.With("protocol %s is not supported", request.Protocol)
-	}
-	dialer := &net.Dialer{
-		Timeout:       5 * time.Second,
-		LocalAddr:     conf.GetConnectAddr(dialNet),
-		FallbackDelay: -1, // Disables Fast Fallback from IPv6 to IPv4.
-		KeepAlive:     -1, // Disable keep-alive.
-	}
-	conn, err := dialer.Dial(dialNet, request.Address())
-	if err != nil {
-		return nil, terminal.ErrConnectionError.With("failed to connect to %s: %w", request, err)
-	}
-
 	// Create and initialize operation.
 	op := &ConnectOp{
 		doneWriting: make(chan struct{}),
 		t:           t,
-		conn:        conn,
 		request:     request,
 	}
 	op.InitOperationBase(t, opID)
@@ -235,13 +207,84 @@ func startConnectOp(t terminal.Terminal, opID uint32, data *container.Container)
 	op.incomingTraffic = new(uint64)
 	op.outgoingTraffic = new(uint64)
 
+	// Start worker to complete setting up the connection.
+	module.StartWorker("connect op setup", op.setup)
+
+	return op, nil
+}
+
+func (op *ConnectOp) setup(_ context.Context) error {
+	// Get terminal session for rate limiting.
+	var session *terminal.Session
+	if sessionTerm, ok := op.t.(terminal.SessionTerminal); ok {
+		session = sessionTerm.GetSession()
+	} else {
+		log.Errorf("spn/crew: %T is not a session terminal", op.t)
+	}
+
+	// Check if connection target is in global scope.
+	ipScope := netutils.GetIPScope(op.request.IP)
+	if ipScope != netutils.Global {
+		session.ReportSuspiciousActivity(terminal.SusFactorQuiteUnusual)
+		op.Stop(op, terminal.ErrPermissionDenied.With("denied request to connect to non-global IP %s", op.request.IP))
+		return nil
+	}
+
+	// Check exit policy.
+	if tErr := checkExitPolicy(op.request); tErr != nil {
+		session.ReportSuspiciousActivity(terminal.SusFactorQuiteUnusual)
+		op.Stop(op, tErr)
+		return nil
+	}
+
+	// Rate limit before connecting.
+	if tErr := session.RateLimit(); tErr != nil {
+		// Fake connection error when rate limited.
+		if tErr.Is(terminal.ErrRateLimited) {
+			log.Debugf("spn/crew: op %s#%d is rate limited: %s", op.t.FmtID(), op.ID(), session.RateLimitInfo())
+		}
+		op.Stop(op, tErr)
+		return nil
+	}
+
+	// Connect to destination.
+	dialNet := op.request.DialNetwork()
+	if dialNet == "" {
+		session.ReportSuspiciousActivity(terminal.SusFactorCommon)
+		op.Stop(op, terminal.ErrIncorrectUsage.With("protocol %s is not supported", op.request.Protocol))
+		return nil
+	}
+	dialer := &net.Dialer{
+		Timeout:       10 * time.Second,
+		LocalAddr:     conf.GetConnectAddr(dialNet),
+		FallbackDelay: -1, // Disables Fast Fallback from IPv6 to IPv4.
+		KeepAlive:     -1, // Disable keep-alive.
+	}
+	conn, err := dialer.DialContext(op.Ctx(), dialNet, op.request.Address())
+	if err != nil {
+		// Connection errors are common, but still a bit suspicious.
+		var netError net.Error
+		switch {
+		case errors.As(err, &netError) && netError.Timeout():
+			session.ReportSuspiciousActivity(terminal.SusFactorCommon)
+		case errors.Is(err, context.Canceled):
+			session.ReportSuspiciousActivity(terminal.SusFactorCommon)
+		default:
+			session.ReportSuspiciousActivity(terminal.SusFactorWeirdButOK)
+		}
+
+		op.Stop(op, terminal.ErrConnectionError.With("failed to connect to %s: %w", op.request, err))
+		return nil
+	}
+	op.conn = conn
+
 	// Start worker.
 	module.StartWorker("connect op conn reader", op.connReader)
 	module.StartWorker("connect op conn writer", op.connWriter)
 	module.StartWorker("connect op flow handler", op.dfq.FlowHandler)
 
-	log.Infof("spn/crew: connected op %s#%d to %s", op.t.FmtID(), op.ID(), request)
-	return op, nil
+	log.Infof("spn/crew: connected op %s#%d to %s", op.t.FmtID(), op.ID(), op.request)
+	return nil
 }
 
 func (op *ConnectOp) submitUpstream(msg *terminal.Msg, timeout time.Duration) {

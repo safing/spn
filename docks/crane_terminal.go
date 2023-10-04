@@ -12,6 +12,9 @@ import (
 type CraneTerminal struct {
 	*terminal.TerminalBase
 
+	// Add-Ons
+	terminal.SessionAddOn
+
 	crane *Crane
 }
 
