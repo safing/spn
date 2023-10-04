@@ -72,17 +72,17 @@ type ConnectRequest struct {
 	QueueSize           uint32            `json:"qs,omitempty"`
 }
 
-// Address returns the address of the connext request.
+// DialNetwork returns the address of the connect request.
 func (r *ConnectRequest) DialNetwork() string {
 	if ip4 := r.IP.To4(); ip4 != nil {
-		switch r.Protocol {
+		switch r.Protocol { //nolint:exhaustive // Only looking for supported protocols.
 		case packet.TCP:
 			return "tcp4"
 		case packet.UDP:
 			return "udp4"
 		}
 	} else {
-		switch r.Protocol {
+		switch r.Protocol { //nolint:exhaustive // Only looking for supported protocols.
 		case packet.TCP:
 			return "tcp6"
 		case packet.UDP:

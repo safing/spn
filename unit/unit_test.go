@@ -13,7 +13,9 @@ import (
 )
 
 func TestUnit(t *testing.T) { //nolint:paralleltest
-	rand.Seed(time.Now().UnixNano())
+	// Ignore deprectation, as the given alternative is not safe for concurrent use.
+	// The global rand methods use a locked seed, which is not available from outside.
+	rand.Seed(time.Now().UnixNano()) //nolint
 
 	size := 1000000
 	workers := 100
