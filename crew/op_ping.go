@@ -59,7 +59,7 @@ func NewPingOp(t terminal.Terminal) (*PingOp, *terminal.Error) {
 
 	// Create operation and init.
 	op := &PingOp{
-		started: time.Now(),
+		started: time.Now().UTC(),
 		nonce:   nonce,
 	}
 	op.OneOffOperationBase.Init()
@@ -111,7 +111,7 @@ func startPingOp(t terminal.Terminal, opID uint32, data *container.Container) (t
 	// Create response.
 	response, err := dsd.Dump(&PingOpResponse{
 		Nonce: request.Nonce,
-		Time:  time.Now(),
+		Time:  time.Now().UTC(),
 	}, dsd.CBOR)
 	if err != nil {
 		return nil, terminal.ErrInternalError.With("failed to create ping response: %w", err)
