@@ -1,6 +1,7 @@
 package terminal
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -15,6 +16,9 @@ const (
 
 	rateLimitMinSuspicion          = 25
 	rateLimitMaxSuspicionPerSecond = 2 // TODO: Reduce to 1 after test phase.
+
+	// Make this big enough to trigger suspicion limit in first blast.
+	concurrencyPoolSize = 30
 )
 
 // Session holds terminal metadata for operations.
@@ -34,6 +38,8 @@ type Session struct {
 	// Every suspicious operations is counted as at least 1.
 	// Rate limited operations because of suspicion are also counted as 1.
 	suspicionScore atomic.Int64
+
+	concurrencyPool chan struct{}
 }
 
 // SessionTerminal is an interface for terminals that support authorization.
@@ -56,12 +62,18 @@ func (t *SessionAddOn) GetSession() *Session {
 
 	// Create session if it does not exist.
 	if t.session == nil {
-		t.session = &Session{
-			started: time.Now().Unix() - 1, // Ensure a 1 second difference to current time.
-		}
+		t.session = NewSession()
 	}
 
 	return t.session
+}
+
+// NewSession returns a new session.
+func NewSession() *Session {
+	return &Session{
+		started:         time.Now().Unix() - 1, // Ensure a 1 second difference to current time.
+		concurrencyPool: make(chan struct{}, concurrencyPoolSize),
+	}
 }
 
 // RateLimitInfo returns some basic information about the status of the rate limiter.
@@ -82,7 +94,7 @@ func (s *Session) RateLimit() *Error {
 
 	// Check the suspicion limit.
 	score := s.suspicionScore.Load()
-	if score >= rateLimitMinSuspicion {
+	if score > rateLimitMinSuspicion {
 		scorePerSecond := score / secondsActive
 		if scorePerSecond >= rateLimitMaxSuspicionPerSecond {
 			// Add current try to suspicion score.
@@ -94,7 +106,7 @@ func (s *Session) RateLimit() *Error {
 
 	// Check the rate limit.
 	count := s.opCount.Add(1)
-	if count >= rateLimitMinOps {
+	if count > rateLimitMinOps {
 		opsPerSecond := count / secondsActive
 		if opsPerSecond >= rateLimitMaxOpsPerSecond {
 			return ErrRateLimited
@@ -114,6 +126,33 @@ const (
 
 // ReportSuspiciousActivity reports suspicious activity of the terminal.
 func (s *Session) ReportSuspiciousActivity(factor int64) {
-	log.Debugf("session: suspicion raised by %d", factor)
 	s.suspicionScore.Add(factor)
+}
+
+// LimitConcurrency limits concurrent executions.
+// If over the limit, waiting goroutines are selected randomly.
+// It returns the context error if it was canceled.
+func (s *Session) LimitConcurrency(ctx context.Context, f func()) error {
+	// Wait for place in pool.
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case s.concurrencyPool <- struct{}{}:
+		// We added our entry to the pool, continue with execution.
+	}
+
+	// Drain own spot if pool after execution.
+	defer func() {
+		select {
+		case <-s.concurrencyPool:
+			// Own entry drained.
+		default:
+			// This should never happen, but let's play safe and not deadlock when pool is empty.
+			log.Warningf("spn/session: failed to drain own entry from concurrency pool")
+		}
+	}()
+
+	// Execute and return.
+	f()
+	return nil
 }

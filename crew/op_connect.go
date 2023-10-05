@@ -40,8 +40,8 @@ type ConnectOp struct {
 	doneWriting chan struct{}
 
 	// Metrics
-	incomingTraffic *uint64
-	outgoingTraffic *uint64
+	incomingTraffic atomic.Uint64
+	outgoingTraffic atomic.Uint64
 	started         time.Time
 
 	// Connection
@@ -157,8 +157,6 @@ func NewConnectOp(tunnel *Tunnel) (*ConnectOp, *terminal.Error) {
 	}
 
 	// Setup metrics.
-	op.incomingTraffic = new(uint64)
-	op.outgoingTraffic = new(uint64)
 	op.started = time.Now()
 
 	module.StartWorker("connect op conn reader", op.connReader)
@@ -203,40 +201,38 @@ func startConnectOp(t terminal.Terminal, opID uint32, data *container.Container)
 	op.ctx, op.cancelCtx = context.WithCancel(t.Ctx())
 	op.dfq = terminal.NewDuplexFlowQueue(op.Ctx(), request.QueueSize, op.submitUpstream)
 
-	// Setup metrics.
-	op.incomingTraffic = new(uint64)
-	op.outgoingTraffic = new(uint64)
-
 	// Start worker to complete setting up the connection.
-	module.StartWorker("connect op setup", op.setup)
+	module.StartWorker("connect op setup", op.handleSetup)
 
 	return op, nil
 }
 
-func (op *ConnectOp) setup(_ context.Context) error {
+func (op *ConnectOp) handleSetup(_ context.Context) error {
 	// Get terminal session for rate limiting.
 	var session *terminal.Session
 	if sessionTerm, ok := op.t.(terminal.SessionTerminal); ok {
 		session = sessionTerm.GetSession()
 	} else {
-		log.Errorf("spn/crew: %T is not a session terminal", op.t)
-	}
-
-	// Check if connection target is in global scope.
-	ipScope := netutils.GetIPScope(op.request.IP)
-	if ipScope != netutils.Global {
-		session.ReportSuspiciousActivity(terminal.SusFactorQuiteUnusual)
-		op.Stop(op, terminal.ErrPermissionDenied.With("denied request to connect to non-global IP %s", op.request.IP))
+		log.Errorf("spn/crew: %T is not a session terminal, aborting op %s#%d", op.t, op.t.FmtID(), op.ID())
+		op.Stop(op, terminal.ErrInternalError.With("no session available"))
 		return nil
 	}
 
-	// Check exit policy.
-	if tErr := checkExitPolicy(op.request); tErr != nil {
-		session.ReportSuspiciousActivity(terminal.SusFactorQuiteUnusual)
-		op.Stop(op, tErr)
-		return nil
+	// Limit concurrency of connecting.
+	cancelErr := session.LimitConcurrency(op.Ctx(), func() {
+		op.setup(session)
+	})
+
+	// If context was canceled, stop operation.
+	if cancelErr != nil {
+		op.Stop(op, terminal.ErrCanceled.With(cancelErr.Error()))
 	}
 
+	// Do not return a worker error.
+	return nil
+}
+
+func (op *ConnectOp) setup(session *terminal.Session) {
 	// Rate limit before connecting.
 	if tErr := session.RateLimit(); tErr != nil {
 		// Fake connection error when rate limited.
@@ -244,7 +240,28 @@ func (op *ConnectOp) setup(_ context.Context) error {
 			log.Debugf("spn/crew: op %s#%d is rate limited: %s", op.t.FmtID(), op.ID(), session.RateLimitInfo())
 		}
 		op.Stop(op, tErr)
-		return nil
+		return
+	}
+
+	// Check if connection target is in global scope.
+	ipScope := netutils.GetIPScope(op.request.IP)
+	if ipScope != netutils.Global {
+		session.ReportSuspiciousActivity(terminal.SusFactorQuiteUnusual)
+		op.Stop(op, terminal.ErrPermissionDenied.With("denied request to connect to non-global IP %s", op.request.IP))
+		return
+	}
+
+	// Check exit policy.
+	if tErr := checkExitPolicy(op.request); tErr != nil {
+		session.ReportSuspiciousActivity(terminal.SusFactorQuiteUnusual)
+		op.Stop(op, tErr)
+		return
+	}
+
+	// Check one last time before connecting if operation was not canceled.
+	if op.Ctx().Err() != nil {
+		op.Stop(op, terminal.ErrCanceled.With(op.Ctx().Err().Error()))
+		return
 	}
 
 	// Connect to destination.
@@ -252,7 +269,7 @@ func (op *ConnectOp) setup(_ context.Context) error {
 	if dialNet == "" {
 		session.ReportSuspiciousActivity(terminal.SusFactorCommon)
 		op.Stop(op, terminal.ErrIncorrectUsage.With("protocol %s is not supported", op.request.Protocol))
-		return nil
+		return
 	}
 	dialer := &net.Dialer{
 		Timeout:       10 * time.Second,
@@ -274,7 +291,7 @@ func (op *ConnectOp) setup(_ context.Context) error {
 		}
 
 		op.Stop(op, terminal.ErrConnectionError.With("failed to connect to %s: %w", op.request, err))
-		return nil
+		return
 	}
 	op.conn = conn
 
@@ -284,7 +301,6 @@ func (op *ConnectOp) setup(_ context.Context) error {
 	module.StartWorker("connect op flow handler", op.dfq.FlowHandler)
 
 	log.Infof("spn/crew: connected op %s#%d to %s", op.t.FmtID(), op.ID(), op.request)
-	return nil
 }
 
 func (op *ConnectOp) submitUpstream(msg *terminal.Msg, timeout time.Duration) {
@@ -313,7 +329,7 @@ func (op *ConnectOp) connReader(_ context.Context) error {
 	defer func() {
 		atomic.AddInt64(activeConnectOps, -1)
 		connectOpDurationHistogram.UpdateDuration(op.started)
-		connectOpIncomingDataHistogram.Update(float64(atomic.LoadUint64(op.incomingTraffic)))
+		connectOpIncomingDataHistogram.Update(float64(op.incomingTraffic.Load()))
 	}()
 
 	rateLimiter := terminal.NewRateLimiter(rateLimitMaxMbit)
@@ -337,7 +353,7 @@ func (op *ConnectOp) connReader(_ context.Context) error {
 
 		// Submit metrics.
 		connectOpIncomingBytes.Add(n)
-		inBytes := atomic.AddUint64(op.incomingTraffic, uint64(n))
+		inBytes := op.incomingTraffic.Add(uint64(n))
 
 		// Rate limit if over threshold.
 		if inBytes > rateLimitThreshold {
@@ -376,7 +392,7 @@ func (op *ConnectOp) Deliver(msg *terminal.Msg) *terminal.Error {
 func (op *ConnectOp) connWriter(_ context.Context) error {
 	// Metrics submitting.
 	defer func() {
-		connectOpOutgoingDataHistogram.Update(float64(atomic.LoadUint64(op.outgoingTraffic)))
+		connectOpOutgoingDataHistogram.Update(float64(op.outgoingTraffic.Load()))
 	}()
 
 	defer func() {
@@ -420,7 +436,7 @@ writing:
 
 		// Submit metrics.
 		connectOpOutgoingBytes.Add(len(data))
-		out := atomic.AddUint64(op.outgoingTraffic, uint64(len(data)))
+		out := op.outgoingTraffic.Add(uint64(len(data)))
 
 		// Rate limit if over threshold.
 		if out > rateLimitThreshold {
@@ -479,17 +495,21 @@ func (op *ConnectOp) HandleStop(err *terminal.Error) (errorToSend *terminal.Erro
 		reportConnectError(err)
 	}
 
-	// If the op was ended locally, send all data before closing.
-	// If the op was ended remotely, don't bother sending remaining data.
-	if !err.IsExternal() {
-		// Flushing could mean sending a full buffer of 50000 packets.
-		op.dfq.Flush(5 * time.Minute)
-	}
+	// If the connection has sent or received any data so far, finish the data
+	// flows as it makes sense.
+	if op.incomingTraffic.Load() > 0 || op.outgoingTraffic.Load() > 0 {
+		// If the op was ended locally, send all data before closing.
+		// If the op was ended remotely, don't bother sending remaining data.
+		if !err.IsExternal() {
+			// Flushing could mean sending a full buffer of 50000 packets.
+			op.dfq.Flush(5 * time.Minute)
+		}
 
-	// If the op was ended remotely, write all remaining received data.
-	// If the op was ended locally, don't bother writing remaining data.
-	if err.IsExternal() {
-		<-op.doneWriting
+		// If the op was ended remotely, write all remaining received data.
+		// If the op was ended locally, don't bother writing remaining data.
+		if err.IsExternal() {
+			<-op.doneWriting
+		}
 	}
 
 	// Cancel workers.
@@ -499,7 +519,7 @@ func (op *ConnectOp) HandleStop(err *terminal.Error) (errorToSend *terminal.Erro
 	// error and no data was received.
 	if op.entry && // On clients only.
 		err.Is(terminal.ErrConnectionError) &&
-		atomic.LoadUint64(op.outgoingTraffic) == 0 {
+		op.outgoingTraffic.Load() == 0 {
 		// Only if no data was received (ie. sent to local application).
 		op.tunnel.avoidDestinationHub()
 	}
