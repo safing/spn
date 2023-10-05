@@ -239,7 +239,7 @@ func (t *TerminalBase) StopOperation(op Operation, err *Error) {
 	switch {
 	case err == nil:
 		log.Debugf("spn/terminal: operation %s %s stopped", op.Type(), fmtOperationID(t.parentID, t.id, op.ID()))
-	case err.IsOK() || err.Is(ErrTryAgainLater):
+	case err.IsOK(), err.Is(ErrTryAgainLater), err.Is(ErrRateLimited):
 		log.Debugf("spn/terminal: operation %s %s stopped: %s", op.Type(), fmtOperationID(t.parentID, t.id, op.ID()), err)
 	default:
 		log.Warningf("spn/terminal: operation %s %s failed: %s", op.Type(), fmtOperationID(t.parentID, t.id, op.ID()), err)

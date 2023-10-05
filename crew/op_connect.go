@@ -237,7 +237,8 @@ func (op *ConnectOp) setup(session *terminal.Session) {
 	if tErr := session.RateLimit(); tErr != nil {
 		// Fake connection error when rate limited.
 		if tErr.Is(terminal.ErrRateLimited) {
-			log.Debugf("spn/crew: op %s#%d is rate limited: %s", op.t.FmtID(), op.ID(), session.RateLimitInfo())
+			op.Stop(op, tErr.With(session.RateLimitInfo()))
+			return
 		}
 		op.Stop(op, tErr)
 		return
