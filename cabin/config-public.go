@@ -96,12 +96,13 @@ var (
 
 func prepPublicHubConfig() error {
 	err := config.Register(&config.Option{
-		Name:           "Name",
-		Key:            publicCfgOptionNameKey,
-		Description:    "Human readable name of the Hub.",
-		OptType:        config.OptTypeString,
-		ExpertiseLevel: config.ExpertiseLevelExpert,
-		DefaultValue:   publicCfgOptionNameDefault,
+		Name:            "Name",
+		Key:             publicCfgOptionNameKey,
+		Description:     "Human readable name of the Hub.",
+		OptType:         config.OptTypeString,
+		ExpertiseLevel:  config.ExpertiseLevelExpert,
+		RequiresRestart: true,
+		DefaultValue:    publicCfgOptionNameDefault,
 		Annotations: config.Annotations{
 			config.DisplayOrderAnnotation: publicCfgOptionNameOrder,
 		},
@@ -112,12 +113,13 @@ func prepPublicHubConfig() error {
 	publicCfgOptionName = config.GetAsString(publicCfgOptionNameKey, publicCfgOptionNameDefault)
 
 	err = config.Register(&config.Option{
-		Name:           "Group",
-		Key:            publicCfgOptionGroupKey,
-		Description:    "Name of the hub group this Hub belongs to.",
-		OptType:        config.OptTypeString,
-		ExpertiseLevel: config.ExpertiseLevelExpert,
-		DefaultValue:   publicCfgOptionGroupDefault,
+		Name:            "Group",
+		Key:             publicCfgOptionGroupKey,
+		Description:     "Name of the hub group this Hub belongs to.",
+		OptType:         config.OptTypeString,
+		ExpertiseLevel:  config.ExpertiseLevelExpert,
+		RequiresRestart: true,
+		DefaultValue:    publicCfgOptionGroupDefault,
 		Annotations: config.Annotations{
 			config.DisplayOrderAnnotation: publicCfgOptionGroupOrder,
 		},
@@ -128,12 +130,13 @@ func prepPublicHubConfig() error {
 	publicCfgOptionGroup = config.GetAsString(publicCfgOptionGroupKey, publicCfgOptionGroupDefault)
 
 	err = config.Register(&config.Option{
-		Name:           "Contact Address",
-		Key:            publicCfgOptionContactAddressKey,
-		Description:    "Contact address where the Hub operator can be reached.",
-		OptType:        config.OptTypeString,
-		ExpertiseLevel: config.ExpertiseLevelExpert,
-		DefaultValue:   publicCfgOptionContactAddressDefault,
+		Name:            "Contact Address",
+		Key:             publicCfgOptionContactAddressKey,
+		Description:     "Contact address where the Hub operator can be reached.",
+		OptType:         config.OptTypeString,
+		ExpertiseLevel:  config.ExpertiseLevelExpert,
+		RequiresRestart: true,
+		DefaultValue:    publicCfgOptionContactAddressDefault,
 		Annotations: config.Annotations{
 			config.DisplayOrderAnnotation: publicCfgOptionContactAddressOrder,
 		},
@@ -144,12 +147,13 @@ func prepPublicHubConfig() error {
 	publicCfgOptionContactAddress = config.GetAsString(publicCfgOptionContactAddressKey, publicCfgOptionContactAddressDefault)
 
 	err = config.Register(&config.Option{
-		Name:           "Contact Service",
-		Key:            publicCfgOptionContactServiceKey,
-		Description:    "Name of the service the contact address corresponds to, if not email.",
-		OptType:        config.OptTypeString,
-		ExpertiseLevel: config.ExpertiseLevelExpert,
-		DefaultValue:   publicCfgOptionContactServiceDefault,
+		Name:            "Contact Service",
+		Key:             publicCfgOptionContactServiceKey,
+		Description:     "Name of the service the contact address corresponds to, if not email.",
+		OptType:         config.OptTypeString,
+		ExpertiseLevel:  config.ExpertiseLevelExpert,
+		RequiresRestart: true,
+		DefaultValue:    publicCfgOptionContactServiceDefault,
 		Annotations: config.Annotations{
 			config.DisplayOrderAnnotation: publicCfgOptionContactServiceOrder,
 		},
@@ -160,12 +164,13 @@ func prepPublicHubConfig() error {
 	publicCfgOptionContactService = config.GetAsString(publicCfgOptionContactServiceKey, publicCfgOptionContactServiceDefault)
 
 	err = config.Register(&config.Option{
-		Name:           "Hosters",
-		Key:            publicCfgOptionHostersKey,
-		Description:    "List of all involved entities and organisations that are involved in hosting this Hub.",
-		OptType:        config.OptTypeStringArray,
-		ExpertiseLevel: config.ExpertiseLevelExpert,
-		DefaultValue:   publicCfgOptionHostersDefault,
+		Name:            "Hosters",
+		Key:             publicCfgOptionHostersKey,
+		Description:     "List of all involved entities and organisations that are involved in hosting this Hub.",
+		OptType:         config.OptTypeStringArray,
+		ExpertiseLevel:  config.ExpertiseLevelExpert,
+		RequiresRestart: true,
+		DefaultValue:    publicCfgOptionHostersDefault,
 		Annotations: config.Annotations{
 			config.DisplayOrderAnnotation: publicCfgOptionHostersOrder,
 		},
@@ -176,12 +181,13 @@ func prepPublicHubConfig() error {
 	publicCfgOptionHosters = config.GetAsStringArray(publicCfgOptionHostersKey, publicCfgOptionHostersDefault)
 
 	err = config.Register(&config.Option{
-		Name:           "Datacenter",
-		Key:            publicCfgOptionDatacenterKey,
-		Description:    "Identifier of the datacenter this Hub is hosted in.",
-		OptType:        config.OptTypeString,
-		ExpertiseLevel: config.ExpertiseLevelExpert,
-		DefaultValue:   publicCfgOptionDatacenterDefault,
+		Name:            "Datacenter",
+		Key:             publicCfgOptionDatacenterKey,
+		Description:     "Identifier of the datacenter this Hub is hosted in.",
+		OptType:         config.OptTypeString,
+		ExpertiseLevel:  config.ExpertiseLevelExpert,
+		RequiresRestart: true,
+		DefaultValue:    publicCfgOptionDatacenterDefault,
 		Annotations: config.Annotations{
 			config.DisplayOrderAnnotation: publicCfgOptionDatacenterOrder,
 		},
@@ -192,12 +198,13 @@ func prepPublicHubConfig() error {
 	publicCfgOptionDatacenter = config.GetAsString(publicCfgOptionDatacenterKey, publicCfgOptionDatacenterDefault)
 
 	err = config.Register(&config.Option{
-		Name:           "IPv4",
-		Key:            publicCfgOptionIPv4Key,
-		Description:    "IPv4 address of this Hub. Must be globally reachable.",
-		OptType:        config.OptTypeString,
-		ExpertiseLevel: config.ExpertiseLevelExpert,
-		DefaultValue:   publicCfgOptionIPv4Default,
+		Name:            "IPv4",
+		Key:             publicCfgOptionIPv4Key,
+		Description:     "IPv4 address of this Hub. Must be globally reachable.",
+		OptType:         config.OptTypeString,
+		ExpertiseLevel:  config.ExpertiseLevelExpert,
+		RequiresRestart: true,
+		DefaultValue:    publicCfgOptionIPv4Default,
 		Annotations: config.Annotations{
 			config.DisplayOrderAnnotation: publicCfgOptionIPv4Order,
 		},
@@ -208,12 +215,13 @@ func prepPublicHubConfig() error {
 	publicCfgOptionIPv4 = config.GetAsString(publicCfgOptionIPv4Key, publicCfgOptionIPv4Default)
 
 	err = config.Register(&config.Option{
-		Name:           "IPv6",
-		Key:            publicCfgOptionIPv6Key,
-		Description:    "IPv6 address of this Hub. Must be globally reachable.",
-		OptType:        config.OptTypeString,
-		ExpertiseLevel: config.ExpertiseLevelExpert,
-		DefaultValue:   publicCfgOptionIPv6Default,
+		Name:            "IPv6",
+		Key:             publicCfgOptionIPv6Key,
+		Description:     "IPv6 address of this Hub. Must be globally reachable.",
+		OptType:         config.OptTypeString,
+		ExpertiseLevel:  config.ExpertiseLevelExpert,
+		RequiresRestart: true,
+		DefaultValue:    publicCfgOptionIPv6Default,
 		Annotations: config.Annotations{
 			config.DisplayOrderAnnotation: publicCfgOptionIPv6Order,
 		},
@@ -253,12 +261,13 @@ func prepPublicHubConfig() error {
 	publicCfgOptionTransports = config.GetAsStringArray(publicCfgOptionTransportsKey, publicCfgOptionTransportsDefault)
 
 	err = config.Register(&config.Option{
-		Name:           "Entry",
-		Key:            publicCfgOptionEntryKey,
-		Description:    "Define an entry policy. The format is the same for the endpoint lists. Default is permit.",
-		OptType:        config.OptTypeStringArray,
-		ExpertiseLevel: config.ExpertiseLevelExpert,
-		DefaultValue:   publicCfgOptionEntryDefault,
+		Name:            "Entry",
+		Key:             publicCfgOptionEntryKey,
+		Description:     "Define an entry policy. The format is the same for the endpoint lists. Default is permit.",
+		OptType:         config.OptTypeStringArray,
+		ExpertiseLevel:  config.ExpertiseLevelExpert,
+		RequiresRestart: true,
+		DefaultValue:    publicCfgOptionEntryDefault,
 		Annotations: config.Annotations{
 			config.DisplayOrderAnnotation: publicCfgOptionEntryOrder,
 			config.DisplayHintAnnotation:  endpoints.DisplayHintEndpointList,
@@ -270,12 +279,13 @@ func prepPublicHubConfig() error {
 	publicCfgOptionEntry = config.GetAsStringArray(publicCfgOptionEntryKey, publicCfgOptionEntryDefault)
 
 	err = config.Register(&config.Option{
-		Name:           "Exit",
-		Key:            publicCfgOptionExitKey,
-		Description:    "Define an exit policy. The format is the same for the endpoint lists. Default is permit.",
-		OptType:        config.OptTypeStringArray,
-		ExpertiseLevel: config.ExpertiseLevelExpert,
-		DefaultValue:   publicCfgOptionExitDefault,
+		Name:            "Exit",
+		Key:             publicCfgOptionExitKey,
+		Description:     "Define an exit policy. The format is the same for the endpoint lists. Default is permit.",
+		OptType:         config.OptTypeStringArray,
+		ExpertiseLevel:  config.ExpertiseLevelExpert,
+		RequiresRestart: true,
+		DefaultValue:    publicCfgOptionExitDefault,
 		Annotations: config.Annotations{
 			config.DisplayOrderAnnotation: publicCfgOptionExitOrder,
 			config.DisplayHintAnnotation:  endpoints.DisplayHintEndpointList,
@@ -287,12 +297,13 @@ func prepPublicHubConfig() error {
 	publicCfgOptionExit = config.GetAsStringArray(publicCfgOptionExitKey, publicCfgOptionExitDefault)
 
 	err = config.Register(&config.Option{
-		Name:           "Allow Unencrypted Connections",
-		Key:            publicCfgOptionAllowUnencryptedKey,
-		Description:    "Advertise that this Hub is available for handling unencrypted connections, as detected by clients.",
-		OptType:        config.OptTypeBool,
-		ExpertiseLevel: config.ExpertiseLevelExpert,
-		DefaultValue:   publicCfgOptionAllowUnencryptedDefault,
+		Name:            "Allow Unencrypted Connections",
+		Key:             publicCfgOptionAllowUnencryptedKey,
+		Description:     "Advertise that this Hub is available for handling unencrypted connections, as detected by clients.",
+		OptType:         config.OptTypeBool,
+		ExpertiseLevel:  config.ExpertiseLevelExpert,
+		RequiresRestart: true,
+		DefaultValue:    publicCfgOptionAllowUnencryptedDefault,
 		Annotations: config.Annotations{
 			config.DisplayOrderAnnotation: publicCfgOptionAllowUnencryptedOrder,
 		},

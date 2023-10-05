@@ -6,6 +6,7 @@ import (
 	"github.com/safing/portbase/config"
 	"github.com/safing/portmaster/profile"
 	"github.com/safing/portmaster/profile/endpoints"
+	"github.com/safing/spn/conf"
 	"github.com/safing/spn/navigator"
 )
 
@@ -43,6 +44,12 @@ var (
 	cfgOptionSpecialAccessCodeDefault = "none"
 	cfgOptionSpecialAccessCode        config.StringOption //nolint:unused // Linter, you drunk?
 	cfgOptionSpecialAccessCodeOrder   = 160
+
+	// IPv6 must be global and accessible.
+	cfgOptionBindToAdvertisedKey     = "spn/publicHub/bindToAdvertised"
+	cfgOptionBindToAdvertised        config.BoolOption
+	cfgOptionBindToAdvertisedDefault = false
+	cfgOptionBindToAdvertisedOrder   = 161
 
 	// Config options for use.
 	cfgOptionRoutingAlgorithm config.StringOption
@@ -162,6 +169,25 @@ This setting mainly exists for when you need to simulate your presence in anothe
 		return err
 	}
 	cfgOptionSpecialAccessCode = config.Concurrent.GetAsString(cfgOptionSpecialAccessCodeKey, "")
+
+	if conf.PublicHub() {
+		err = config.Register(&config.Option{
+			Name:            "Connect From Advertised IPs Only",
+			Key:             cfgOptionBindToAdvertisedKey,
+			Description:     "Only connect from (bind to) the advertised IP addresses.",
+			OptType:         config.OptTypeBool,
+			ExpertiseLevel:  config.ExpertiseLevelExpert,
+			DefaultValue:    cfgOptionBindToAdvertisedDefault,
+			RequiresRestart: true,
+			Annotations: config.Annotations{
+				config.DisplayOrderAnnotation: cfgOptionBindToAdvertisedOrder,
+			},
+		})
+		if err != nil {
+			return err
+		}
+		cfgOptionBindToAdvertised = config.GetAsBool(cfgOptionBindToAdvertisedKey, cfgOptionBindToAdvertisedDefault)
+	}
 
 	// Config options for use.
 	cfgOptionRoutingAlgorithm = config.Concurrent.GetAsString(profile.CfgOptionRoutingAlgorithmKey, navigator.DefaultRoutingProfileID)

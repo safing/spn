@@ -206,6 +206,7 @@ var (
 	ErrIntegrity              = registerError(14, errors.New("integrity violated"))
 	ErrInvalidOptions         = registerError(15, errors.New("invalid options"))
 	ErrHubNotReady            = registerError(16, errors.New("hub not ready"))
+	ErrRateLimited            = registerError(24, errors.New("rate limited"))
 	ErrIncorrectUsage         = registerError(22, errors.New("incorrect usage"))
 	ErrTimeout                = registerError(62, errors.New("timed out"))
 	ErrUnsupportedVersion     = registerError(93, errors.New("unsupported version"))

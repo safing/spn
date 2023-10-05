@@ -8,8 +8,8 @@ import (
 // getRandomTestDomain returns a random test domain from the test domain list.
 // Not cryptographically secure random, though.
 func getRandomTestDomain() string {
-	rand.Seed(time.Now().UnixNano())
-	return testDomains[rand.Intn(len(testDomains)-1)] //nolint:gosec // Weak randomness is not an issue here.
+	rng := rand.New(rand.NewSource(time.Now().UnixNano())) //nolint:gosec
+	return testDomains[rng.Intn(len(testDomains)-1)]       //nolint:gosec // Weak randomness is not an issue here.
 }
 
 // testDomains is a list of domains to check if they respond successfully to a HTTP GET request.

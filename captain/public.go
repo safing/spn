@@ -68,6 +68,9 @@ func loadPublicIdentity() (err error) {
 		publicIdentity.Hub.Info.IPv4 != nil,
 		publicIdentity.Hub.Info.IPv6 != nil,
 	)
+	if cfgOptionBindToAdvertised() {
+		conf.SetConnectAddr(publicIdentity.Hub.Info.IPv4, publicIdentity.Hub.Info.IPv6)
+	}
 
 	// Set Home Hub before updating the hub on the map, as this would trigger a
 	// recalculation without a Home Hub.

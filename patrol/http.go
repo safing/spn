@@ -148,6 +148,7 @@ func CheckHTTPSConnection(ctx context.Context, network, domain string) (statusCo
 	}
 	dialer := &net.Dialer{
 		Timeout:       15 * time.Second,
+		LocalAddr:     conf.GetConnectAddr(network),
 		FallbackDelay: -1, // Disables Fast Fallback from IPv6 to IPv4.
 		KeepAlive:     -1, // Disable keep-alive.
 	}
