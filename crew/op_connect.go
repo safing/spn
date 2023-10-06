@@ -116,7 +116,7 @@ func init() {
 // NewConnectOp starts a new connect operation.
 func NewConnectOp(tunnel *Tunnel) (*ConnectOp, *terminal.Error) {
 	// Submit metrics.
-	newConnectOp.Inc()
+	connectOpCnt.Inc()
 
 	// Create request.
 	request := &ConnectRequest{
@@ -168,9 +168,6 @@ func NewConnectOp(tunnel *Tunnel) (*ConnectOp, *terminal.Error) {
 }
 
 func startConnectOp(t terminal.Terminal, opID uint32, data *container.Container) (terminal.Operation, *terminal.Error) {
-	// Submit metrics.
-	newConnectOp.Inc()
-
 	// Check if we are running a public hub.
 	if !conf.PublicHub() {
 		return nil, terminal.ErrPermissionDenied.With("connecting is only allowed on public hubs")
@@ -180,14 +177,17 @@ func startConnectOp(t terminal.Terminal, opID uint32, data *container.Container)
 	request := &ConnectRequest{}
 	_, err := dsd.Load(data.CompileData(), request)
 	if err != nil {
+		connectOpCntError.Inc() // More like a protocol/system error than a bad request.
 		return nil, terminal.ErrMalformedData.With("failed to parse connect request: %w", err)
 	}
 	if request.QueueSize == 0 || request.QueueSize > terminal.MaxQueueSize {
+		connectOpCntError.Inc() // More like a protocol/system error than a bad request.
 		return nil, terminal.ErrInvalidOptions.With("invalid queue size of %d", request.QueueSize)
 	}
 
 	// Check if IP seems valid.
 	if len(request.IP) != net.IPv4len && len(request.IP) != net.IPv6len {
+		connectOpCntError.Inc() // More like a protocol/system error than a bad request.
 		return nil, terminal.ErrInvalidOptions.With("ip address is not valid")
 	}
 
@@ -213,6 +213,7 @@ func (op *ConnectOp) handleSetup(_ context.Context) error {
 	if sessionTerm, ok := op.t.(terminal.SessionTerminal); ok {
 		session = sessionTerm.GetSession()
 	} else {
+		connectOpCntError.Inc()
 		log.Errorf("spn/crew: %T is not a session terminal, aborting op %s#%d", op.t, op.t.FmtID(), op.ID())
 		op.Stop(op, terminal.ErrInternalError.With("no session available"))
 		return nil
@@ -225,6 +226,7 @@ func (op *ConnectOp) handleSetup(_ context.Context) error {
 
 	// If context was canceled, stop operation.
 	if cancelErr != nil {
+		connectOpCntCanceled.Inc()
 		op.Stop(op, terminal.ErrCanceled.With(cancelErr.Error()))
 	}
 
@@ -235,11 +237,14 @@ func (op *ConnectOp) handleSetup(_ context.Context) error {
 func (op *ConnectOp) setup(session *terminal.Session) {
 	// Rate limit before connecting.
 	if tErr := session.RateLimit(); tErr != nil {
-		// Fake connection error when rate limited.
+		// Add rate limit info to error.
 		if tErr.Is(terminal.ErrRateLimited) {
+			connectOpCntRateLimited.Inc()
 			op.Stop(op, tErr.With(session.RateLimitInfo()))
 			return
 		}
+
+		connectOpCntError.Inc()
 		op.Stop(op, tErr)
 		return
 	}
@@ -248,6 +253,7 @@ func (op *ConnectOp) setup(session *terminal.Session) {
 	ipScope := netutils.GetIPScope(op.request.IP)
 	if ipScope != netutils.Global {
 		session.ReportSuspiciousActivity(terminal.SusFactorQuiteUnusual)
+		connectOpCntBadRequest.Inc()
 		op.Stop(op, terminal.ErrPermissionDenied.With("denied request to connect to non-global IP %s", op.request.IP))
 		return
 	}
@@ -255,6 +261,7 @@ func (op *ConnectOp) setup(session *terminal.Session) {
 	// Check exit policy.
 	if tErr := checkExitPolicy(op.request); tErr != nil {
 		session.ReportSuspiciousActivity(terminal.SusFactorQuiteUnusual)
+		connectOpCntBadRequest.Inc()
 		op.Stop(op, tErr)
 		return
 	}
@@ -262,6 +269,7 @@ func (op *ConnectOp) setup(session *terminal.Session) {
 	// Check one last time before connecting if operation was not canceled.
 	if op.Ctx().Err() != nil {
 		op.Stop(op, terminal.ErrCanceled.With(op.Ctx().Err().Error()))
+		connectOpCntCanceled.Inc()
 		return
 	}
 
@@ -269,6 +277,7 @@ func (op *ConnectOp) setup(session *terminal.Session) {
 	dialNet := op.request.DialNetwork()
 	if dialNet == "" {
 		session.ReportSuspiciousActivity(terminal.SusFactorCommon)
+		connectOpCntBadRequest.Inc()
 		op.Stop(op, terminal.ErrIncorrectUsage.With("protocol %s is not supported", op.request.Protocol))
 		return
 	}
@@ -285,10 +294,13 @@ func (op *ConnectOp) setup(session *terminal.Session) {
 		switch {
 		case errors.As(err, &netError) && netError.Timeout():
 			session.ReportSuspiciousActivity(terminal.SusFactorCommon)
+			connectOpCntFailed.Inc()
 		case errors.Is(err, context.Canceled):
 			session.ReportSuspiciousActivity(terminal.SusFactorCommon)
+			connectOpCntCanceled.Inc()
 		default:
 			session.ReportSuspiciousActivity(terminal.SusFactorWeirdButOK)
+			connectOpCntFailed.Inc()
 		}
 
 		op.Stop(op, terminal.ErrConnectionError.With("failed to connect to %s: %w", op.request, err))
@@ -301,6 +313,7 @@ func (op *ConnectOp) setup(session *terminal.Session) {
 	module.StartWorker("connect op conn writer", op.connWriter)
 	module.StartWorker("connect op flow handler", op.dfq.FlowHandler)
 
+	connectOpCntConnected.Inc()
 	log.Infof("spn/crew: connected op %s#%d to %s", op.t.FmtID(), op.ID(), op.request)
 }
 
@@ -516,18 +529,48 @@ func (op *ConnectOp) HandleStop(err *terminal.Error) (errorToSend *terminal.Erro
 	// Cancel workers.
 	op.cancelCtx()
 
-	// Avoid connecting to destination via this Hub if the was a connection
-	// error and no data was received.
-	if op.entry && // On clients only.
-		err.Is(terminal.ErrConnectionError) &&
-		op.outgoingTraffic.Load() == 0 {
-		// Only if no data was received (ie. sent to local application).
-		op.tunnel.avoidDestinationHub()
+	// Special client-side handling.
+	if op.entry {
+		// Mark the connection as failed if there was an error and no data was sent to the app yet.
+		if err.IsError() && op.outgoingTraffic.Load() == 0 {
+			// Set connection to failed and save it to propagate the update.
+			c := op.tunnel.connInfo
+			func() {
+				c.Lock()
+				defer c.Unlock()
+
+				if err.IsExternal() {
+					c.Failed(fmt.Sprintf(
+						"the exit node reported an error: %s", err,
+					), "")
+				} else {
+					c.Failed(fmt.Sprintf(
+						"connection failed locally: %s", err,
+					), "")
+				}
+
+				c.Save()
+			}()
+		}
+
+		// Avoid connecting to the destination via this Hub if:
+		// - The error is external - ie. from the server.
+		// - The error is a connection error.
+		// - No data was received.
+		// This indicates that there is some network level issue that we can
+		// possibly work around by using another exit node.
+		if err.IsError() && err.IsExternal() &&
+			err.Is(terminal.ErrConnectionError) &&
+			op.outgoingTraffic.Load() == 0 {
+			op.tunnel.avoidDestinationHub()
+		}
+
+		// Don't leak local errors to the server.
+		if !err.IsExternal() {
+			// Change error that is reported.
+			return terminal.ErrStopping
+		}
 	}
 
-	// If we are on the client, don't leak local errors to the server.
-	if op.entry && !err.IsExternal() {
-		return terminal.ErrStopping
-	}
 	return err
 }

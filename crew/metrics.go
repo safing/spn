@@ -10,7 +10,14 @@ import (
 )
 
 var (
-	newConnectOp           *metrics.Counter
+	connectOpCnt            *metrics.Counter
+	connectOpCntError       *metrics.Counter
+	connectOpCntBadRequest  *metrics.Counter
+	connectOpCntCanceled    *metrics.Counter
+	connectOpCntFailed      *metrics.Counter
+	connectOpCntConnected   *metrics.Counter
+	connectOpCntRateLimited *metrics.Counter
+
 	connectOpIncomingBytes *metrics.Counter
 	connectOpOutgoingBytes *metrics.Counter
 
@@ -29,9 +36,9 @@ func registerMetrics() (err error) {
 		return nil
 	}
 
-	// Connect Op Stats.
+	// Connect Op Stats on client.
 
-	newConnectOp, err = metrics.NewCounter(
+	connectOpCnt, err = metrics.NewCounter(
 		"spn/op/connect/total",
 		nil,
 		&metrics.Options{
@@ -40,6 +47,68 @@ func registerMetrics() (err error) {
 			Permission: api.PermitUser,
 			Persist:    true,
 		},
+	)
+	if err != nil {
+		return err
+	}
+
+	// Connect Op Stats on server.
+
+	connectOpCntOptions := &metrics.Options{
+		Name:       "SPN Total Connect Operations",
+		Permission: api.PermitUser,
+		Persist:    true,
+	}
+
+	connectOpCntError, err = metrics.NewCounter(
+		"spn/op/connect/total",
+		map[string]string{"result": "error"},
+		connectOpCntOptions,
+	)
+	if err != nil {
+		return err
+	}
+
+	connectOpCntBadRequest, err = metrics.NewCounter(
+		"spn/op/connect/total",
+		map[string]string{"result": "bad_request"},
+		connectOpCntOptions,
+	)
+	if err != nil {
+		return err
+	}
+
+	connectOpCntCanceled, err = metrics.NewCounter(
+		"spn/op/connect/total",
+		map[string]string{"result": "canceled"},
+		connectOpCntOptions,
+	)
+	if err != nil {
+		return err
+	}
+
+	connectOpCntFailed, err = metrics.NewCounter(
+		"spn/op/connect/total",
+		map[string]string{"result": "failed"},
+		connectOpCntOptions,
+	)
+	if err != nil {
+		return err
+	}
+
+	connectOpCntConnected, err = metrics.NewCounter(
+		"spn/op/connect/total",
+		map[string]string{"result": "connected"},
+		connectOpCntOptions,
+	)
+	if err != nil {
+		return err
+	}
+
+	connectOpCntRateLimited, err = metrics.NewCounter(
+		"spn/op/connect/total",
+		map[string]string{"result": "rate_limited"},
+		connectOpCntOptions,
 	)
 	if err != nil {
 		return err
