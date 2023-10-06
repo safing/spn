@@ -529,18 +529,48 @@ func (op *ConnectOp) HandleStop(err *terminal.Error) (errorToSend *terminal.Erro
 	// Cancel workers.
 	op.cancelCtx()
 
-	// Avoid connecting to destination via this Hub if the was a connection
-	// error and no data was received.
-	if op.entry && // On clients only.
-		err.Is(terminal.ErrConnectionError) &&
-		op.outgoingTraffic.Load() == 0 {
-		// Only if no data was received (ie. sent to local application).
-		op.tunnel.avoidDestinationHub()
+	// Special client-side handling.
+	if op.entry {
+		// Mark the connection as failed if there was an error and no data was sent to the app yet.
+		if err.IsError() && op.outgoingTraffic.Load() == 0 {
+			// Set connection to failed and save it to propagate the update.
+			c := op.tunnel.connInfo
+			func() {
+				c.Lock()
+				defer c.Unlock()
+
+				if err.IsExternal() {
+					c.Failed(fmt.Sprintf(
+						"the exit node reported an error: %s", err,
+					), "")
+				} else {
+					c.Failed(fmt.Sprintf(
+						"connection failed locally: %s", err,
+					), "")
+				}
+
+				c.Save()
+			}()
+		}
+
+		// Avoid connecting to the destination via this Hub if:
+		// - The error is external - ie. from the server.
+		// - The error is a connection error.
+		// - No data was received.
+		// This indicates that there is some network level issue that we can
+		// possibly work around by using another exit node.
+		if err.IsError() && err.IsExternal() &&
+			err.Is(terminal.ErrConnectionError) &&
+			op.outgoingTraffic.Load() == 0 {
+			op.tunnel.avoidDestinationHub()
+		}
+
+		// Don't leak local errors to the server.
+		if !err.IsExternal() {
+			// Change error that is reported.
+			return terminal.ErrStopping
+		}
 	}
 
-	// If we are on the client, don't leak local errors to the server.
-	if op.entry && !err.IsExternal() {
-		return terminal.ErrStopping
-	}
 	return err
 }
