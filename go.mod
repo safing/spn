@@ -10,7 +10,7 @@ require (
 	github.com/r3labs/diff/v3 v3.0.1
 	github.com/rot256/pblind v0.0.0-20230622102829-4dc2c6e4b857
 	github.com/safing/jess v0.3.1
-	github.com/safing/portbase v0.18.2
+	github.com/safing/portbase v0.18.3
 	github.com/safing/portmaster v1.4.10-0.20231006102818-4f0adc87e70c
 	github.com/spf13/cobra v1.7.0
 	github.com/stretchr/testify v1.8.4

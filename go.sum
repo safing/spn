@@ -151,6 +151,8 @@ github.com/safing/portbase v0.15.2/go.mod h1:5bHi99fz7Hh/wOsZUOI631WF9ePSHk57c4f
 github.com/safing/portbase v0.16.2/go.mod h1:mzNCWqPbO7vIYbbK5PElGbudwd2vx4YPNawymL8Aro8=
 github.com/safing/portbase v0.18.2 h1:9zechdBe9f6ucGLUV6woc1fsy+7jjDbnJcTPNzrrm6Y=
 github.com/safing/portbase v0.18.2/go.mod h1:yAZWQZysaeXp0ITUXMiXDRZp9xdgcBmnj4SPM1euRCk=
+github.com/safing/portbase v0.18.3 h1:0eWv9r3in0MQEUaOyrd2LNhYKs+D6UZbys2fWTpO0+Y=
+github.com/safing/portbase v0.18.3/go.mod h1:qhhLjrr5iEGU9r7RZ6hJdtulOeycJ0d0jq95ZxGJ9Hs=
 github.com/safing/portmaster v1.4.9 h1:Bf4BNZO04ZtiLuI6kiRd5Pgd2u1G2AoBfsLDlXnmHog=
 github.com/safing/portmaster v1.4.9/go.mod h1:xXhCSflb7294/CzEoJxLO7WoYgJFNKMfYZjlNqlX6w8=
 github.com/safing/portmaster v1.4.10-0.20231006102818-4f0adc87e70c h1:3wvQZ56cpaLVGYDIuxa5aIc/pM6JgvxNTlcNVZLZjuU=
