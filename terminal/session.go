@@ -15,6 +15,7 @@ const (
 	rateLimitMaxOpsPerSecond = 20 // TODO: Reduce to 10 after test phase.
 
 	rateLimitMinSuspicion          = 25
+	rateLimitMinPermaSuspicion     = rateLimitMinSuspicion * 10
 	rateLimitMaxSuspicionPerSecond = 2 // TODO: Reduce to 1 after test phase.
 
 	// Make this big enough to trigger suspicion limit in first blast.
@@ -31,7 +32,7 @@ type Session struct {
 	// It is set when the Session is created and may be treated as a constant.
 	started int64
 
-	// opCount is the amount of operations started.
+	// opCount is the amount of operations started (and not rate limited by suspicion).
 	opCount atomic.Int64
 
 	// suspicionScore holds a score of suspicious activity.
@@ -100,6 +101,13 @@ func (s *Session) RateLimit() *Error {
 			// Add current try to suspicion score.
 			s.suspicionScore.Add(1)
 
+			return ErrRateLimited
+		}
+
+		// Permanently rate limit if suspicion goes over the perma min limit and
+		// the suspicion score is 50% or greater of the operation count.
+		if score > rateLimitMinPermaSuspicion &&
+			score*2 > s.opCount.Load() {
 			return ErrRateLimited
 		}
 	}
