@@ -6,6 +6,7 @@ import (
 	"net"
 	"time"
 
+	"github.com/safing/portbase/log"
 	"github.com/safing/spn/conf"
 	"github.com/safing/spn/hub"
 )
@@ -36,7 +37,7 @@ func launchTCPShip(ctx context.Context, transport *hub.Transport, ip net.IP) (Sh
 	}
 	dialer := &net.Dialer{
 		Timeout:       30 * time.Second,
-		LocalAddr:     conf.GetConnectAddr(dialNet),
+		LocalAddr:     conf.GetBindAddr(dialNet),
 		FallbackDelay: -1, // Disables Fast Fallback from IPv6 to IPv4.
 		KeepAlive:     -1, // Disable keep-alive.
 	}
@@ -60,33 +61,47 @@ func launchTCPShip(ctx context.Context, transport *hub.Transport, ip net.IP) (Sh
 }
 
 func establishTCPPier(transport *hub.Transport, dockingRequests chan Ship) (Pier, error) {
-	listener, err := net.ListenTCP("tcp", &net.TCPAddr{
-		Port: int(transport.Port),
-	})
-	if err != nil {
-		return nil, err
+	// Start listeners.
+	bindIPs := conf.GetBindIPs()
+	listeners := make([]net.Listener, 0, len(bindIPs))
+	for _, bindIP := range bindIPs {
+		listener, err := net.ListenTCP("tcp", &net.TCPAddr{
+			IP:   bindIP,
+			Port: int(transport.Port),
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to listen: %w", err)
+		}
+
+		listeners = append(listeners, listener)
+		log.Infof("spn/ships: tcp transport pier established on %s", listener.Addr())
 	}
 
 	// Create new pier.
 	pier := &TCPPier{
 		PierBase: PierBase{
 			transport:       transport,
-			listener:        listener,
+			listeners:       listeners,
 			dockingRequests: dockingRequests,
 		},
 	}
 	pier.initBase()
 
-	// Start worker.
-	module.StartServiceWorker("accept TCP docking requests", 0, pier.dockingWorker)
+	// Start workers.
+	for _, listener := range pier.listeners {
+		serviceListener := listener
+		module.StartServiceWorker("accept TCP docking requests", 0, func(ctx context.Context) error {
+			return pier.dockingWorker(ctx, serviceListener)
+		})
+	}
 
 	return pier, nil
 }
 
-func (pier *TCPPier) dockingWorker(ctx context.Context) error {
+func (pier *TCPPier) dockingWorker(ctx context.Context, listener net.Listener) error {
 	for {
 		// Block until something happens.
-		conn, err := pier.listener.Accept()
+		conn, err := listener.Accept()
 
 		// Check if we are done.
 		select {

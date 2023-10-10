@@ -8,11 +8,13 @@ import (
 	"net/http"
 	"sync"
 	"time"
+
+	"github.com/safing/portbase/log"
+	"github.com/safing/spn/conf"
 )
 
 type sharedServer struct {
-	listener net.Listener
-	server   *http.Server
+	server *http.Server
 
 	handlers     map[string]http.HandlerFunc
 	handlersLock sync.RWMutex
@@ -45,10 +47,10 @@ var (
 	sharedHTTPServersLock sync.Mutex
 )
 
-func addHTTPHandler(port uint16, path string, handler http.HandlerFunc) (ln net.Listener, err error) {
+func addHTTPHandler(port uint16, path string, handler http.HandlerFunc) error {
 	// Check params.
 	if port == 0 {
-		return nil, errors.New("cannot listen on port 0")
+		return errors.New("cannot listen on port 0")
 	}
 
 	// Default to root path.
@@ -69,12 +71,12 @@ func addHTTPHandler(port uint16, path string, handler http.HandlerFunc) (ln net.
 		// Check if path is already registered.
 		_, ok := shared.handlers[path]
 		if ok {
-			return nil, errors.New("path already registered")
+			return errors.New("path already registered")
 		}
 
 		// Else, register handler at path.
 		shared.handlers[path] = handler
-		return shared.listener, nil
+		return nil
 	}
 
 	// Shared server does not exist - create one.
@@ -99,28 +101,41 @@ func addHTTPHandler(port uint16, path string, handler http.HandlerFunc) (ln net.
 	}
 	shared.server = server
 
-	// Start listener.
-	shared.listener, err = net.Listen("tcp", server.Addr)
-	if err != nil {
-		return nil, fmt.Errorf("failed to listen: %w", err)
+	// Start listeners.
+	bindIPs := conf.GetBindIPs()
+	listeners := make([]net.Listener, 0, len(bindIPs))
+	for _, bindIP := range bindIPs {
+		listener, err := net.ListenTCP("tcp", &net.TCPAddr{
+			IP:   bindIP,
+			Port: int(port),
+		})
+		if err != nil {
+			return fmt.Errorf("failed to listen: %w", err)
+		}
+
+		listeners = append(listeners, listener)
+		log.Infof("spn/ships: http transport pier established on %s", listener.Addr())
 	}
 
 	// Add shared http server to list.
 	sharedHTTPServers[port] = shared
 
-	// Start server in service worker.
-	module.StartServiceWorker(
-		fmt.Sprintf("shared http server listener on port %d", port), 0,
-		func(ctx context.Context) error {
-			err := shared.server.Serve(shared.listener)
-			if !errors.Is(http.ErrServerClosed, err) {
-				return err
-			}
-			return nil
-		},
-	)
+	// Start servers in service workers.
+	for _, listener := range listeners {
+		serviceListener := listener
+		module.StartServiceWorker(
+			fmt.Sprintf("shared http server listener on %s", listener.Addr()), 0,
+			func(ctx context.Context) error {
+				err := shared.server.Serve(serviceListener)
+				if !errors.Is(http.ErrServerClosed, err) {
+					return err
+				}
+				return nil
+			},
+		)
+	}
 
-	return shared.listener, nil
+	return nil
 }
 
 func removeHTTPHandler(port uint16, path string) error {

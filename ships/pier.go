@@ -17,9 +17,6 @@ type Pier interface {
 	// Transport returns the transport used for this ship.
 	Transport() *hub.Transport
 
-	// Addr returns the underlying network address used by the listener.
-	Addr() net.Addr
-
 	// Abolish closes the underlying listener and cleans up any related resources.
 	Abolish()
 }
@@ -50,8 +47,8 @@ func EstablishPier(transport *hub.Transport, dockingRequests chan Ship) (Pier, e
 type PierBase struct {
 	// transport holds the transport definition of the pier.
 	transport *hub.Transport
-	// listener is the actual underlying listener.
-	listener net.Listener
+	// listeners holds the actual underlying listeners.
+	listeners []net.Listener
 
 	// dockingRequests is used to report new connections to the higher layer.
 	dockingRequests chan Ship
@@ -75,14 +72,11 @@ func (pier *PierBase) Transport() *hub.Transport {
 	return pier.transport
 }
 
-// Addr returns the underlying network address used by the listener.
-func (pier *PierBase) Addr() net.Addr {
-	return pier.listener.Addr()
-}
-
 // Abolish closes the underlying listener and cleans up any related resources.
 func (pier *PierBase) Abolish() {
 	if pier.abolishing.SetToIf(false, true) {
-		_ = pier.listener.Close()
+		for _, listener := range pier.listeners {
+			_ = listener.Close()
+		}
 	}
 }

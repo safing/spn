@@ -77,7 +77,7 @@ func launchHTTPShip(ctx context.Context, transport *hub.Transport, ip net.IP) (S
 	}
 	dialer := &net.Dialer{
 		Timeout:       30 * time.Second,
-		LocalAddr:     conf.GetConnectAddr(dialNet),
+		LocalAddr:     conf.GetBindAddr(dialNet),
 		FallbackDelay: -1, // Disables Fast Fallback from IPv6 to IPv4.
 		KeepAlive:     -1, // Disable keep-alive.
 	}
@@ -209,11 +209,10 @@ func establishHTTPPier(transport *hub.Transport, dockingRequests chan Ship) (Pie
 	pier.initBase()
 
 	// Register handler.
-	listener, err := addHTTPHandler(transport.Port, path, pier.ServeHTTP)
+	err := addHTTPHandler(transport.Port, path, pier.ServeHTTP)
 	if err != nil {
 		return nil, fmt.Errorf("failed to add HTTP handler: %w", err)
 	}
-	pier.listener = listener
 
 	return pier, nil
 }
