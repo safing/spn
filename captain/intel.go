@@ -85,21 +85,6 @@ func resetSPNIntel() {
 	intelResource = nil
 }
 
-var requiredResources = []string{
-	"intel/geoip/geoipv4.mmdb.gz",
-	"intel/geoip/geoipv6.mmdb.gz",
-}
-
-func loadRequiredResources() error {
-	for _, res := range requiredResources {
-		_, err := updates.GetFile(res)
-		if err != nil {
-			return fmt.Errorf("failed to get required resource %s: %w", res, err)
-		}
-	}
-	return nil
-}
-
 func setVirtualNetworkConfig(configs []*hub.VirtualNetworkConfig) {
 	// Do nothing if not public Hub.
 	if !conf.PublicHub() {
