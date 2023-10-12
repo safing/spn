@@ -191,7 +191,6 @@ func stop() error {
 	if conf.PublicHub() {
 		publishShutdownStatus()
 		stopPiers()
-		closePendingDockingRequests()
 	}
 
 	return nil

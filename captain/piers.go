@@ -57,13 +57,29 @@ func stopPiers() {
 }
 
 func dockingRequestHandler(ctx context.Context) error {
+	// Sink all waiting ships when this worker ends.
+	// But don't be destructive so the service worker could recover.
+	defer func() {
+		for {
+			select {
+			case ship := <-dockingRequests:
+				if ship != nil {
+					ship.Sink()
+				}
+			default:
+				return
+			}
+		}
+	}()
+
 	for {
 		select {
 		case <-ctx.Done():
 			return nil
 		case ship := <-dockingRequests:
+			// Ignore nil ships.
 			if ship == nil {
-				return errors.New("received nil ship")
+				continue
 			}
 
 			if err := checkDockingPermission(ctx, ship); err != nil {
@@ -72,12 +88,6 @@ func dockingRequestHandler(ctx context.Context) error {
 				handleDockingRequest(ship)
 			}
 		}
-	}
-}
-
-func closePendingDockingRequests() {
-	for ship := range dockingRequests {
-		ship.Sink()
 	}
 }
 
