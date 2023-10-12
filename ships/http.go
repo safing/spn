@@ -226,12 +226,5 @@ func (pier *HTTPPier) Abolish() {
 
 	// Do not close the listener, as it is shared.
 	// Instead, remove the HTTP handler and the shared server will shutdown itself when needed.
-
-	// Default to root path.
-	path := pier.transport.Path
-	if path == "" {
-		path = "/"
-	}
-
-	_ = removeHTTPHandler(pier.transport.Port, path)
+	_ = removeHTTPHandler(pier.transport.Port, pier.transport.Path)
 }

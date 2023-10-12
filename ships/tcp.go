@@ -19,6 +19,9 @@ type TCPShip struct {
 // TCPPier is a pier that uses TCP.
 type TCPPier struct {
 	PierBase
+
+	ctx       context.Context
+	cancelCtx context.CancelFunc
 }
 
 func init() {
@@ -78,12 +81,15 @@ func establishTCPPier(transport *hub.Transport, dockingRequests chan Ship) (Pier
 	}
 
 	// Create new pier.
+	pierCtx, cancelCtx := context.WithCancel(module.Ctx)
 	pier := &TCPPier{
 		PierBase: PierBase{
 			transport:       transport,
 			listeners:       listeners,
 			dockingRequests: dockingRequests,
 		},
+		ctx:       pierCtx,
+		cancelCtx: cancelCtx,
 	}
 	pier.initBase()
 
@@ -98,20 +104,16 @@ func establishTCPPier(transport *hub.Transport, dockingRequests chan Ship) (Pier
 	return pier, nil
 }
 
-func (pier *TCPPier) dockingWorker(ctx context.Context, listener net.Listener) error {
+func (pier *TCPPier) dockingWorker(_ context.Context, listener net.Listener) error {
 	for {
 		// Block until something happens.
 		conn, err := listener.Accept()
 
-		// Check if we are done.
-		select {
-		case <-ctx.Done():
-			return nil
-		default:
-		}
-
-		// Check for error.
-		if err != nil {
+		// Check for errors.
+		switch {
+		case pier.ctx.Err() != nil:
+			return pier.ctx.Err()
+		case err != nil:
 			return err
 		}
 
@@ -130,8 +132,14 @@ func (pier *TCPPier) dockingWorker(ctx context.Context, listener net.Listener) e
 		// Submit new docking request.
 		select {
 		case pier.dockingRequests <- ship:
-		case <-ctx.Done():
-			return nil
+		case <-pier.ctx.Done():
+			return pier.ctx.Err()
 		}
 	}
+}
+
+// Abolish closes the underlying listener and cleans up any related resources.
+func (pier *TCPPier) Abolish() {
+	pier.cancelCtx()
+	pier.PierBase.Abolish()
 }
