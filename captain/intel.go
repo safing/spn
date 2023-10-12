@@ -50,7 +50,7 @@ func updateSPNIntel(ctx context.Context, _ interface{}) (err error) {
 
 	// Only update SPN intel when using the matching map.
 	if conf.MainMapName != intelResourceMapName {
-		return nil
+		return fmt.Errorf("intel resource not for map %q", conf.MainMapName)
 	}
 
 	// Check if there is something to do.
