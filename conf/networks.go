@@ -29,53 +29,82 @@ func HubHasIPv6() bool {
 }
 
 var (
-	connectIPv4   net.IP
-	connectIPv6   net.IP
-	connectIPLock sync.Mutex
+	bindIPv4   net.IP
+	bindIPv6   net.IP
+	bindIPLock sync.Mutex
 )
 
-// SetConnectAddr sets the preferred connect (bind) addresses.
-func SetConnectAddr(ip4, ip6 net.IP) {
-	connectIPLock.Lock()
-	defer connectIPLock.Unlock()
+// SetBindAddr sets the preferred connect (bind) addresses.
+func SetBindAddr(ip4, ip6 net.IP) {
+	bindIPLock.Lock()
+	defer bindIPLock.Unlock()
 
-	connectIPv4 = ip4
-	connectIPv6 = ip6
+	bindIPv4 = ip4
+	bindIPv6 = ip6
 }
 
-// GetConnectAddr returns an address with the preferred connect (bind)
-// addresses for the given dial network.
-// The dial network must have a suffix specify the IP version.
-func GetConnectAddr(dialNetwork string) net.Addr {
-	connectIPLock.Lock()
-	defer connectIPLock.Unlock()
+// BindAddrIsSet returns whether any bind address is set.
+func BindAddrIsSet() bool {
+	bindIPLock.Lock()
+	defer bindIPLock.Unlock()
+
+	return bindIPv4 != nil || bindIPv6 != nil
+}
+
+// GetBindAddr returns an address with the preferred binding address for the
+// given dial network.
+// The dial network must have a suffix specifying the IP version.
+func GetBindAddr(dialNetwork string) net.Addr {
+	bindIPLock.Lock()
+	defer bindIPLock.Unlock()
 
 	switch dialNetwork {
 	case "ip4":
-		if connectIPv4 != nil {
-			return &net.IPAddr{IP: connectIPv4}
+		if bindIPv4 != nil {
+			return &net.IPAddr{IP: bindIPv4}
 		}
 	case "ip6":
-		if connectIPv6 != nil {
-			return &net.IPAddr{IP: connectIPv6}
+		if bindIPv6 != nil {
+			return &net.IPAddr{IP: bindIPv6}
 		}
 	case "tcp4":
-		if connectIPv4 != nil {
-			return &net.TCPAddr{IP: connectIPv4}
+		if bindIPv4 != nil {
+			return &net.TCPAddr{IP: bindIPv4}
 		}
 	case "tcp6":
-		if connectIPv6 != nil {
-			return &net.TCPAddr{IP: connectIPv6}
+		if bindIPv6 != nil {
+			return &net.TCPAddr{IP: bindIPv6}
 		}
 	case "udp4":
-		if connectIPv4 != nil {
-			return &net.UDPAddr{IP: connectIPv4}
+		if bindIPv4 != nil {
+			return &net.UDPAddr{IP: bindIPv4}
 		}
 	case "udp6":
-		if connectIPv6 != nil {
-			return &net.UDPAddr{IP: connectIPv6}
+		if bindIPv6 != nil {
+			return &net.UDPAddr{IP: bindIPv6}
 		}
 	}
 
 	return nil
+}
+
+// GetBindIPs returns the preferred binding IPs.
+// Returns a slice with a single nil IP if no preferred binding IPs are set.
+func GetBindIPs() []net.IP {
+	bindIPLock.Lock()
+	defer bindIPLock.Unlock()
+
+	switch {
+	case bindIPv4 == nil && bindIPv6 == nil:
+		// Match most common case first.
+		return []net.IP{nil}
+	case bindIPv4 != nil && bindIPv6 != nil:
+		return []net.IP{bindIPv4, bindIPv6}
+	case bindIPv4 != nil:
+		return []net.IP{bindIPv4}
+	case bindIPv6 != nil:
+		return []net.IP{bindIPv6}
+	}
+
+	return []net.IP{nil}
 }

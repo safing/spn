@@ -6,6 +6,7 @@ import (
 	"net"
 	"time"
 
+	"github.com/safing/portbase/log"
 	"github.com/safing/spn/conf"
 	"github.com/safing/spn/hub"
 )
@@ -18,6 +19,9 @@ type TCPShip struct {
 // TCPPier is a pier that uses TCP.
 type TCPPier struct {
 	PierBase
+
+	ctx       context.Context
+	cancelCtx context.CancelFunc
 }
 
 func init() {
@@ -36,7 +40,7 @@ func launchTCPShip(ctx context.Context, transport *hub.Transport, ip net.IP) (Sh
 	}
 	dialer := &net.Dialer{
 		Timeout:       30 * time.Second,
-		LocalAddr:     conf.GetConnectAddr(dialNet),
+		LocalAddr:     conf.GetBindAddr(dialNet),
 		FallbackDelay: -1, // Disables Fast Fallback from IPv6 to IPv4.
 		KeepAlive:     -1, // Disable keep-alive.
 	}
@@ -60,43 +64,56 @@ func launchTCPShip(ctx context.Context, transport *hub.Transport, ip net.IP) (Sh
 }
 
 func establishTCPPier(transport *hub.Transport, dockingRequests chan Ship) (Pier, error) {
-	listener, err := net.ListenTCP("tcp", &net.TCPAddr{
-		Port: int(transport.Port),
-	})
-	if err != nil {
-		return nil, err
+	// Start listeners.
+	bindIPs := conf.GetBindIPs()
+	listeners := make([]net.Listener, 0, len(bindIPs))
+	for _, bindIP := range bindIPs {
+		listener, err := net.ListenTCP("tcp", &net.TCPAddr{
+			IP:   bindIP,
+			Port: int(transport.Port),
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to listen: %w", err)
+		}
+
+		listeners = append(listeners, listener)
+		log.Infof("spn/ships: tcp transport pier established on %s", listener.Addr())
 	}
 
 	// Create new pier.
+	pierCtx, cancelCtx := context.WithCancel(module.Ctx)
 	pier := &TCPPier{
 		PierBase: PierBase{
 			transport:       transport,
-			listener:        listener,
+			listeners:       listeners,
 			dockingRequests: dockingRequests,
 		},
+		ctx:       pierCtx,
+		cancelCtx: cancelCtx,
 	}
 	pier.initBase()
 
-	// Start worker.
-	module.StartServiceWorker("accept TCP docking requests", 0, pier.dockingWorker)
+	// Start workers.
+	for _, listener := range pier.listeners {
+		serviceListener := listener
+		module.StartServiceWorker("accept TCP docking requests", 0, func(ctx context.Context) error {
+			return pier.dockingWorker(ctx, serviceListener)
+		})
+	}
 
 	return pier, nil
 }
 
-func (pier *TCPPier) dockingWorker(ctx context.Context) error {
+func (pier *TCPPier) dockingWorker(_ context.Context, listener net.Listener) error {
 	for {
 		// Block until something happens.
-		conn, err := pier.listener.Accept()
+		conn, err := listener.Accept()
 
-		// Check if we are done.
-		select {
-		case <-ctx.Done():
-			return nil
-		default:
-		}
-
-		// Check for error.
-		if err != nil {
+		// Check for errors.
+		switch {
+		case pier.ctx.Err() != nil:
+			return pier.ctx.Err()
+		case err != nil:
 			return err
 		}
 
@@ -115,8 +132,14 @@ func (pier *TCPPier) dockingWorker(ctx context.Context) error {
 		// Submit new docking request.
 		select {
 		case pier.dockingRequests <- ship:
-		case <-ctx.Done():
-			return nil
+		case <-pier.ctx.Done():
+			return pier.ctx.Err()
 		}
 	}
+}
+
+// Abolish closes the underlying listener and cleans up any related resources.
+func (pier *TCPPier) Abolish() {
+	pier.cancelCtx()
+	pier.PierBase.Abolish()
 }

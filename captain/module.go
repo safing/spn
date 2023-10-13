@@ -98,10 +98,7 @@ func start() error {
 	}
 	ships.EnableMasking(maskingBytes)
 
-	// Initialize intel and other required resources.
-	if err := loadRequiredResources(); err != nil {
-		return err
-	}
+	// Initialize intel.
 	if err := registerIntelUpdateHook(); err != nil {
 		return err
 	}
@@ -194,7 +191,6 @@ func stop() error {
 	if conf.PublicHub() {
 		publishShutdownStatus()
 		stopPiers()
-		closePendingDockingRequests()
 	}
 
 	return nil

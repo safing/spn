@@ -283,7 +283,7 @@ func (op *ConnectOp) setup(session *terminal.Session) {
 	}
 	dialer := &net.Dialer{
 		Timeout:       10 * time.Second,
-		LocalAddr:     conf.GetConnectAddr(dialNet),
+		LocalAddr:     conf.GetBindAddr(dialNet),
 		FallbackDelay: -1, // Disables Fast Fallback from IPv6 to IPv4.
 		KeepAlive:     -1, // Disable keep-alive.
 	}
@@ -410,6 +410,8 @@ func (op *ConnectOp) connWriter(_ context.Context) error {
 	}()
 
 	defer func() {
+		// Signal that we are done with writing.
+		close(op.doneWriting)
 		// Close connection.
 		_ = op.conn.Close()
 	}()
@@ -522,7 +524,14 @@ func (op *ConnectOp) HandleStop(err *terminal.Error) (errorToSend *terminal.Erro
 		// If the op was ended remotely, write all remaining received data.
 		// If the op was ended locally, don't bother writing remaining data.
 		if err.IsExternal() {
-			<-op.doneWriting
+			select {
+			case <-op.doneWriting:
+			default:
+				select {
+				case <-op.doneWriting:
+				case <-time.After(5 * time.Second):
+				}
+			}
 		}
 	}
 

@@ -10,13 +10,13 @@ func TestSharedHTTP(t *testing.T) { //nolint:paralleltest // Test checks global 
 	const testPort = 65100
 
 	// Register multiple handlers.
-	_, err := addHTTPHandler(testPort, "", ServeInfoPage)
+	err := addHTTPHandler(testPort, "", ServeInfoPage)
 	assert.NoError(t, err, "should be able to share http listener")
-	_, err = addHTTPHandler(testPort, "/test", ServeInfoPage)
+	err = addHTTPHandler(testPort, "/test", ServeInfoPage)
 	assert.NoError(t, err, "should be able to share http listener")
-	_, err = addHTTPHandler(testPort, "/test2", ServeInfoPage)
+	err = addHTTPHandler(testPort, "/test2", ServeInfoPage)
 	assert.NoError(t, err, "should be able to share http listener")
-	_, err = addHTTPHandler(testPort, "/", ServeInfoPage)
+	err = addHTTPHandler(testPort, "/", ServeInfoPage)
 	assert.Error(t, err, "should fail to register path twice")
 
 	// Unregister
