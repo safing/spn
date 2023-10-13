@@ -10,13 +10,13 @@ require (
 	github.com/r3labs/diff/v3 v3.0.1
 	github.com/rot256/pblind v0.0.0-20230622102829-4dc2c6e4b857
 	github.com/safing/jess v0.3.1
-	github.com/safing/portbase v0.18.3
-	github.com/safing/portmaster v1.4.10-0.20231006102818-4f0adc87e70c
+	github.com/safing/portbase v0.18.5
+	github.com/safing/portmaster v1.5.1-0.20231013101135-a386cf72f139
 	github.com/spf13/cobra v1.7.0
 	github.com/stretchr/testify v1.8.4
 	github.com/tevino/abool v1.2.0
-	golang.org/x/exp v0.0.0-20231005195138-3e424a577f31
-	golang.org/x/net v0.16.0
+	golang.org/x/exp v0.0.0-20231006140011-7918f672742d
+	golang.org/x/net v0.17.0
 )
 
 require (
@@ -73,8 +73,8 @@ require (
 	golang.org/x/sync v0.4.0 // indirect
 	golang.org/x/sys v0.13.0 // indirect
 	golang.org/x/time v0.3.0 // indirect
-	golang.org/x/tools v0.13.0 // indirect
+	golang.org/x/tools v0.14.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-	gvisor.dev/gvisor v0.0.0-20231006032704-15cc3fcbbd77 // indirect
+	gvisor.dev/gvisor v0.0.0-20231013035111-c134ec92830b // indirect
 )
