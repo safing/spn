@@ -60,7 +60,7 @@ func (u *User) UpdateView(requestStatusCode int) {
 	case StatusInvalidAuth, StatusInvalidDevice, StatusDeviceInactive:
 		// Account deleted or Device inactive or deleted.
 		// When using token based auth, there is no difference between these cases.
-		v.Message = "This device was deactivated or removed from your account. Please log in again."
+		v.Message = "This device may have been deactivated or removed from your account. Please log in again."
 		v.ShowAccountData = true
 		v.ShowAccountButton = true
 		v.ShowLoginButton = true
