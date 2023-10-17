@@ -70,8 +70,7 @@ func start() error {
 		accountUpdateTask = module.NewTask(
 			"update account",
 			UpdateAccount,
-		).Repeat(24 * time.Hour)
-		// First execution is done by the client manager in the captain module.
+		).Repeat(24 * time.Hour).Schedule(time.Now().Add(1 * time.Minute))
 	}
 
 	return nil
@@ -102,7 +101,16 @@ func UpdateAccount(_ context.Context, task *modules.Task) error {
 		}
 	}()
 
-	u, _, err := UpdateUser()
+	// Get current user.
+	u, err := GetUser()
+	if err == nil {
+		// Do not update if we just updated.
+		if time.Since(time.Unix(u.Meta().Modified, 0)) < 2*time.Minute {
+			return nil
+		}
+	}
+
+	u, _, err = UpdateUser()
 	if err != nil {
 		return fmt.Errorf("failed to update user profile: %w", err)
 	}
