@@ -178,34 +178,38 @@ EOT
 }
 
 ask_config() {
-    if [ "${HOSTNAME}" = "" ]; then
-        log "Please enter hostname:"
-        read -p "> " HOSTNAME
-    fi
-    if [ "${METRICS_COMMENT}" = "" ]; then
-        log "Please enter metrics comment:"
-        read -p "> " METRICS_COMMENT
+    if [ -z "$LOCAL_CONFIG_FILE" ]
+    then
+        if [ "${HOSTNAME}" = "" ]; then
+            log "Please enter hostname:"
+            read -p "> " HOSTNAME
+        fi
+        if [ "${METRICS_COMMENT}" = "" ]; then
+            log "Please enter metrics comment:"
+            read -p "> " METRICS_COMMENT
+        fi
+    else
+    log "Using user provided configuration"
     fi
 }
 
 write_config_file() {
-    local config_file=${1:-${LOCAL_CONFIG_FILE:-default}}
     if [ -z "$LOCAL_CONFIG_FILE" ]
     then
         cat >${1} <<EOT
 {
-"core": {
+  "core": {
     "metrics": {
-    "instance": "$HOSTNAME",
-    "comment": "$METRICS_COMMENT",
-    "push": "$PUSHMETRICS"
+      "instance": "$HOSTNAME",
+      "comment": "$METRICS_COMMENT",
+      "push": "$PUSHMETRICS"
     }
-},
-"spn": {
+  },
+  "spn": {
     "publicHub": {
-    "name": "$HOSTNAME"
+      "name": "$HOSTNAME"
     }
-}
+  }
 }
 EOT
     else
@@ -224,7 +228,7 @@ confirm_config() {
     echo "   Start Now: ${BOLD}${ENABLENOW}${RESET}"
     echo "   Config File: ${BOLD}${LOCAL_CONFIG_FILE:-default}${RESET}"
     echo ""
-    echo "   Config:"
+    log "Config:"
     tmpfile=$(mktemp)
     write_config_file $tmpfile
     cat $tmpfile
