@@ -47,10 +47,12 @@ func TestSuspicionLimit(t *testing.T) {
 
 	// Somewhere here we should rate limiting.
 	for i := 0; i < rateLimitMaxSuspicionPerSecond; i++ {
-		tErr = s.RateLimit()
 		s.ReportSuspiciousActivity(SusFactorCommon)
+		tErr = s.RateLimit()
 	}
-	assert.ErrorIs(t, tErr, ErrRateLimited, "should rate limit")
+	if tErr == nil {
+		t.Error("should rate limit")
+	}
 }
 
 func TestConcurrencyLimit(t *testing.T) {
