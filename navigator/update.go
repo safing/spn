@@ -690,7 +690,7 @@ func (m *Map) updateSelectRuleCountryList(ctx context.Context, configKey string,
 	selections = append(selections, selectCountry{
 		QuickSetting: config.QuickSetting{
 			Name:   "US and Canada",
-			Value:  []string{"+ US", "+ CA"},
+			Value:  []string{"+ US", "+ CA", "- *"},
 			Action: config.QuickReplace,
 		},
 	})

@@ -11,12 +11,12 @@ import (
 )
 
 const (
-	rateLimitMinOps          = 100
-	rateLimitMaxOpsPerSecond = 20 // TODO: Reduce to 10 after test phase.
+	rateLimitMinOps          = 250
+	rateLimitMaxOpsPerSecond = 5
 
 	rateLimitMinSuspicion          = 25
 	rateLimitMinPermaSuspicion     = rateLimitMinSuspicion * 10
-	rateLimitMaxSuspicionPerSecond = 2 // TODO: Reduce to 1 after test phase.
+	rateLimitMaxSuspicionPerSecond = 1
 
 	// Make this big enough to trigger suspicion limit in first blast.
 	concurrencyPoolSize = 30

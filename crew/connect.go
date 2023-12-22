@@ -304,15 +304,23 @@ func establishRoute(route *navigator.Route) (dstPin *navigator.Pin, dstTerminal 
 			// Wait for authOp result.
 			select {
 			case tErr := <-check.authOp.Result:
-				if !tErr.Is(terminal.ErrExplicitAck) {
-					// This should never happen, as all should have the same public keys
-					// and tokens are validated locally before using.
-					// Ignore Hub for a short amount of time.
-					// TODO: How can we better handle this?
+				switch {
+				case tErr.IsError():
+					// There was a network or authentication error.
 					check.pin.MarkAsFailingFor(3 * time.Minute)
 					log.Warningf("spn/crew: failed to auth to %s: %s", check.pin.Hub, tErr)
-
 					return nil, nil, tErr.Wrap("failed to authenticate to %s: %w", check.pin.Hub, tErr)
+
+				case tErr.Is(terminal.ErrExplicitAck):
+					// Authentication was successful.
+
+				default:
+					// Authentication was aborted.
+					if tErr != nil {
+						tErr = terminal.ErrUnknownError
+					}
+					log.Warningf("spn/crew: auth to %s aborted with %s", check.pin.Hub, tErr)
+					return nil, nil, tErr.Wrap("authentication to %s aborted: %w", check.pin.Hub, tErr)
 				}
 
 			case <-time.After(5 * time.Second):

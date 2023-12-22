@@ -5,9 +5,9 @@
 # Run: docker build -f cmds/observation-hub/Dockerfile -t safing/observation-hub:latest .
 # Check With: docker run -ti --rm safing/observation-hub:latest --help
 
-# golang 1.20.7 linux/amd64 on debian bullseye
-# https://github.com/docker-library/golang/blob/master/1.20/bullseye/Dockerfile
-FROM golang:1.21-bullseye as builder
+# golang 1.21 linux/amd64 on debian bookworm
+# https://github.com/docker-library/golang/blob/master/1.21/bookworm/Dockerfile
+FROM golang:1.21-bookworm as builder
 
 # Ensure ca-certficates are up to date
 RUN update-ca-certificates
@@ -29,7 +29,7 @@ CGO_ENABLED=0 ./build -o /go/bin/observation-hub
 
 # Use static image
 # https://github.com/GoogleContainerTools/distroless
-FROM gcr.io/distroless/static-debian11
+FROM gcr.io/distroless/static-debian12
 
 # Copy our static executable
 COPY --from=builder --chmod=0755 /go/bin/observation-hub /go/bin/observation-hub
