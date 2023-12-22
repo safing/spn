@@ -13,7 +13,7 @@ require (
 	github.com/rot256/pblind v0.0.0-20231024115251-cd3f239f28c1
 	github.com/safing/jess v0.3.3
 	github.com/safing/portbase v0.18.9
-	github.com/safing/portmaster v1.6.3
+	github.com/safing/portmaster v1.6.4-0.20231222132644-ce3d81067ffe
 	github.com/spf13/cobra v1.8.0
 	github.com/stretchr/testify v1.8.4
 	github.com/tevino/abool v1.2.0
