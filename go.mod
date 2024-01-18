@@ -13,16 +13,16 @@ require (
 	github.com/rot256/pblind v0.0.0-20231024115251-cd3f239f28c1
 	github.com/safing/jess v0.3.3
 	github.com/safing/portbase v0.18.9
-	github.com/safing/portmaster v1.6.4-0.20231222132644-ce3d81067ffe
+	github.com/safing/portmaster v1.6.5
 	github.com/spf13/cobra v1.8.0
 	github.com/stretchr/testify v1.8.4
 	github.com/tevino/abool v1.2.0
-	golang.org/x/exp v0.0.0-20231219180239-dc181d75b848
-	golang.org/x/net v0.19.0
+	golang.org/x/exp v0.0.0-20240112132812-db7319d0e0e3
+	golang.org/x/net v0.20.0
 )
 
 require (
-	github.com/VictoriaMetrics/metrics v1.29.1 // indirect
+	github.com/VictoriaMetrics/metrics v1.31.0 // indirect
 	github.com/aead/ecdh v0.2.0 // indirect
 	github.com/aead/serpent v0.0.0-20160714141033-fba169763ea6 // indirect
 	github.com/armon/go-radix v1.0.0 // indirect
@@ -46,7 +46,7 @@ require (
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.6 // indirect
 	github.com/mat/besticon v3.12.0+incompatible // indirect
-	github.com/miekg/dns v1.1.57 // indirect
+	github.com/miekg/dns v1.1.58 // indirect
 	github.com/mitchellh/copystructure v1.2.0 // indirect
 	github.com/mitchellh/reflectwalk v1.0.2 // indirect
 	github.com/nfnt/resize v0.0.0-20180221191011-83c6a9932646 // indirect
@@ -77,14 +77,14 @@ require (
 	github.com/yusufpapurcu/wmi v1.2.3 // indirect
 	github.com/zeebo/blake3 v0.2.3 // indirect
 	go.etcd.io/bbolt v1.3.8 // indirect
-	golang.org/x/crypto v0.17.0 // indirect
-	golang.org/x/image v0.14.0 // indirect
+	golang.org/x/crypto v0.18.0 // indirect
+	golang.org/x/image v0.15.0 // indirect
 	golang.org/x/mod v0.14.0 // indirect
-	golang.org/x/sync v0.5.0 // indirect
-	golang.org/x/sys v0.15.0 // indirect
+	golang.org/x/sync v0.6.0 // indirect
+	golang.org/x/sys v0.16.0 // indirect
 	golang.org/x/time v0.5.0 // indirect
-	golang.org/x/tools v0.16.1 // indirect
+	golang.org/x/tools v0.17.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-	gvisor.dev/gvisor v0.0.0-20231222013827-149350e5c428 // indirect
+	gvisor.dev/gvisor v0.0.0-20240117231103-e9bdc76c02bd // indirect
 )
