@@ -15,7 +15,7 @@ const (
 	rateLimitMaxOpsPerSecond = 5
 
 	rateLimitMinSuspicion          = 25
-	rateLimitMinPermaSuspicion     = rateLimitMinSuspicion * 10
+	rateLimitMinPermaSuspicion     = rateLimitMinSuspicion * 100
 	rateLimitMaxSuspicionPerSecond = 1
 
 	// Make this big enough to trigger suspicion limit in first blast.
@@ -105,9 +105,9 @@ func (s *Session) RateLimit() *Error {
 		}
 
 		// Permanently rate limit if suspicion goes over the perma min limit and
-		// the suspicion score is 50% or greater of the operation count.
+		// the suspicion score is greater than 80% of the operation count.
 		if score > rateLimitMinPermaSuspicion &&
-			score*2 > s.opCount.Load() {
+			score*5 > s.opCount.Load()*4 { // Think: 80*5 == 100*4
 			return ErrRateLimited
 		}
 	}
