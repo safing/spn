@@ -67,6 +67,7 @@ type ConnectRequest struct {
 	Domain              string            `json:"d,omitempty"`
 	IP                  net.IP            `json:"ip,omitempty"`
 	UsePriorityDataMsgs bool              `json:"pr,omitempty"`
+	AlwaysHighPriority  bool              `json:"hp,omitempty"`
 	Protocol            packet.IPProtocol `json:"p,omitempty"`
 	Port                uint16            `json:"po,omitempty"`
 	QueueSize           uint32            `json:"qs,omitempty"`
@@ -125,6 +126,7 @@ func NewConnectOp(tunnel *Tunnel) (*ConnectOp, *terminal.Error) {
 		Protocol:            packet.IPProtocol(tunnel.connInfo.Entity.Protocol),
 		Port:                tunnel.connInfo.Entity.Port,
 		UsePriorityDataMsgs: terminal.UsePriorityDataMsgs,
+		AlwaysHighPriority:  tunnel.connInfo.Process().IsSystemResolver(),
 	}
 
 	// Set defaults.
@@ -379,6 +381,8 @@ func (op *ConnectOp) connReader(_ context.Context) error {
 
 		// Define priority and possibly wait for slot.
 		switch {
+		case op.request.AlwaysHighPriority && op.request.UsePriorityDataMsgs:
+			msg.Unit.MakeHighPriority()
 		case inBytes > highPrioThreshold:
 			msg.Unit.WaitForSlot()
 		case op.request.UsePriorityDataMsgs:
